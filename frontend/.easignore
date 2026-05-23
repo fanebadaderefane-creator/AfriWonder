@@ -1,0 +1,28 @@
+# Fichiers exclus de l’archive (upload léger = moins de ECONNRESET en monorepo).
+# Important: avec Git, EAS lit `.easignore` à la racine du dépôt uniquement (expo.fyi/eas-build-archive).
+# Ce fichier s’applique quand vous lancez un build via `npm run eas:android:*` (EAS_NO_VCS + EAS_PROJECT_ROOT=frontend).
+node_modules/
+.expo/
+dist/
+web-build/
+.metro-cache/
+coverage/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Secrets locaux (mode sans Git — ne jamais envoyer à EAS)
+.env
+.env.*
+!.env.example
+
+# Tests / CI locaux (inutiles pour compiler l’APK)
+e2e/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.config.*
+maestro/

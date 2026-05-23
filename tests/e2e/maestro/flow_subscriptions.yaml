@@ -1,0 +1,72 @@
+# AfriWonder+ : Profil → entrée Abonnements (scroll si besoin) → écran « Abonnements ».
+# Prix affichés via toLocaleString('fr-FR') (ex. « 2 500 FCFA », « 25 000 FCFA ») — espaces insécables possibles ; on assert par morceaux optionnels.
+# Avantages : « Zéro publicité », « Téléchargement illimité ». Onglets : testID subscription-tab-premium | fanclubs | my.
+# Prérequis : session connectée.
+appId: com.afriwonder.app
+name: AfriWonder - Abonnements Premium
+tags:
+  - critical
+  - subscriptions
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "For You"
+    timeout: 45000
+
+# ─── 1. Accéder aux abonnements ───────────────────────────────
+- tapOn: "Profil"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-subscriptions-entry"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "profile-subscriptions-entry"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Abonnements"
+    timeout: 15000
+
+# ─── 2. AfriWonder+ et tarifs (onglet par défaut) ─────────────
+- assertVisible:
+    text: "AfriWonder+"
+    optional: true
+- assertVisible:
+    text: "2 500"
+    optional: true
+- assertVisible:
+    text: "25 000"
+    optional: true
+- assertVisible:
+    text: "FCFA"
+    optional: true
+
+# ─── 3. Avantages inclus ───────────────────────────────────────
+- scrollUntilVisible:
+    text: "Zéro publicité"
+    direction: DOWN
+    timeout: 12000
+    optional: true
+- assertVisible:
+    text: "Téléchargement illimité"
+    optional: true
+
+# ─── 4. Onglet Fan Clubs ───────────────────────────────────────
+- tapOn:
+    id: "subscription-tab-fanclubs"
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Fan Clubs"
+    optional: true
+
+# ─── 5. Onglet Mes abonnements ────────────────────────────────
+- tapOn:
+    id: "subscription-tab-my"
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Mes abonnements"
+    optional: true
+
+- back

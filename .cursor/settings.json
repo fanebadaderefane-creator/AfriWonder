@@ -1,0 +1,10 @@
+{
+  "plugins": {
+    "meta-quest-agentic-tools": {
+      "enabled": true
+    },
+    "cloudflare": {
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,57 @@
+---
+description: ⛔ Player vidéo verrouillé — ne jamais modifier (a cassé 3 fois)
+alwaysApply: true
+---
+
+# ⛔ Player vidéo AfriWonder — VERROUILLÉ
+
+La logique de lecture vidéo a **cassé 3 fois** (buffer infini). L'utilisateur exige que cette zone ne soit **plus modifiée accidentellement** (verrouillage explicite mars 2026).
+
+## Règle stricte
+
+- **Ne jamais modifier** la logique de lecture dans `src/components/video/VideoCard.jsx` **sauf demande explicite** de l'utilisateur sur le player / la lecture.
+- Repères dans le fichier : **`⛔ ZONE LECTURE VERROUILLÉE — DÉBUT`** (vers la détection 1re frame) et **`⛔ ZONE LECTURE VERROUILLÉE — FIN`** (après seek bar + `handleMuteToggleClick`). Entre les deux, le fichier mêle aussi du **code UI** (titres, description, etc.) : tu peux faire évoluer **uniquement** ce qui est clairement UI (texte, classes CSS, layout HUD) **sans** toucher aux effets, callbacks et handlers listés ci-dessous.
+- Après le marqueur **FIN** : `formatTime`, libellé durée — pure affichage, OK sans toucher à `play`/`pause`/`src`.
+- Ne pas refactorer, « améliorer », « nettoyer » ni « simplifier » la partie lecture (symboles listés).
+
+## Périmètre verrouillé (repères dans le fichier)
+
+À traiter comme **sacrés** sauf ordre utilisateur :
+
+- **`prepareForAutoplay`**, **`autoplayWithPolicy`**, **`markAutoPlaySuccess`**
+- Choix URL / qualité lié à **`slowConnection`** / **`isDataSaver`** (ordre des sources vidéo)
+- **`scheduleFirstFrameDetection`**, **`cancelPendingFirstFrameDetection`**, **`markFirstFrameRendered`** quand utilisés pour révéler la vidéo / éviter écran noir
+- **`useEffect` / `useLayoutEffect`** qui : réinitialisent l'état lecteur au changement de vidéo, gèrent **pool** vidéo, **HLS** (`hls.js`), **MP4** (`el.src`), **`isActive`**, **visibility / focus**, pause des autres `<video>`, sync mute
+- **`handlePlayPause`**, **`handleRetryLoad`**
+- **`updateProgressFromElement`** (boucle `start_time`/`end_time`, **recordView**, barre — ne pas changer le comportement temporel)
+- **`handleTimeUpdate`**, **`handleLoadedMetadata`**, **`handleProgress`**, **`handleCanPlay`**, **`handleWaiting`**, **`handlePlaying`**, **`handlePause`**
+- Handlers **seek** (souris/touch) qui modifient **`currentTime`**
+- Balise **`<video>`** et conteneur **pool** : attributs **`preload`**, **`muted`**, **`src`**, événements liés au média (sauf texte d'erreur purement cosmétique sans effet sur le chargement)
+
+## Invariants produit (ne pas supprimer sans raison majeure)
+
+Objectif : éviter **buffer → joue → buffer** et **audio / mauvaise carte** après swipe.
+
+- **`hasPlayedOnceRef`** : mis à `true` dans **`handlePlaying`** après une lecture réelle ; reset au changement de vidéo.
+- **`readyState >= 4`** : conditions dans les effets MP4 / **`handleCanPlay`** qui **ne lancent `play()`** que lorsque le média a assez de données (HAVE_ENOUGH_DATA).
+- **Feed type TikTok** : éviter **`load()`** / vider la source au scroll quand ça provoque écran noir ; préférer **pause** et garder le buffer quand le code actuel le fait ainsi.
+- **Connexion lente** : conserver l'indicateur / choix qualité basse liés à **`slowConnection`** (objectif Afrique).
+- **Une seule vidéo active** : pauses synchrones des autres nœuds `video[data-afw-feed-video="1"]` où le code le fait déjà.
+
+Si cette doc et le code divergent, **ne pas « corriger » le player pour aligner la doc** sans demande explicite.
+
+## Feed compact (`compact={true}` — Home / TikTok) — première frame **vidéo** (mars 2026)
+
+**Problème à ne pas réintroduire :** masquer le `<video>` avec **`opacity: 0`** jusqu’à `hasFirstFrameRendered` **pendant que** des calques (shimmer, `thumbnail_url`, fond noir plein écran) sont au-dessus donne l’impression d’un « faux » visuel ou d’un écran noir, alors que le décodeur a **déjà** une vraie frame.
+
+**À garder :**
+
+- En mode **`compact`**, le `<video>` reste **visible** (`opacity: 1`) pour afficher **les pixels du flux** dès que le navigateur les peint — ne pas remettre un fondu depuis 0 couplé à l’absence de poster réel.
+- **`FeedVideoSlide.jsx`** : pas de squelette shimmer qui recouvre le lecteur ; pas de `slideBackgroundUrl` miniature CDN sur la slide (fond = slide sombre seulement).
+- **`VideoCard`** hors `compact` : l’ancien duo **poster image + fondu** reste valide pour éviter écran noir sur les intégrations non feed.
+
+Avant de « corriger » un flash ou un noir sur le feed : vérifier **layout Firefox** (`video-feed-rendering-firefox.mdc`), pas seulement remettre poster/shimmer par défaut.
+
+## Si l'utilisateur demande explicitement un changement sur le player
+
+Modifier en conservant : pas de reprise forcée contre une pause utilisateur, respect des garde-fous buffer / première vidéo / connexions lentes, pas de régression écran noir Firefox/WebView (voir aussi `video-feed-rendering-firefox.mdc`).

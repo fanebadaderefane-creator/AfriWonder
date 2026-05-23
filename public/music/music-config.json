@@ -1,0 +1,53 @@
+{
+  "tracks": [
+    {
+      "id": "none",
+      "name": "Aucune",
+      "url": null,
+      "description": "Pas de musique de fond"
+    },
+    {
+      "id": "ambient1",
+      "name": "Ambient Chill",
+      "url": "/music/ambient-chill.mp3",
+      "description": "Musique ambiante relaxante",
+      "duration": 180,
+      "genre": "ambient"
+    },
+    {
+      "id": "ambient2",
+      "name": "Upbeat Energy",
+      "url": "/music/upbeat-energy.mp3",
+      "description": "Énergie positive et dynamique",
+      "duration": 200,
+      "genre": "electronic"
+    },
+    {
+      "id": "ambient3",
+      "name": "Relaxing Vibes",
+      "url": "/music/relaxing-vibes.mp3",
+      "description": "Vibes relaxantes pour un live apaisant",
+      "duration": 195,
+      "genre": "chill"
+    },
+    {
+      "id": "afrobeat1",
+      "name": "Afrobeat Groove",
+      "url": "/music/afrobeat-groove.mp3",
+      "description": "Rythmes afrobeat entraînants",
+      "duration": 210,
+      "genre": "afrobeat"
+    },
+    {
+      "id": "instrumental1",
+      "name": "Instrumental Focus",
+      "url": "/music/instrumental-focus.mp3",
+      "description": "Musique instrumentale pour la concentration",
+      "duration": 185,
+      "genre": "instrumental"
+    }
+  ],
+  "defaultVolume": 0.3,
+  "maxVolume": 1.0,
+  "minVolume": 0.0
+}

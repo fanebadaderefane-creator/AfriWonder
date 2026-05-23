@@ -1,0 +1,72 @@
+# Vérifications alignement audits (dépôt + mobile Expo) — workflow séparé de la CI principale.
+# Ne pas l’ajouter comme check obligatoire dans Branch protection si vous voulez merger sans install mobile ;
+# sinon, gardez uniquement « CI/CD AfriWonder » comme requis.
+name: Audit artifacts (Expo + dépôt)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: afriwonder-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-audit-repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Vérifier artefacts audits (dépôt)
+        run: node scripts/verify-audit-repo.mjs
+
+  expo-mobile-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend (Expo)
+        working-directory: frontend
+        run: npm install
+      - name: Lint (Expo)
+        working-directory: frontend
+        run: npm run lint
+
+  # Cible audit ~70 % front : rapport seulement (seuils Vitest inchangés dans la CI principale).
+  frontend-coverage-informational:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Couverture Vitest (rapport — non bloquant)
+        run: npm run test:coverage
+        env:
+          CI: 'true'
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Upload rapport couverture (HTML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-coverage-html
+          path: coverage/
+          if-no-files-found: ignore

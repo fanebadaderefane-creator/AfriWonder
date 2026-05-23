@@ -1,0 +1,77 @@
+# CODEOWNERS — AfriWonder
+#
+# Ce fichier définit qui DOIT reviewer chaque partie du code.
+# Au moins un owner par PR — deux pour les zones critiques (paiement, auth, KYC).
+#
+# Syntaxe : <pattern> <owners...>
+# Le dernier pattern qui matche gagne.
+#
+# À adapter avec les vrais handles GitHub de l'équipe AfriWonder.
+
+# ---------------------------------------------------------------------------
+# Default — tout fichier sans owner spécifique
+# ---------------------------------------------------------------------------
+*                                                       @afriwonder/lead-tech
+
+# ---------------------------------------------------------------------------
+# Documentation & standards
+# ---------------------------------------------------------------------------
+/AGENTS.md                                              @afriwonder/lead-tech
+/docs/ENGINEERING_STANDARDS.md                          @afriwonder/lead-tech
+/docs/decisions/**                                      @afriwonder/lead-tech
+/docs/RUNBOOK.md                                        @afriwonder/lead-tech @afriwonder/devops
+/docs/SECURITY.md                                       @afriwonder/lead-tech @afriwonder/security
+
+# ---------------------------------------------------------------------------
+# CI/CD & infrastructure
+# ---------------------------------------------------------------------------
+/.github/**                                             @afriwonder/devops @afriwonder/lead-tech
+/scripts/**                                             @afriwonder/devops
+/docker*                                                @afriwonder/devops
+/Dockerfile*                                            @afriwonder/devops
+
+# ---------------------------------------------------------------------------
+# Backend — API & services
+# ---------------------------------------------------------------------------
+/backend/**                                             @afriwonder/backend
+/backend/prisma/schema.prisma                           @afriwonder/backend @afriwonder/lead-tech
+/backend/prisma/migrations/**                           @afriwonder/backend @afriwonder/lead-tech
+
+# Modules critiques — 2 reviewers seniors obligatoires
+/backend/src/services/auth.service.ts                   @afriwonder/backend @afriwonder/security
+/backend/src/services/wallet.service.ts                 @afriwonder/backend @afriwonder/security
+/backend/src/routes/wallet.routes.ts                    @afriwonder/backend @afriwonder/security
+/backend/src/routes/payments.routes.ts                  @afriwonder/backend @afriwonder/security
+/backend/src/payments/**                                @afriwonder/backend @afriwonder/security
+/backend/src/routes/admin.routes.ts                     @afriwonder/backend @afriwonder/lead-tech
+/backend/src/services/admin.service.ts                  @afriwonder/backend @afriwonder/lead-tech
+/backend/src/middleware/**                              @afriwonder/backend @afriwonder/security
+/backend/src/services/loginAlert.service.ts             @afriwonder/backend @afriwonder/security
+
+# ---------------------------------------------------------------------------
+# Mobile (Expo / React Native)
+# ---------------------------------------------------------------------------
+/frontend/**                                            @afriwonder/mobile
+/frontend/app.json                                      @afriwonder/mobile @afriwonder/lead-tech
+/frontend/eas.json                                      @afriwonder/mobile @afriwonder/devops
+/frontend/metro.config.js                               @afriwonder/mobile @afriwonder/lead-tech
+
+# ---------------------------------------------------------------------------
+# Web PWA
+# ---------------------------------------------------------------------------
+/src/**                                                 @afriwonder/web
+/vite.config*                                           @afriwonder/web @afriwonder/lead-tech
+/tests/e2e/**                                           @afriwonder/web @afriwonder/qa
+
+# ---------------------------------------------------------------------------
+# SDK public
+# ---------------------------------------------------------------------------
+/sdk/**                                                 @afriwonder/lead-tech @afriwonder/backend
+
+# ---------------------------------------------------------------------------
+# Sécurité — fichiers à approuver par l'équipe security
+# ---------------------------------------------------------------------------
+/.env*                                                  @afriwonder/security @afriwonder/lead-tech
+/backend/.env*                                          @afriwonder/security @afriwonder/lead-tech
+/frontend/.env*                                         @afriwonder/security @afriwonder/lead-tech
+/.gitignore                                             @afriwonder/lead-tech

@@ -1,0 +1,210 @@
+import { Router } from 'express';
+import crypto from 'node:crypto';
+import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { param } from '../utils/params.js';
+import directCallService from '../services/directCall.service.js';
+import prisma from '../config/database.js';
+
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
+const router = Router();
+
+const TERMINAL_CALL_STATUSES = new Set(['completed', 'declined', 'missed', 'ended', 'failed', 'cancelled']);
+
+function parseTurnUrls(): string[] {
+  const raw = String(process.env.TURN_URL || process.env.TURN_URLS || '').trim();
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+function createTemporaryTurnCredentials(userId: string) {
+  const secret = String(process.env.TURN_SHARED_SECRET || '').trim();
+  const realm = String(process.env.TURN_REALM || '').trim();
+  const ttlSec = Math.max(60, Number(process.env.TURN_CREDENTIAL_TTL_SEC || 3600));
+  const urls = parseTurnUrls();
+  if (!secret || !realm || urls.length === 0) return null;
+  const exp = Math.floor(Date.now() / 1000) + ttlSec;
+  const username = `${exp}:${userId}`;
+  const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
+  return { urls: urls.length === 1 ? urls[0] : urls, username, credential, expiresAt: exp * 1000, ttlSec, realm };
+}
+
+// GET /api/calls/turn-credentials - Credentials TURN temporaires (ne pas exposer VITE_TURN_CREDENTIAL côté client)
+router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
+  const userId = String(req.user?.id || '').trim();
+  const creds = createTemporaryTurnCredentials(userId || 'anonymous');
+  if (!creds) {
+    return res.status(503).json({
+      success: false,
+      error: { message: 'TURN non configuré', code: 'TURN_NOT_CONFIGURED' },
+    });
+  }
+  return res.json({ success: true, data: creds });
+});
+
+// POST /api/calls/initiate - Initier un appel payant
+router.post('/initiate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { receiverId, phone, estimatedDuration } = req.body;
+
+    if (!receiverId || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'receiverId et phone requis' },
+      });
+    }
+
+    const result = await directCallService.initiateCall(userId, receiverId, {
+      phone,
+      estimatedDuration,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      message: 'Appel initié. Redirigez vers paymentUrl pour compléter le paiement.',
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/calls/session/upsert - Créer/valider une session d'appel DM (WebRTC)
+router.post('/session/upsert', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { callId, peerUserId, role, status } = req.body || {};
+
+    if (!callId || !peerUserId || !role) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'callId, peerUserId et role sont requis' },
+      });
+    }
+    if (!['caller', 'receiver'].includes(String(role))) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'role invalide (caller|receiver)' },
+      });
+    }
+    if (peerUserId === userId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'peerUserId doit être différent de votre user id' },
+      });
+    }
+
+    const existing = await prisma.directCall.findUnique({ where: { id: String(callId) } });
+    if (existing) {
+      if (![existing.caller_id, existing.receiver_id].includes(userId)) {
+        return res.status(403).json({ success: false, error: { message: 'Accès interdit à cet appel' } });
+      }
+      const updated = await prisma.directCall.update({
+        where: { id: existing.id },
+        data: {
+          status: typeof status === 'string' && status.trim() ? status.trim() : existing.status,
+        },
+      });
+      return res.json({ success: true, data: updated });
+    }
+
+    const isCaller = role === 'caller';
+    const created = await prisma.directCall.create({
+      data: {
+        id: String(callId),
+        caller_id: isCaller ? userId : String(peerUserId),
+        receiver_id: isCaller ? String(peerUserId) : userId,
+        status: typeof status === 'string' && status.trim() ? status.trim() : 'pending',
+      },
+    });
+    return res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/calls/:id/session-state - Mettre à jour l'état d'un appel DM (sans flux paiement)
+router.post('/:id/session-state', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const callId = param(req, 'id');
+    const { status, duration } = req.body || {};
+
+    const call = await prisma.directCall.findUnique({ where: { id: callId } });
+    if (!call) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Appel introuvable' },
+      });
+    }
+    if (![call.caller_id, call.receiver_id].includes(userId)) {
+      return res.status(403).json({ success: false, error: { message: 'Accès interdit à cet appel' } });
+    }
+
+    const nextStatus = typeof status === 'string' && status.trim() ? status.trim() : call.status;
+    const numericDuration =
+      typeof duration === 'number'
+        ? Math.max(0, Math.floor(duration))
+        : Number.isFinite(Number(duration))
+          ? Math.max(0, Math.floor(Number(duration)))
+          : null;
+
+    const data: any = {
+      status: nextStatus,
+    };
+
+    if (nextStatus === 'active' && !call.started_at) {
+      data.started_at = new Date();
+    }
+
+    if (TERMINAL_CALL_STATUSES.has(nextStatus)) {
+      data.ended_at = new Date();
+      if (numericDuration !== null) data.duration = numericDuration;
+      if (!call.started_at && (numericDuration ?? 0) > 0) {
+        data.started_at = new Date(Date.now() - (numericDuration || 0) * 1000);
+      }
+    }
+
+    const updated = await prisma.directCall.update({
+      where: { id: callId },
+      data,
+    });
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/calls/:id/end - Terminer un appel
+router.post('/:id/end', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const callId = param(req, 'id');
+    const { duration } = req.body; // Durée en secondes
+
+    if (!duration) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'duration requis (en secondes)' },
+      });
+    }
+
+    const result = await directCallService.endCall(callId, duration);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'Appel terminé et paiement traité',
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+export default router;
+

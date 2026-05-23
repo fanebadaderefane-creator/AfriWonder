@@ -1,0 +1,49 @@
+{
+  "name": "AdminNotification",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "new_provider",
+        "expired_subscription",
+        "flagged_review",
+        "new_microcredit",
+        "new_crowdfunding",
+        "new_job",
+        "overdue_payment",
+        "general"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "message"
+  ]
+}

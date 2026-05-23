@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f97316" />
+  <meta name="robots" content="noindex" />
+  <title>AfriWonder — Hors connexion</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #020617;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .shell {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      gap: 20px;
+    }
+    .icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: rgba(249,115,22,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon svg { width: 36px; height: 36px; stroke: #fb923c; }
+    h1 { font-size: 1.25rem; font-weight: 600; }
+    p  { font-size: 0.875rem; color: rgba(255,255,255,0.55); max-width: 300px; line-height: 1.6; }
+    .btn {
+      margin-top: 8px;
+      padding: 12px 28px;
+      border-radius: 12px;
+      border: none;
+      background: #f97316;
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      min-height: 44px;
+      min-width: 44px;
+    }
+    .btn:hover  { background: #ea6c00; }
+    .btn:active { transform: scale(0.97); }
+    .btn:focus-visible {
+      outline: 3px solid #ffffff;
+      outline-offset: 2px;
+    }
+    .logo { width: 48px; height: 48px; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <img class="logo" src="/icon-192.png" alt="AfriWonder" width="48" height="48" />
+    <div class="icon" aria-hidden="true">
+      <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" />
+      </svg>
+    </div>
+    <div>
+      <h1>Pas de connexion</h1>
+    </div>
+    <p>
+      Pour les <strong>nouvelles</strong> vidéos, une connexion est nécessaire.
+      Les contenus déjà mis en cache sur ton appareil restent lisibles depuis l’accueil.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:4px;">
+      <a class="btn" href="/" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;" aria-label="Ouvrir l’accueil AfriWonder">
+        Ouvrir l’accueil
+      </a>
+      <button class="btn" type="button" style="background:#334155;" onclick="window.location.reload()" aria-label="Réessayer de charger la page">
+        Réessayer
+      </button>
+    </div>
+    <p style="font-size:0.75rem; color:rgba(255,255,255,0.35); margin-top:12px; max-width:320px;">
+      Astuce : ouvre l’app une fois en 4G/Wi‑Fi pour que le feed et les vidéos se préparent hors ligne.
+    </p>
+  </main>
+
+  <noscript>
+    <style>.shell { display: none; }</style>
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center;font-family:system-ui">
+      <div>
+        <img src="/icon-192.png" alt="AfriWonder" width="64" height="64" style="border-radius:16px;margin-bottom:16px" />
+        <h1 style="color:#f97316;font-size:1.25rem;margin-bottom:8px">Hors connexion</h1>
+        <p style="color:rgba(255,255,255,.6);max-width:280px">
+          Veuillez retablir votre connexion Internet pour utiliser AfriWonder.
+        </p>
+      </div>
+    </div>
+  </noscript>
+</body>
+</html>

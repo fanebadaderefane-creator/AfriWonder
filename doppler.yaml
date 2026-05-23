@@ -1,0 +1,12 @@
+# Doppler — https://docs.doppler.com (audit Jour 1 / Semaine 1)
+# Créer 3 configs dans le projet : dev | staging | prod
+# — mêmes noms de clés que backend/.env.example + .env racine (VITE_*).
+#
+# Exemples :
+#   doppler setup --project afriwonder --config dev
+#   doppler run --config staging -- npm run dev --prefix backend
+#   doppler run --config prod --command "npm start" (Render injecte souvent sans Doppler si secrets natifs)
+#
+setup:
+  project: afriwonder
+  config: dev

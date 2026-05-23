@@ -1,0 +1,57 @@
+# Téléchargement hors ligne : le CTA « Télécharger pour hors ligne » est sur l’écran Lecture (/watch/[id]),
+# testID save-button — pas sur le feed « Sauver » (signet). Bannière réseau : commentée (couper le réseau manuellement).
+# Paramètres : icône menu en haut du profil (profile-settings-button) ; titre écran « Parametres » (sans accent).
+# Prérequis : session connectée ; au moins une vidéo dans la grille Profil (onglet Posts).
+appId: com.afriwonder.app
+name: AfriWonder - Download Video Offline
+tags:
+  - critical
+  - offline
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "For You"
+    timeout: 45000
+
+# ─── 1. Feed en ligne ───────────────────────────────────────────
+- assertVisible: "For You"
+
+# ─── 2–3. Profil → 1re tuile → Lecture → télécharger (MP4 dispo) ─
+- tapOn: "Profil"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-first-grid-video"
+    direction: DOWN
+    timeout: 25000
+- tapOn:
+    id: "profile-first-grid-video"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Lecture"
+    timeout: 20000
+- assertVisible:
+    id: "save-button"
+    optional: true
+- tapOn:
+    id: "save-button"
+    optional: true
+- waitForAnimationToEnd
+
+# ─── 4. Bannière hors ligne (réseau coupé — désactivé par défaut) ─
+# - assertVisible:
+#     text: "hors ligne"
+#     optional: true
+
+# ─── 5. Paramètres (entrée menu profil) ─────────────────────────
+- back
+- waitForAnimationToEnd
+- tapOn:
+    id: "profile-settings-button"
+- waitForAnimationToEnd
+- assertVisible: "Parametres"
+- assertVisible:
+    text: "hors ligne"
+    optional: true
+- back

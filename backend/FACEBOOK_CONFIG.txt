@@ -1,0 +1,32 @@
+
+# ============================================
+# CONFIGURATION FACEBOOK DEVELOPER CONSOLE
+# ============================================
+# Copiez-collez ces valeurs dans Facebook Developer Console
+# Chemin : Connexion Facebook → Paramètres
+# ============================================
+
+## URI de redirection OAuth valides
+# Supprimez toutes les autres URI et ajoutez UNIQUEMENT celle-ci :
+
+https://univitrescent-kathleen-encephalitic.ngrok-free.dev/api/auth/facebook/callback
+
+# ⚠️ NOTE : http://localhost est automatiquement autorisé en mode développement
+# Vous n'avez PAS besoin d'ajouter http://localhost:3000/api/auth/facebook/callback
+# Facebook l'autorise automatiquement
+
+## Domaines autorisés pour le SDK Javascript
+# Supprimez tous les domaines avec https:// ou slash final
+# Ajoutez UNIQUEMENT ceux-ci (sans https://, sans slash) :
+
+localhost
+univitrescent-kathleen-encephalitic.ngrok-free.dev
+
+# ============================================
+# VÉRIFICATIONS
+# ============================================
+# ✅ L'URI contient /api/auth/facebook/callback
+# ✅ Le port est 3000 (votre backend)
+# ✅ Le domaine ngrok est correct
+# ✅ Pas de slash final
+# ============================================

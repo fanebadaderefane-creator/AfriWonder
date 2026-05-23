@@ -1,0 +1,2814 @@
+// AfriWonder full review PR - CodeRabbit
+// @ts-nocheck
+import React, { useState, useRef, useEffect } from 'react';
+
+import { api } from '@/api/expressClient';
+
+import { Button } from "@/components/ui/button";
+
+import { Input } from "@/components/ui/input";
+
+import { Textarea } from "@/components/ui/textarea";
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+
+import { 
+
+  Camera, Upload, X, Music2, 
+
+  Sparkles, Check, ArrowLeft, Globe, Users, Lock,
+
+  Radio, Loader2, Hash, Circle, Square, Mic, MicOff,
+
+  FlipHorizontal, Gift, MessageCircle, Eye
+
+} from 'lucide-react';
+
+import { motion, AnimatePresence } from 'framer-motion';
+
+import { toast } from "sonner";
+
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+import { useQueryClient } from '@tanstack/react-query';
+
+import { createPageUrl } from "@/utils";
+import { useAuth } from '@/lib/AuthContext';
+import { readGuestExplore, GUEST_EXPLORE_EVENT, setGuestExplore } from '@/lib/guestExplore';
+import BottomNav from '../components/navigation/BottomNav';
+
+import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_VIDEOS, FILE_ACCEPT_MUSIC } from '@/lib/fileAccept';
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
+
+import VideoEditor from '../components/video/VideoEditor';
+
+
+
+const categories = [
+
+  'divertissement', 'musique', 'danse', 'cuisine', 'mode', 
+
+  'business', 'education', 'sport', 'actualites', 'humour', 'lifestyle', 'tech'
+
+];
+
+
+
+const languages = [
+
+  { code: 'francais', name: 'Français' },
+
+  { code: 'wolof', name: 'Wolof' },
+
+  { code: 'bambara', name: 'Bambara' },
+
+  { code: 'hausa', name: 'Hausa' },
+
+  { code: 'lingala', name: 'Lingala' },
+
+  { code: 'swahili', name: 'Swahili' },
+
+  { code: 'anglais', name: 'English' },
+
+];
+
+
+
+const visibilityOptions = [
+
+  { value: 'public', label: 'Public', icon: Globe, description: 'Tout le monde' },
+
+  { value: 'abonnes', label: 'Abonnés', icon: Users, description: 'Vos abonnés seulement' },
+
+  { value: 'prive', label: 'Privé', icon: Lock, description: 'Vous seul' },
+
+];
+
+
+
+function extractHashtagsFromDescription(description) {
+  if (!description) return [];
+  const matches = description.match(/#[\w]+/g);
+  return matches ? matches.map((t) => t.substring(1)) : [];
+}
+function descriptionWithoutHashtags(description) {
+  if (!description) return '';
+  return description
+    .replace(/\n\n#[\w\s#]+/g, '')
+    .replace(/\n\n🎵 Musique:.*/g, '')
+    .trim();
+}
+
+export default function Create() {
+
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const [guestExploreActive, setGuestExploreActive] = useState(() => readGuestExplore());
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const isAdMode = searchParams.get('mode') === 'ad';
+  const adCampaignId = searchParams.get('campaignId');
+  const fileInputImageRef = useRef(null);
+  const fileInputVideoRef = useRef(null);
+
+  const cameraInputRef = useRef(null);
+
+  const videoRef = useRef(null);
+
+  const mediaRecorderRef = useRef(null);
+
+  const streamRef = useRef(null);
+
+  
+
+  const [step, setStep] = useState('select'); // 'select' | 'camera' | 'live' | 'edit' | 'details' | 'uploading'
+
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const [user, setUser] = useState(null);
+  
+
+  // Camera state
+
+  const [isRecording, setIsRecording] = useState(false);
+
+  const [recordedChunks, setRecordedChunks] = useState([]);
+
+  const [facingMode, setFacingMode] = useState('user');
+
+  const [recordingTime, setRecordingTime] = useState(0);
+
+  const [showCameraFilters, setShowCameraFilters] = useState(false);
+
+  const [showCameraMusic, setShowCameraMusic] = useState(false);
+
+  const [cameraFilter, setCameraFilter] = useState('Normal');
+
+  const musicInputRef = useRef(null);
+
+  
+
+  // Live state
+
+  const [isLive, setIsLive] = useState(false);
+
+  const [liveViewers, setLiveViewers] = useState(0);
+
+  const [liveComments, setLiveComments] = useState([]);
+
+  const [liveGifts, setLiveGifts] = useState(0);
+
+  const [isMuted, setIsMuted] = useState(false);
+
+  
+
+  const [videoData, setVideoData] = useState({
+
+    title: '',
+
+    description: '',
+
+    category: '',
+
+    language: 'francais',
+
+    visibility: 'public',
+
+    hashtags: [],
+
+    music_title: '',
+
+    music_id: '',
+
+    text_overlay: '',
+
+    text_x: 50,
+
+    text_y: 50,
+
+    stickers: [],
+
+    start_time: 0,
+
+    end_time: 0,
+
+    is_live: false,
+
+    filter: 'Normal',
+
+    thumbnail_url: '',
+
+    hide_likes: false,
+
+    comments_disabled: false,
+
+    comment_visibility: 'everyone',
+
+    scheduled_at: ''
+
+  });
+
+
+
+  const [hashtagInput, setHashtagInput] = useState('');
+
+  const [editingVideoId, setEditingVideoId] = useState(null);
+
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const u = await api.auth.me();
+        setUser(u);
+      } catch (e) {
+        // Si la récupération de l'utilisateur échoue (non connecté ou token expiré),
+        // on ne spamme plus l'utilisateur avec un toast ni redirection.
+        setUser(null);
+      }
+    };
+    getUser();
+  }, []);
+
+  useEffect(() => {
+    const h = () => setGuestExploreActive(readGuestExplore());
+    window.addEventListener(GUEST_EXPLORE_EVENT, h);
+    return () => window.removeEventListener(GUEST_EXPLORE_EVENT, h);
+  }, []);
+
+  useEffect(() => {
+
+    const editId = searchParams.get('edit');
+
+    if (!editId) return;
+
+    setEditingVideoId(editId);
+
+    let cancelled = false;
+
+    (async () => {
+
+      try {
+
+        const data = await api.videos.getById(editId);
+
+        if (cancelled || !data) return;
+
+        const hashtags = extractHashtagsFromDescription(data.description);
+
+        const cleanDesc = descriptionWithoutHashtags(data.description);
+
+        setVideoData((prev) => ({
+
+          ...prev,
+
+          title: data.title || '',
+
+          description: cleanDesc,
+
+          category: data.category || 'divertissement',
+
+          visibility: data.visibility || 'public',
+
+          hashtags: hashtags.length ? hashtags : prev.hashtags,
+
+          music_title: data.music_title || '',
+
+          thumbnail_url: data.thumbnail_url || '',
+
+        }));
+
+        setPreviewUrl(data.video_url || null);
+
+        setStep('details');
+
+      } catch (e) {
+
+        if (!cancelled) toast.error('Vidéo introuvable');
+
+      }
+
+    })();
+
+    return () => { cancelled = true; };
+
+  }, [searchParams]);
+
+  // Détecter la musique depuis l'URL (quand un utilisateur clique sur une musique d'une vidéo)
+  useEffect(() => {
+
+    const params = new URLSearchParams(window.location.search);
+
+    const musicParam = params.get('music');
+
+    if (musicParam) {
+
+      const decodedMusic = decodeURIComponent(musicParam);
+
+      setVideoData(prev => ({
+
+        ...prev,
+
+        music_title: decodedMusic,
+
+        music_id: decodedMusic.toLowerCase().replace(/\s+/g, '_')
+
+      }));
+
+      toast.success(`🎵 Musique "${decodedMusic}" sélectionnée`);
+
+      // Nettoyer l'URL pour éviter de recharger la musique à chaque fois
+
+      window.history.replaceState({}, '', window.location.pathname);
+
+    }
+
+  }, []);
+
+
+
+  // Recording timer
+
+  useEffect(() => {
+
+    let interval;
+
+    if (isRecording) {
+
+      interval = setInterval(() => {
+
+        setRecordingTime(prev => prev + 1);
+
+      }, 1000);
+
+    } else {
+
+      setRecordingTime(0);
+
+    }
+
+    return () => clearInterval(interval);
+
+  }, [isRecording]);
+
+
+
+  // Cleanup camera and live intervals on unmount
+
+  useEffect(() => {
+
+    return () => {
+
+      if (streamRef.current) {
+
+        if (streamRef.current.viewerInterval) clearInterval(streamRef.current.viewerInterval);
+        if (streamRef.current.commentInterval) clearInterval(streamRef.current.commentInterval);
+        streamRef.current.getTracks().forEach(track => track.stop());
+
+      }
+
+    };
+
+  }, []);
+
+
+
+  const formatTime = (seconds) => {
+
+    const mins = Math.floor(seconds / 60);
+
+    const secs = seconds % 60;
+
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+  };
+
+
+
+  // Handle file selection from gallery
+  const convertImageToVideoFile = (imageFile) => new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(imageFile);
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const width = 720;
+        const height = 1280;
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Canvas non disponible'));
+          return;
+        }
+
+        const drawFrame = () => {
+          ctx.fillStyle = 'black';
+          ctx.fillRect(0, 0, width, height);
+          const scale = Math.min(width / image.width, height / image.height);
+          const drawW = image.width * scale;
+          const drawH = image.height * scale;
+          const x = (width - drawW) / 2;
+          const y = (height - drawH) / 2;
+          ctx.drawImage(image, x, y, drawW, drawH);
+        };
+
+        drawFrame();
+
+        const stream = canvas.captureStream(24);
+        const mimeCandidates = [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm',
+        ];
+        const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2200000 });
+        const chunks = [];
+        const redraw = setInterval(drawFrame, 1000 / 24);
+
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onstop = () => {
+          clearInterval(redraw);
+          stream.getTracks().forEach((t) => t.stop());
+          URL.revokeObjectURL(objectUrl);
+          const blob = new Blob(chunks, { type: mimeType });
+          if (!blob.size) {
+            reject(new Error('Conversion image en vidéo échouée'));
+            return;
+          }
+          const file = new File([blob], `photo_${Date.now()}.webm`, { type: blob.type || 'video/webm' });
+          resolve(file);
+        };
+        recorder.start();
+        setTimeout(() => {
+          if (recorder.state !== 'inactive') recorder.stop();
+        }, 3200);
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        reject(err);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Impossible de lire l’image'));
+    };
+    image.src = objectUrl;
+  });
+
+  const handleFileSelect = async (e) => {
+
+    const file = e.target.files?.[0];
+
+    if (file) {
+      let normalizedFile = file;
+      if (file.type.startsWith('image/')) {          normalizedFile = file;
+      } else if (!file.type.startsWith('video/')) {
+        toast.error('Veuillez sélectionner une image ou une vidéo');
+        return;
+      }
+
+      
+
+      // Create preview URL
+
+      const preview = URL.createObjectURL(normalizedFile);
+
+      setSelectedFile(normalizedFile);
+
+      setPreviewUrl(preview);
+
+      setStep('edit');
+
+      toast.success('Média chargé avec succès');
+
+    }
+
+  };
+
+
+
+  // Start camera
+
+  const startCamera = async () => {
+
+    try {
+
+      // Check if mediaDevices is supported
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+
+        toast.error('Votre navigateur ne supporte pas la caméra');
+
+        return;
+
+      }
+
+
+
+      setStep('camera');
+
+      // Wait for video element to be rendered
+
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      
+
+      // Try to get camera with flexible constraints
+
+      let stream;
+
+      try {
+
+        stream = await navigator.mediaDevices.getUserMedia({
+
+          video: { 
+
+            facingMode: facingMode,
+
+            width: { ideal: 1920, max: 1920 },
+
+            height: { ideal: 1080, max: 1080 }
+
+          },
+
+          audio: true
+
+        });
+
+      } catch (err) {
+
+        // Fallback: try without audio if audio fails
+
+        console.log('Retrying without audio constraints...');
+
+        stream = await navigator.mediaDevices.getUserMedia({
+
+          video: { 
+
+            facingMode: facingMode,
+
+            width: { ideal: 1280 },
+
+            height: { ideal: 720 }
+
+          },
+
+          audio: false
+
+        });
+
+        toast('Caméra activée (sans son)', { icon: '📹' });
+
+      }
+
+      
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+
+        videoRef.current.srcObject = stream;
+
+        await videoRef.current.play();
+
+      }
+
+      toast.success('Caméra prête !');
+
+    } catch (error) {
+
+      console.error('Camera error:', error);
+
+      let errorMessage = 'Impossible d\'accéder à la caméra.';
+
+      
+
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+
+        errorMessage = 'Autorisez l\'accès à la caméra dans les paramètres.';
+
+      } else if (error.name === 'NotFoundError') {
+
+        errorMessage = 'Aucune caméra détectée sur cet appareil.';
+
+      } else if (error.name === 'NotReadableError') {
+
+        errorMessage = 'La caméra est utilisée par une autre application.';
+
+      }
+
+      
+
+      toast.error(errorMessage);
+
+      setStep('select');
+
+    }
+
+  };
+
+
+
+  // Switch camera
+
+  const switchCamera = async () => {
+
+    const newMode = facingMode === 'user' ? 'environment' : 'user';
+
+    setFacingMode(newMode);
+
+    
+
+    if (streamRef.current) {
+
+      streamRef.current.getTracks().forEach(track => track.stop());
+
+    }
+
+    
+
+    try {
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+
+        video: { 
+
+          facingMode: newMode,
+
+          width: { ideal: 1920 },
+
+          height: { ideal: 1080 }
+
+        },
+
+        audio: true
+
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+
+        videoRef.current.srcObject = stream;
+
+        videoRef.current.play();
+
+      }
+
+    } catch (error) {
+
+      toast.error('Erreur lors du changement de caméra');
+
+    }
+
+  };
+
+
+
+  // Start recording
+
+  const startRecording = () => {
+
+    if (!streamRef.current) return;
+
+    
+
+    try {
+
+      // Check for supported mime types
+
+      let mimeType = 'video/webm;codecs=vp9';
+
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+
+        mimeType = 'video/webm;codecs=vp8';
+
+      }
+
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+
+        mimeType = 'video/webm';
+
+      }
+
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+
+        mimeType = 'video/mp4';
+
+      }
+
+      
+
+      const mediaRecorder = new MediaRecorder(streamRef.current, {
+
+        mimeType: mimeType,
+
+        videoBitsPerSecond: 2500000 // 2.5 Mbps for good quality
+
+      });
+
+      mediaRecorderRef.current = mediaRecorder;
+
+      
+
+      const chunks = [];
+
+      
+
+      mediaRecorder.ondataavailable = (e) => {
+
+        if (e.data && e.data.size > 0) {
+
+          chunks.push(e.data);
+
+        }
+
+      };
+
+      
+
+      mediaRecorder.onstop = () => {
+
+        try {
+
+          const blob = new Blob(chunks, { type: mimeType });
+
+          
+
+          if (blob.size === 0) {
+
+            toast.error('Enregistrement vide. Réessayez.');
+
+            setIsRecording(false);
+
+            return;
+
+          }
+
+          
+
+          // Create a File object with proper naming
+
+          const fileName = `video_${Date.now()}.webm`;
+
+          const videoFile = new File([blob], fileName, { type: mimeType });
+
+          
+
+          setSelectedFile(videoFile);
+
+          setPreviewUrl(URL.createObjectURL(blob));
+
+          
+
+          // Stop camera stream
+
+          if (streamRef.current) {
+
+            streamRef.current.getTracks().forEach(track => track.stop());
+
+          }
+
+          
+
+          toast.success('Enregistrement terminé !');
+
+          setStep('edit');
+
+        } catch (error) {
+
+          console.error('Error processing recording:', error);
+
+          toast.error('Erreur lors de l\'enregistrement');
+
+          setIsRecording(false);
+
+        }
+
+      };
+
+      
+
+      mediaRecorder.onerror = (event) => {
+
+        console.error('MediaRecorder error:', event);
+
+        toast.error('Erreur d\'enregistrement');
+
+        setIsRecording(false);
+
+      };
+
+      
+
+      // Start recording with timeslice for better data handling
+
+      mediaRecorder.start(1000);
+
+      setIsRecording(true);
+
+      setRecordedChunks([]);
+
+      toast.success('Enregistrement démarré');
+
+    } catch (error) {
+
+      console.error('Error starting recording:', error);
+
+      toast.error('Impossible de démarrer l\'enregistrement');
+
+    }
+
+  };
+
+
+
+  // Stop recording
+
+  const stopRecording = () => {
+
+    if (mediaRecorderRef.current && isRecording) {
+
+      try {
+
+        if (mediaRecorderRef.current.state === 'recording') {
+
+          mediaRecorderRef.current.stop();
+
+        }
+
+        setIsRecording(false);
+
+      } catch (error) {
+
+        console.error('Error stopping recording:', error);
+
+        toast.error('Erreur lors de l\'arrêt de l\'enregistrement');
+
+      }
+
+    }
+
+  };
+
+
+
+  // Cancel camera
+
+  const cancelCamera = () => {
+
+    if (streamRef.current) {
+
+      streamRef.current.getTracks().forEach(track => track.stop());
+
+    }
+
+    setIsRecording(false);
+
+    setStep('select');
+
+  };
+
+
+
+  // Start Live
+
+  const startLive = async () => {
+
+    try {
+
+      setStep('live');
+
+      // Wait for video element to be rendered
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+
+        video: { 
+
+          facingMode: facingMode,
+
+          width: { ideal: 1920 },
+
+          height: { ideal: 1080 }
+
+        },
+
+        audio: true
+
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+
+        videoRef.current.srcObject = stream;
+
+        videoRef.current.play();
+
+      }
+
+      setIsLive(true);
+
+      
+
+      // Simulate viewers joining
+
+      const viewerInterval = setInterval(() => {
+
+        setLiveViewers(prev => prev + Math.floor(Math.random() * 5));
+
+      }, 3000);
+
+      
+
+      // Simulate comments
+
+      const comments = [
+
+        { user: 'Fatou', text: '🔥🔥🔥' },
+
+        { user: 'Mamadou', text: 'Super contenu!' },
+
+        { user: 'Aisha', text: 'Continue comme ça' },
+
+        { user: 'Kofi', text: '❤️❤️' },
+
+      ];
+
+      
+
+      let commentIndex = 0;
+
+      const commentInterval = setInterval(() => {
+
+        setLiveComments(prev => [...prev.slice(-4), comments[commentIndex % comments.length]]);
+
+        commentIndex++;
+
+      }, 4000);
+
+      
+
+      // Store intervals for cleanup
+
+      streamRef.current.viewerInterval = viewerInterval;
+
+      streamRef.current.commentInterval = commentInterval;
+
+      
+
+    } catch (error) {
+
+      console.error('Live error:', error);
+
+      toast.error('Impossible de démarrer le live. Vérifiez les permissions.');
+
+    }
+
+  };
+
+
+
+  // End Live
+
+  const endLive = () => {
+
+    if (streamRef.current) {
+
+      clearInterval(streamRef.current.viewerInterval);
+
+      clearInterval(streamRef.current.commentInterval);
+
+      streamRef.current.getTracks().forEach(track => track.stop());
+
+    }
+
+    setIsLive(false);
+
+    setLiveViewers(0);
+
+    setLiveComments([]);
+
+    toast.success(`Live terminé ! ${liveViewers} spectateurs`);
+
+    setStep('select');
+
+  };
+
+
+
+  const handleAddHashtag = () => {
+
+    if (hashtagInput.trim() && videoData.hashtags.length < 10) {
+
+      const tag = hashtagInput.trim().replace(/^#/, '');
+
+      if (!videoData.hashtags.includes(tag)) {
+
+        setVideoData(prev => ({
+
+          ...prev,
+
+          hashtags: [...prev.hashtags, tag]
+
+        }));
+
+      }
+
+      setHashtagInput('');
+
+    }
+
+  };
+
+
+
+  const handleRemoveHashtag = (tag) => {
+
+    setVideoData(prev => ({
+
+      ...prev,
+
+      hashtags: prev.hashtags.filter(t => t !== tag)
+
+    }));
+
+  };
+
+
+
+  const handlePublish = async () => {
+
+    if (!editingVideoId && !selectedFile) {
+
+      toast.error('Sélectionnez une vidéo');
+
+      return;
+
+    }
+
+    // Mode campagne pub : upload + addCreative, redirection vers CreateAdCampaign
+    if (isAdMode && adCampaignId && selectedFile) {
+      if (adCampaignId.length < 30) {
+        toast.error('ID de campagne invalide. Retournez à la création de campagne.');
+        return;
+      }
+      setStep('uploading');
+      setUploadProgress(0);
+      try {
+        const uploadResult = await api.upload.video(selectedFile, (p) =>
+          setUploadProgress((prev) => Math.max(prev, Math.min(p, 90)))
+        );
+        const videoUrl = uploadResult?.file_url || uploadResult?.url || '';
+        if (!videoUrl) {
+          toast.error('Échec du téléchargement');
+          setStep('details');
+          return;
+        }
+        await api.ads.addCreative(adCampaignId, {
+          media_type: 'video',
+          media_url: videoUrl,
+          thumbnail_url: videoUrl,
+          cta_type: 'visit',
+          cta_label: 'Découvrir',
+        });
+        setUploadProgress(100);
+        toast.success('Vidéo ajoutée à la campagne !');
+        navigate(createPageUrl('CreateAdCampaign') + `?campaignId=${adCampaignId}&step=3`);
+      } catch (err) {
+        const status = err?.response?.status;
+        const rawMsg = err?.apiMessage ?? err?.response?.data?.error?.message ?? err?.response?.data?.error ?? err?.message;
+        const isR2NotConfigured = status === 503 && (typeof rawMsg === 'string' && rawMsg.includes('R2 non configuré'));
+        const msg = isR2NotConfigured
+          ? 'Upload indisponible sur ce serveur. Configurez R2 (variables R2_*) sur l\'hébergeur du backend.'
+          : (typeof rawMsg === 'string' ? rawMsg : "Erreur lors de l'ajout");
+        toast.error(msg);
+        setStep('details');
+      }
+      return;
+    }
+
+    if (!videoData.title.trim()) {
+
+      toast.error('Ajoutez un titre');
+
+      return;
+
+    }
+
+    if (editingVideoId) {
+
+      try {
+
+        setStep('uploading');
+
+        setUploadProgress(50);
+
+        const hashtagsText = videoData.hashtags?.length > 0
+          ? '\n\n#' + videoData.hashtags.join(' #')
+          : '';
+
+        const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
+
+        const updateData = {
+
+          title: videoData.title,
+
+          description: fullDescription,
+
+          category: videoData.category || 'divertissement',
+
+          visibility: videoData.visibility || 'public',
+
+          hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
+
+          music_title: videoData.music_title || undefined,
+
+          thumbnail_url: videoData.thumbnail_url || undefined,
+
+          hide_likes: videoData.hide_likes,
+
+          comments_disabled: videoData.comments_disabled,
+
+          comment_visibility: videoData.comment_visibility || 'everyone',
+
+        };
+
+        await api.videos.update(editingVideoId, updateData);
+
+        setUploadProgress(100);
+
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
+
+        queryClient.invalidateQueries({ queryKey: ['video', editingVideoId] });
+
+        toast.success('Vidéo mise à jour avec succès !');
+
+        setTimeout(() => navigate(createPageUrl('Home')), 400);
+
+      } catch (error) {
+
+        console.error('Update error:', error);
+
+        toast.error('Erreur lors de la mise à jour');
+
+        setStep('details');
+
+      }
+
+      return;
+
+    }
+
+    setStep('uploading');
+    setUploadProgress(0);
+
+    try {
+      let videoUrl = '';
+      const isImage = selectedFile?.type?.startsWith('image/');
+      try {
+        if (isImage) {
+          const imageResult = await api.upload.image(selectedFile);
+          videoUrl = imageResult?.file_url ?? imageResult?.url ?? '';
+          setUploadProgress(90);
+        } else {
+          const uploadResult = await api.upload.video(selectedFile, (progress) => {
+            setUploadProgress((prev) => Math.max(prev, Math.min(progress, 90)));
+          });
+          videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
+          // Si le backend a généré une miniature, l'utiliser par défaut
+          if (!videoData.thumbnail_url && uploadResult?.thumbnail_url) {
+            videoData.thumbnail_url = uploadResult.thumbnail_url;
+          }
+        }
+      } catch (uploadError) {
+        const status = uploadError?.response?.status;
+        const rawMsg = uploadError?.response?.data?.error ?? uploadError?.response?.data?.message ?? (uploadError && typeof uploadError === 'object' && 'message' in uploadError ? String(uploadError.message) : '');
+        const isR2NotConfigured = status === 503 && (typeof rawMsg === 'string' && rawMsg.includes('R2 non configuré'));
+        const msg = isR2NotConfigured
+          ? 'Upload indisponible sur ce serveur. Le stockage R2 doit être configuré côté backend (variables R2_* sur l\'hébergeur).'
+          : (rawMsg || 'Erreur lors de l\'upload de la vidéo');
+        if (import.meta.env.DEV) {
+          console.error('[Create] Upload vidéo échoué:', { status, rawMsg, err: uploadError });
+        }
+        toast.error(msg);
+        setStep('details');
+        return;
+      }
+
+      if (!videoUrl) {
+        toast.error('Upload réussi mais URL vidéo manquante');
+        setStep('details');
+        return;
+      }
+
+      setUploadProgress(100);
+
+      const hashtagsText = videoData.hashtags?.length > 0 ? '\n\n#' + videoData.hashtags.join(' #') : '';
+      const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
+
+      const thumbnailUrlForRecord =
+        videoData.thumbnail_url && videoData.thumbnail_url.trim()
+          ? videoData.thumbnail_url
+          : videoUrl;
+
+      const videoRecord = {
+        title: videoData.title,
+        description: fullDescription,
+        video_url: videoUrl,
+        thumbnail_url: thumbnailUrlForRecord,
+        category: videoData.category || 'divertissement',
+        visibility: videoData.visibility || 'public',
+        hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
+        music_title: videoData.music_title || undefined,
+        media_type: isImage ? 'image' : 'video',
+        hide_likes: videoData.hide_likes,
+        comments_disabled: videoData.comments_disabled,
+        comment_visibility: videoData.comment_visibility || 'everyone',
+      };
+      if (videoData.scheduled_at) {
+        const d = new Date(videoData.scheduled_at);
+        if (!isNaN(d.getTime())) videoRecord.scheduled_at = d.toISOString();
+      }
+
+      await api.videos.create(videoRecord);
+
+      toast.success(isImage ? 'Image publiée avec succès ! 🎉' : 'Vidéo publiée avec succès ! 🎉');
+      setTimeout(() => {
+        try {
+          navigate(createPageUrl('Home'));
+        } catch (navErr) {
+          if (import.meta.env.DEV) console.error('[Create] navigate error:', navErr);
+          setStep('details');
+        }
+      }, 500);
+    } catch (error) {
+      const errMsg = (error?.response?.data?.error ?? error?.response?.data?.message ?? (error && typeof error === 'object' && 'message' in error ? String(error.message) : null)) || 'Erreur inconnue';
+      if (import.meta.env.DEV) console.error('[Create] Publish error:', error);
+      toast.error('Erreur lors de la publication: ' + errMsg);
+      setStep('details');
+    }
+  };
+
+  if (!isAuthenticated && guestExploreActive) {
+    return (
+      <div className="screen flex min-h-screen flex-col items-center justify-center bg-black px-6 pb-28 text-white">
+        <p className="text-center text-lg font-semibold">Créer du contenu est réservé aux comptes connectés</p>
+        <p className="mt-3 max-w-sm text-center text-sm text-white/60">
+          En mode invité, vous pouvez regarder le feed. Connectez-vous pour publier une vidéo ou une image.
+        </p>
+        <Button
+          type="button"
+          className="mt-8 rounded-2xl bg-blue-600 px-8 py-3 font-semibold text-white hover:bg-blue-500"
+          onClick={() => {
+            setGuestExplore(false);
+            navigate(createPageUrl('Landing'));
+          }}
+        >
+          Connexion ou inscription
+        </Button>
+        <div className="fixed inset-x-0 bottom-0 w-full">
+          <BottomNav />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+
+    <div className="screen bg-black">
+
+      <AnimatePresence mode="wait">
+
+        {/* Step: Select */}
+
+        {step === 'select' && (
+
+          <motion.div
+            key="select"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col h-full"
+          >
+
+            <div className="flex items-center justify-between p-4 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={() => navigate(createPageUrl('Home'))}
+
+                className="text-white hover:bg-white/10"
+
+              >
+
+                <X className="w-6 h-6" />
+
+              </Button>
+
+              <h1 className="text-white text-lg font-bold">Créer</h1>
+
+              <div className="w-10" />
+
+            </div>
+
+
+
+            <div className="flex-1 flex flex-col items-center justify-center p-8">
+
+              <div className="w-full max-w-sm space-y-4">
+
+                <motion.button
+
+                  whileTap={{ scale: 0.98 }}
+
+                  onClick={() => fileInputImageRef.current?.click()}
+
+                  className="w-full p-6 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white flex items-center gap-4 shadow-lg shadow-emerald-500/30"
+
+                >
+
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+
+                    <Upload className="w-7 h-7" />
+
+                  </div>
+
+                  <div className="text-left">
+
+                    <p className="font-semibold">Photo</p>
+
+                    <p className="text-white/70 text-sm">Choisir une image depuis la galerie</p>
+
+                  </div>
+
+                </motion.button>
+
+                <motion.button
+
+                  whileTap={{ scale: 0.98 }}
+
+                  onClick={() => fileInputVideoRef.current?.click()}
+
+                  className="w-full p-6 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center gap-4 shadow-lg shadow-blue-500/30"
+
+                >
+
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+
+                    <Upload className="w-7 h-7" />
+
+                  </div>
+
+                  <div className="text-left">
+
+                    <p className="font-semibold">Vidéo</p>
+
+                    <p className="text-white/70 text-sm">Choisir une vidéo depuis la galerie</p>
+
+                  </div>
+
+                </motion.button>
+
+
+
+                <motion.button
+
+                  whileTap={{ scale: 0.98 }}
+
+                  onClick={startCamera}
+
+                  className="w-full p-6 rounded-2xl bg-white/10 text-white flex items-center gap-4 border border-white/20"
+
+                >
+
+                  <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
+
+                    <Camera className="w-7 h-7" />
+
+                  </div>
+
+                  <div className="text-left">
+
+                    <p className="font-semibold">Filmer</p>
+
+                    <p className="text-white/50 text-sm">Utiliser la caméra</p>
+
+                  </div>
+
+                </motion.button>
+
+
+
+                <motion.button
+
+                  whileTap={{ scale: 0.98 }}
+
+                  onClick={() => navigate(createPageUrl('LiveStream'))}
+
+                  className="w-full p-6 rounded-2xl bg-white/10 text-white flex items-center gap-4 border border-white/20"
+
+                >
+
+                  <div className="w-14 h-14 rounded-full bg-blue-500/20 flex items-center justify-center">
+
+                    <Radio className="w-7 h-7 text-blue-500" />
+
+                  </div>
+
+                  <div className="text-left">
+
+                    <p className="font-semibold">Passer en Live</p>
+
+                    <p className="text-white/50 text-sm">Diffusez en direct</p>
+
+                  </div>
+
+                </motion.button>
+
+              </div>
+
+            </div>
+
+
+
+            <input
+
+              ref={fileInputImageRef}
+
+              type="file"
+
+              accept={FILE_ACCEPT_IMAGES}
+
+              onChange={handleFileSelect}
+
+              className="hidden"
+
+            />
+
+            <input
+
+              ref={fileInputVideoRef}
+
+              type="file"
+
+              accept={FILE_ACCEPT_VIDEOS}
+
+              onChange={handleFileSelect}
+
+              className="hidden"
+
+            />
+
+          </motion.div>
+
+        )}
+
+
+
+        {/* Step: Camera Recording */}
+
+        {step === 'camera' && (
+
+          <motion.div
+            key="camera"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col bg-black relative h-full"
+          >
+
+            {/* Camera Preview */}
+
+            <video
+
+              ref={videoRef}
+
+              autoPlay
+
+              playsInline
+
+              muted
+
+              className="absolute inset-0 w-full h-full object-cover bg-black"
+
+              style={{ 
+
+                transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+
+                filter: cameraFilter === 'Normal' ? 'none' :
+
+                       cameraFilter === 'Noir & Blanc' ? 'grayscale(100%)' :
+
+                       cameraFilter === 'Sépia' ? 'sepia(100%)' :
+
+                       cameraFilter === 'Vibrant' ? 'saturate(200%)' :
+
+                       cameraFilter === 'Foncé' ? 'brightness(0.75)' :
+
+                       cameraFilter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+
+              }}
+
+              onLoadedMetadata={(e) => {
+                const video = e.target;
+                if (video instanceof HTMLVideoElement) {
+                  video.play().catch(() => {});
+                }
+              }}
+
+            />
+
+
+
+            {/* Top Controls */}
+
+            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10">
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={cancelCamera}
+
+                className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+              >
+
+                <X className="w-6 h-6" />
+
+              </Button>
+
+              
+
+              {isRecording && (
+
+                <div className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-full">
+
+                  <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+
+                  <span className="text-white font-bold">{formatTime(recordingTime)}</span>
+
+                </div>
+
+              )}
+
+              
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={switchCamera}
+
+                className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+              >
+
+                <FlipHorizontal className="w-6 h-6" />
+
+              </Button>
+
+            </div>
+
+
+
+            {/* Bottom Controls */}
+
+            <div className="absolute bottom-0 left-0 right-0 p-8 flex justify-center items-center gap-8 z-10">
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={() => setShowCameraFilters(!showCameraFilters)}
+
+                className="text-white bg-black/30 hover:bg-black/50 rounded-full w-14 h-14"
+
+              >
+
+                <Sparkles className="w-6 h-6" />
+
+              </Button>
+
+
+
+              {/* Record Button */}
+
+              <button
+
+                onClick={isRecording ? stopRecording : startRecording}
+
+                disabled={isRecording && recordingTime < 1}
+
+                className={`w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-all ${
+
+                  isRecording ? 'bg-transparent' : 'bg-transparent'
+
+                }`}
+
+              >
+
+                {isRecording ? (
+
+                  <Square className="w-8 h-8 text-blue-500 fill-blue-600" />
+
+                ) : (
+
+                  <Circle className="w-16 h-16 text-blue-500 fill-blue-600" />
+
+                )}
+
+              </button>
+
+
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={() => setShowCameraMusic(!showCameraMusic)}
+
+                className="text-white bg-black/30 hover:bg-black/50 rounded-full w-14 h-14"
+
+              >
+
+                <Music2 className="w-6 h-6" />
+
+              </Button>
+
+            </div>
+
+
+
+            {/* Filter Selector */}
+
+            {showCameraFilters && (
+
+              <motion.div
+
+                initial={{ opacity: 0, y: 20 }}
+
+                animate={{ opacity: 1, y: 0 }}
+
+                className="absolute bottom-32 left-0 right-0 px-4 z-20"
+
+              >
+
+                <div className="bg-black/80 backdrop-blur-lg rounded-2xl p-4">
+
+                  <div className="flex items-center gap-3 overflow-x-auto pb-2">
+
+                    {['Normal', 'Noir & Blanc', 'Sépia', 'Vibrant', 'Foncé', 'Lumineux'].map((filter) => (
+
+                      <button
+
+                        key={filter}
+
+                        onClick={() => {
+
+                          setCameraFilter(filter);
+
+                          setVideoData(prev => ({ ...prev, filter }));
+
+                        }}
+
+                        className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+
+                          cameraFilter === filter
+
+                            ? 'bg-blue-600 text-white'
+
+                            : 'bg-white/20 text-white hover:bg-white/30'
+
+                        }`}
+
+                      >
+
+                        {filter}
+
+                      </button>
+
+                    ))}
+
+                  </div>
+
+                </div>
+
+              </motion.div>
+
+            )}
+
+
+
+            {/* Music Selector */}
+
+            {showCameraMusic && (
+
+              <motion.div
+
+                initial={{ opacity: 0, y: 20 }}
+
+                animate={{ opacity: 1, y: 0 }}
+
+                className="absolute bottom-32 left-0 right-0 px-4 z-20"
+
+              >
+
+                <div className="bg-black/80 backdrop-blur-lg rounded-2xl p-4 max-h-64 overflow-y-auto">
+
+                  <p className="text-white text-sm font-semibold mb-3">Sélectionner une musique</p>
+
+                  
+
+                  {/* Import Music Button */}
+
+                  <button
+
+                    onClick={() => musicInputRef.current?.click()}
+
+                    className="w-full px-4 py-3 mb-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 font-medium"
+
+                  >
+
+                    <Upload className="w-4 h-4" />
+
+                    Importer ma musique
+
+                  </button>
+
+                  
+
+                  {/* Pre-made Music List */}
+
+                  {['Afrobeat Vibes', 'Coupé-Décalé', 'Amapiano', 'Rumba', 'Ndombolo', 'Aucune'].map((music) => (
+
+                    <button
+
+                      key={music}
+
+                      onClick={() => {
+
+                        setVideoData(prev => ({ 
+
+                          ...prev, 
+
+                          music_title: music === 'Aucune' ? '' : music,
+
+                          music_id: music === 'Aucune' ? '' : music.toLowerCase().replace(/\s+/g, '_')
+
+                        }));
+
+                        setShowCameraMusic(false);
+
+                        if (music !== 'Aucune') {
+
+                          toast.success(`🎵 ${music} sélectionnée`);
+
+                        }
+
+                      }}
+
+                      className="w-full text-left px-4 py-3 text-white hover:bg-white/10 rounded-lg transition-all flex items-center gap-2"
+
+                    >
+
+                      <Music2 className="w-4 h-4" />
+
+                      {music}
+
+                    </button>
+
+                  ))}
+
+                </div>
+
+              </motion.div>
+
+            )}
+
+
+
+            {/* Hidden Music File Input */}
+
+            <input
+
+              ref={musicInputRef}
+
+              type="file"
+
+              accept={FILE_ACCEPT_MUSIC}
+
+              onChange={async (e) => {
+
+                const file = e.target.files?.[0];
+
+                if (file) {
+
+                  try {
+
+                    toast.loading('Upload de la musique...');
+
+                    const uploadResult = await api.upload.image(file);
+
+                    setVideoData(prev => ({ 
+
+                      ...prev, 
+
+                      music_title: file.name.replace(/\.[^/.]+$/, ''),
+
+                      music_id: uploadResult.file_url
+
+                    }));
+
+                    setShowCameraMusic(false);
+
+                    toast.dismiss();
+
+                    toast.success(`🎵 ${file.name} ajoutée`);
+
+                  } catch (error) {
+
+                    console.error('Music upload error:', error);
+
+                    toast.error('Erreur lors de l\'upload de la musique');
+
+                  }
+
+                }
+
+                // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+
+                e.target.value = '';
+
+              }}
+
+            />
+
+          </motion.div>
+
+        )}
+
+
+
+        {/* Step: Live Streaming */}
+
+        {step === 'live' && (
+
+          <motion.div
+            key="live"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col bg-black relative h-full"
+          >
+
+            {/* Live Camera Preview */}
+
+            <video
+
+              ref={videoRef}
+
+              autoPlay
+
+              playsInline
+
+              muted={isMuted}
+
+              className="absolute inset-0 w-full h-full object-cover bg-black"
+
+              style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+
+              onLoadedMetadata={(e) => {
+                const video = e.target;
+                if (video instanceof HTMLVideoElement) {
+                  video.play().catch(() => {});
+                }
+              }}
+
+            />
+
+
+
+            {/* Live Overlay */}
+
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/80 z-10" />
+
+
+
+            {/* Top Info */}
+
+            <div className="absolute top-0 left-0 right-0 p-4 z-20">
+
+              <div className="flex items-center justify-between">
+
+                <div className="flex items-center gap-3">
+
+                  <div className="flex items-center gap-2 bg-blue-600 px-3 py-1 rounded-full">
+
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+
+                    <span className="text-white font-bold text-sm">LIVE</span>
+
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-black/50 px-3 py-1 rounded-full">
+
+                    <Eye className="w-4 h-4 text-white" />
+
+                    <span className="text-white font-medium text-sm">{liveViewers}</span>
+
+                  </div>
+
+                </div>
+
+                
+
+                <Button
+
+                  variant="ghost"
+
+                  size="icon"
+
+                  onClick={switchCamera}
+
+                  className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+                >
+
+                  <FlipHorizontal className="w-5 h-5" />
+
+                </Button>
+
+              </div>
+
+
+
+              {/* Live Title Input */}
+
+              <Input
+
+                placeholder="Titre du live..."
+
+                value={videoData.title}
+
+                onChange={(e) => setVideoData(prev => ({ ...prev, title: e.target.value }))}
+
+                className="mt-4 bg-black/50 border-white/20 text-white placeholder:text-white/50 rounded-xl"
+
+              />
+
+            </div>
+
+
+
+            {/* Live Comments */}
+
+            <div className="absolute bottom-32 left-0 right-0 px-4 z-20">
+
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+
+                {liveComments.map((comment, index) => (
+
+                  <motion.div
+
+                    key={index}
+
+                    initial={{ opacity: 0, x: -20 }}
+
+                    animate={{ opacity: 1, x: 0 }}
+
+                    className="flex items-center gap-2 bg-black/40 backdrop-blur rounded-full px-3 py-2 w-fit"
+
+                  >
+
+                    <span className="text-blue-500 font-medium text-sm">{comment.user}</span>
+
+                    <span className="text-white text-sm">{comment.text}</span>
+
+                  </motion.div>
+
+                ))}
+
+              </div>
+
+            </div>
+
+
+
+            {/* Bottom Controls */}
+
+            <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
+
+              <div className="flex items-center justify-between">
+
+                <div className="flex gap-3">
+
+                  <Button
+
+                    variant="ghost"
+
+                    size="icon"
+
+                    onClick={() => setIsMuted(!isMuted)}
+
+                    className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+                  >
+
+                    {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+
+                  </Button>
+
+                  <Button
+
+                    variant="ghost"
+
+                    size="icon"
+
+                    className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+                  >
+
+                    <Sparkles className="w-5 h-5" />
+
+                  </Button>
+
+                </div>
+
+
+
+                <Button
+
+                  onClick={endLive}
+
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8"
+
+                >
+
+                  Terminer le Live
+
+                </Button>
+
+
+
+                <div className="flex gap-3">
+
+                  <div className="flex items-center gap-1 bg-black/30 px-3 py-2 rounded-full">
+
+                    <Gift className="w-4 h-4 text-blue-400" />
+
+                    <span className="text-white text-sm">{liveGifts}</span>
+
+                  </div>
+
+                  <Button
+
+                    variant="ghost"
+
+                    size="icon"
+
+                    className="text-white bg-black/30 hover:bg-black/50 rounded-full"
+
+                  >
+
+                    <MessageCircle className="w-5 h-5" />
+
+                  </Button>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </motion.div>
+
+        )}
+
+
+
+        {/* Step: Edit Preview */}
+
+        {step === 'edit' && (
+
+          <motion.div
+            key="edit"
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -100 }}
+            className="create-preview-step flex flex-col overflow-x-hidden"
+          >
+
+            <div className="flex-shrink-0 flex items-center justify-between p-4 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+
+              <Button
+
+                variant="ghost"
+
+                size="icon"
+
+                onClick={() => {
+
+                  setSelectedFile(null);
+
+                  setPreviewUrl(null);
+
+                  setStep('select');
+
+                }}
+
+                className="text-white hover:bg-white/10"
+
+              >
+
+                <ArrowLeft className="w-6 h-6" />
+
+              </Button>
+
+              <h1 className="text-white text-lg font-bold">Prévisualisation</h1>
+
+              <Button
+
+                onClick={() => setStep('details')}
+
+                className="bg-white text-black hover:bg-gray-200 rounded-full px-4"
+
+              >
+
+                Suivant
+
+              </Button>
+
+            </div>
+
+
+
+            <div className="p-4 bg-zinc-900 min-h-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 2rem)' }}>
+
+              <VideoEditor
+
+                videoRef={videoRef}
+
+                previewUrl={previewUrl}
+
+                isImage={selectedFile?.type?.startsWith('image/')}
+
+                initialData={videoData}
+
+                onVideoDataChange={(updates) => {
+
+                  setVideoData(prev => ({ ...prev, ...updates }));
+
+                }}
+
+              />
+
+            </div>
+
+          </motion.div>
+
+        )}
+
+
+
+        {/* Step: Details */}
+
+        {step === 'details' && (
+
+          <motion.div
+
+            key="details"
+
+            initial={{ opacity: 0, x: 100 }}
+
+            animate={{ opacity: 1, x: 0 }}
+
+            exit={{ opacity: 0, x: -100 }}
+
+            className="min-h-screen bg-white"
+
+          >
+
+            <div className="sticky top-0 bg-white border-b z-10 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+
+              <div className="flex items-center justify-between p-4">
+
+                <Button
+
+                  variant="ghost"
+
+                  size="icon"
+
+                  onClick={() => editingVideoId ? navigate(createPageUrl('Profile')) : setStep('edit')}
+
+                >
+
+                  <ArrowLeft className="w-6 h-6" />
+
+                </Button>
+
+                <h1 className="text-lg font-bold">
+                  {isAdMode
+                    ? (selectedFile?.type?.startsWith('image/') ? 'Image pour la pub' : 'Vidéo pour la pub')
+                    : editingVideoId
+                      ? 'Modifier la vidéo'
+                      : 'Détails'}
+                </h1>
+
+                <Button
+
+                  onClick={handlePublish}
+
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-full px-6"
+
+                >
+
+                  {isAdMode ? 'Ajouter à la campagne' : 'Publier'}
+
+                </Button>
+
+              </div>
+
+            </div>
+
+
+
+            <div className="p-4 space-y-6">
+
+              <div className="flex gap-4">
+
+                <div className="w-24 h-32 rounded-xl overflow-hidden bg-gray-100">
+
+                  {previewUrl && (selectedFile?.type?.startsWith('image/') ? (
+
+                    <img
+
+                      src={previewUrl}
+
+                      alt="Aperçu"
+
+                      className="w-full h-full object-cover"
+
+                      style={{
+
+                        filter: videoData.filter === 'Normal' || !videoData.filter ? 'none' :
+
+                                videoData.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
+
+                                videoData.filter === 'Sépia' ? 'sepia(100%)' :
+
+                                videoData.filter === 'Vibrant' ? 'saturate(200%)' :
+
+                                videoData.filter === 'Foncé' ? 'brightness(0.75)' :
+
+                                videoData.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+
+                      }}
+
+                    />
+
+                  ) : (
+
+                    <video
+
+                      src={previewUrl}
+
+                      className="w-full h-full object-cover"
+
+                      style={{
+
+                        filter: videoData.filter === 'Normal' || !videoData.filter ? 'none' :
+
+                                videoData.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
+
+                                videoData.filter === 'Sépia' ? 'sepia(100%)' :
+
+                                videoData.filter === 'Vibrant' ? 'saturate(200%)' :
+
+                                videoData.filter === 'Foncé' ? 'brightness(0.75)' :
+
+                                videoData.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+
+                      }}
+
+                    />
+
+                  ))}
+
+                </div>
+
+                {!isAdMode && (
+                  <div className="flex-1">
+                    <Textarea
+                      placeholder={selectedFile?.type?.startsWith('image/') ? 'Décrivez votre image...' : 'Décrivez votre vidéo...'}
+                      value={videoData.description}
+                      onChange={(e) => setVideoData(prev => ({ ...prev, description: e.target.value }))}
+                      className="h-32 resize-none rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
+                    />
+                  </div>
+                )}
+
+              </div>
+
+
+
+              {!isAdMode && (
+              <>
+              <div>
+
+                <Label className="text-gray-600 text-sm">Titre</Label>
+                <Input
+                  placeholder={selectedFile?.type?.startsWith('image/') ? 'Donnez un titre à votre image' : 'Donnez un titre à votre vidéo'}
+                  value={videoData.title}
+                  onChange={(e) => setVideoData(prev => ({ ...prev, title: e.target.value }))}
+                  className="mt-1 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
+                />
+
+              </div>
+
+
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Hashtags</Label>
+
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    placeholder="Ajouter un hashtag"
+                    value={hashtagInput}
+                    onChange={(e) => setHashtagInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddHashtag()}
+                    className="rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
+                  />
+
+                  <Button onClick={handleAddHashtag} variant="outline" className="rounded-xl">
+
+                    <Hash className="w-4 h-4" />
+
+                  </Button>
+
+                </div>
+
+                {videoData.hashtags.length > 0 && (
+
+                  <div className="flex flex-wrap gap-2 mt-2">
+
+                    {videoData.hashtags.map((tag) => (
+
+                      <span key={tag} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm">
+
+                        #{tag}
+
+                        <button onClick={() => handleRemoveHashtag(tag)}><X className="w-3 h-3" /></button>
+
+                      </span>
+
+                    ))}
+
+                  </div>
+
+                )}
+
+              </div>
+
+
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Catégorie</Label>
+
+                <Select value={videoData.category} onValueChange={(v) => setVideoData(prev => ({ ...prev, category: v }))}>
+
+                  <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400"><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+
+                  <SelectContent>
+
+                    {categories.map((cat) => (<SelectItem key={cat} value={cat} className="capitalize">{cat}</SelectItem>))}
+
+                  </SelectContent>
+
+                </Select>
+
+              </div>
+
+
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Musique</Label>
+
+                <div className="mt-1 space-y-2">
+
+                  <Select 
+
+                    value={videoData.music_title && ['Afrobeat Vibes', 'Coupé-Décalé', 'Amapiano', 'Rumba', 'Ndombolo'].includes(videoData.music_title) ? videoData.music_title : 'none'} 
+
+                    onValueChange={(v) => {
+
+                      if (v === 'none') {
+
+                        setVideoData(prev => ({ ...prev, music_title: '', music_id: '' }));
+
+                      } else if (v === 'custom') {
+
+                        musicInputRef.current?.click();
+
+                      } else {
+
+                        setVideoData(prev => ({ 
+
+                          ...prev, 
+
+                          music_title: v, 
+
+                          music_id: v.toLowerCase().replace(/\s+/g, '_')
+
+                        }));
+
+                        toast.success(`🎵 ${v} sélectionnée`);
+
+                      }
+
+                    }}
+
+                  >
+
+                    <SelectTrigger className="rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400">
+
+                      <SelectValue placeholder="Sélectionner une musique">
+
+                        {videoData.music_title && ['Afrobeat Vibes', 'Coupé-Décalé', 'Amapiano', 'Rumba', 'Ndombolo'].includes(videoData.music_title) 
+
+                          ? videoData.music_title 
+
+                          : videoData.music_title ? 'Musique personnalisée' : 'Aucune musique'}
+
+                      </SelectValue>
+
+                    </SelectTrigger>
+
+                    <SelectContent>
+
+                      <SelectItem value="none">Aucune musique</SelectItem>
+
+                      <SelectItem value="custom">Importer ma musique</SelectItem>
+
+                      {['Afrobeat Vibes', 'Coupé-Décalé', 'Amapiano', 'Rumba', 'Ndombolo'].map((music) => (
+
+                        <SelectItem key={music} value={music}>
+
+                          <div className="flex items-center gap-2">
+
+                            <Music2 className="w-4 h-4" />
+
+                            {music}
+
+                          </div>
+
+                        </SelectItem>
+
+                      ))}
+
+                    </SelectContent>
+
+                  </Select>
+
+                  
+
+                  {videoData.music_title && videoData.music_title !== 'custom' && (
+
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
+
+                      <Music2 className="w-4 h-4 text-blue-600" />
+
+                      <span className="text-sm text-blue-600">{videoData.music_title}</span>
+
+                      <button 
+
+                        onClick={() => setVideoData(prev => ({ ...prev, music_title: '', music_id: '' }))}
+
+                        className="ml-auto"
+
+                      >
+
+                        <X className="w-4 h-4 text-blue-600" />
+
+                      </button>
+
+                    </div>
+
+                  )}
+
+                </div>
+
+              </div>
+
+
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Langue</Label>
+
+                <Select value={videoData.language} onValueChange={(v) => setVideoData(prev => ({ ...prev, language: v }))}>
+
+                  <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400">
+
+                    <SelectValue placeholder="Sélectionner une langue">
+
+                      {languages.find(l => l.code === videoData.language)?.name || 'Français'}
+
+                    </SelectValue>
+
+                  </SelectTrigger>
+
+                  <SelectContent>
+
+                    {languages.map((lang) => (
+
+                      <SelectItem key={lang.code} value={lang.code}>
+
+                        {lang.name}
+
+                      </SelectItem>
+
+                    ))}
+
+                  </SelectContent>
+
+                </Select>
+
+              </div>
+
+
+
+              <div className="space-y-3 border-t border-gray-100 pt-4 mt-4">
+                <Label className="text-gray-700 font-medium">Options de publication</Label>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Cacher les likes</span>
+                  <Switch
+                    checked={videoData.hide_likes}
+                    onCheckedChange={(v) => setVideoData(prev => ({ ...prev, hide_likes: v }))}
+                    className="data-[state=checked]:bg-blue-600"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Désactiver les commentaires</span>
+                  <Switch
+                    checked={videoData.comments_disabled}
+                    onCheckedChange={(v) => setVideoData(prev => ({ ...prev, comments_disabled: v }))}
+                    className="data-[state=checked]:bg-blue-600"
+                  />
+                </div>
+                {!videoData.comments_disabled && (
+                  <div>
+                    <Label className="text-gray-600 text-sm">Qui peut commenter</Label>
+                    <Select value={videoData.comment_visibility || 'everyone'} onValueChange={(v) => setVideoData(prev => ({ ...prev, comment_visibility: v }))}>
+                      <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="everyone">Tout le monde</SelectItem>
+                        <SelectItem value="followers">Abonnés uniquement</SelectItem>
+                        <SelectItem value="mentioned_only">Personnes mentionnées uniquement</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label className="text-gray-600 text-sm">Programmer la publication (optionnel)</Label>
+                  <Input
+                    type="datetime-local"
+                    value={videoData.scheduled_at || ''}
+                    onChange={(e) => setVideoData(prev => ({ ...prev, scheduled_at: e.target.value }))}
+                    className="mt-1 rounded-xl"
+                    min={new Date().toISOString().slice(0, 16)}
+                  />
+                </div>
+              </div>
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Miniature personnalisée (optionnel)</Label>
+
+                <div className="mt-2">
+
+                  <Input
+
+                    type="file"
+
+                    accept={FILE_ACCEPT_IMAGES}
+
+                    onChange={async (e) => {
+
+                      const file = e.target.files?.[0];
+
+                      if (file) {
+
+                        try {
+
+                          const uploadResult = await api.upload.image(file);
+
+                          setVideoData(prev => ({ ...prev, thumbnail_url: uploadResult.file_url }));
+
+                          toast.success('Miniature ajoutée');
+
+                        } catch (error) {
+
+                          toast.error('Erreur lors de l\'upload de la miniature');
+
+                        }
+
+                      }
+
+                    }}
+
+                    className="rounded-xl"
+
+                  />
+
+                  {videoData.thumbnail_url && (
+
+                    <div className="mt-2 relative w-32 h-20 rounded-lg overflow-hidden">
+
+                      <img src={videoData.thumbnail_url} alt="Miniature" className="w-full h-full object-cover" />
+
+                      <button
+
+                        onClick={() => setVideoData(prev => ({ ...prev, thumbnail_url: '' }))}
+
+                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-black/70"
+
+                      >
+
+                        <X className="w-3 h-3" />
+
+                      </button>
+
+                    </div>
+
+                  )}
+
+                </div>
+
+              </div>
+
+
+
+              <div>
+
+                <Label className="text-gray-600 text-sm">Visibilité</Label>
+
+                <div className="space-y-2 mt-2">
+
+                  {visibilityOptions.map((opt) => {
+
+                    const Icon = opt.icon;
+
+                    return (
+
+                      <button
+
+                        key={opt.value}
+
+                        onClick={() => setVideoData(prev => ({ ...prev, visibility: opt.value }))}
+
+                        className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+
+                          videoData.visibility === opt.value ? 'border-blue-600 bg-blue-50' : 'border-gray-100'
+
+                        }`}
+
+                      >
+
+                        <Icon className={`w-5 h-5 ${videoData.visibility === opt.value ? 'text-blue-600' : 'text-gray-400'}`} />
+
+                        <div className="text-left">
+
+                          <p className="font-medium">{opt.label}</p>
+
+                          <p className="text-xs text-gray-400">{opt.description}</p>
+
+                        </div>
+
+                        {videoData.visibility === opt.value && <Check className="w-5 h-5 text-blue-600 ml-auto" />}
+
+                      </button>
+
+                    );
+
+                  })}
+
+                </div>
+
+              </div>
+
+              </>
+              )}
+
+            </div>
+
+          </motion.div>
+
+        )}
+
+
+
+        {/* Step: Uploading */}
+
+        {step === 'uploading' && (
+
+          <motion.div
+            key="uploading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center bg-black text-white p-8 h-full"
+          >
+
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center mb-6">
+
+              <Loader2 className="w-12 h-12 animate-spin" />
+
+            </div>
+
+            <h2 className="text-2xl font-bold mb-2">Publication en cours...</h2>
+
+            <p className="text-gray-400 mb-8">Ne fermez pas l'application</p>
+
+            <div className="w-full max-w-xs bg-white/10 rounded-full h-2">
+
+              <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+
+            </div>
+
+            <p className="text-gray-400 mt-2">{uploadProgress}%</p>
+
+          </motion.div>
+
+        )}
+
+      </AnimatePresence>
+
+      <input
+        ref={musicInputRef}
+        type="file"
+        accept={FILE_ACCEPT_MUSIC}
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            try {
+              toast.loading('Upload de la musique...');
+              const uploadResult = await api.upload.image(file);
+              setVideoData(prev => ({ 
+                ...prev, 
+                music_title: file.name.replace(/\.[^/.]+$/, ''),
+                music_id: uploadResult.file_url
+              }));
+              setShowCameraMusic(false);
+              toast.dismiss();
+              toast.success(`🎵 ${file.name} ajoutée`);
+            } catch (error) {
+              console.error('Music upload error:', error);
+              toast.error('Erreur lors de l\'upload de la musique');
+            }
+          }
+          // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+          e.target.value = '';
+        }}
+      />
+
+    </div>
+
+  );
+
+}

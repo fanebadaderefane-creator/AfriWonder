@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="fr" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- ═══════════════════════════════════════════════════════════════════
+         VIEWPORT : viewport-fit=cover pour les encoches (iPhone X+, Android)
+         PAS de maximum-scale ni user-scalable=no : violation WCAG 2.1 §1.4.4
+         (les utilisateurs malvoyants doivent pouvoir zoomer jusqu'à 200 %)
+         iOS zoom sur <input> prévenu par font-size:16px dans index.css
+    ═══════════════════════════════════════════════════════════════════ -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Meta Business / Facebook — vérification du domaine afriwonder.com -->
+    <meta name="facebook-domain-verification" content="ke27j1kpqdxg3hvd9vbzbfr546hkgq" />
+
+    <!-- SEO primaire -->
+    <meta name="description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="keywords" content="AfriWonder, vidéo, Afrique, mobile money, marketplace, créateurs, super-app, UEMOA, FCFA" />
+    <link rel="canonical" href="https://afriwonder.com/" />
+    <link rel="alternate" hreflang="fr"        href="https://afriwonder.com/" />
+    <link rel="alternate" hreflang="en"        href="https://afriwonder.com/?lang=en" />
+    <link rel="alternate" hreflang="x-default" href="https://afriwonder.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:url"         content="https://afriwonder.com/" />
+    <meta property="og:title"       content="AfriWonder - Super App Africaine" />
+    <meta property="og:description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    <meta property="og:image"       content="https://afriwonder.com/og-image.png" />
+    <meta property="og:image:width"  content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name"   content="AfriWonder" />
+    <meta property="og:locale"      content="fr_FR" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card"        content="summary_large_image" />
+    <meta name="twitter:url"         content="https://afriwonder.com/" />
+    <meta name="twitter:title"       content="AfriWonder - Super App Africaine" />
+    <meta name="twitter:description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    <meta name="twitter:image"       content="https://afriwonder.com/og-image.png" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         THEME-COLOR — une seule paire cohérente (doit matcher manifest.json)
+         #f97316 = orange AfriWonder (brand) | #020617 = fond sombre
+    ═══════════════════════════════════════════════════════════════════ -->
+    <meta name="theme-color" content="#f97316" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+
+    <!-- PWA — Android / Chrome -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name"       content="AfriWonder" />
+
+    <!-- PWA — iOS Safari (ignore le manifest pour les icônes) -->
+    <meta name="apple-mobile-web-app-capable"         content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title"            content="AfriWonder" />
+    <link rel="apple-touch-icon"               href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
+
+    <!-- iOS splash screens — évite l'écran blanc au lancement -->
+    <link rel="apple-touch-startup-image"
+      href="/splash-1125x2436.png"
+      media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image"
+      href="/splash-828x1792.png"
+      media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
+
+    <!-- Windows tiles -->
+    <meta name="msapplication-TileColor" content="#f97316" />
+    <meta name="msapplication-TileImage" content="/icon-144.png" />
+    <meta name="msapplication-config"    content="/browserconfig.xml" />
+
+    <!-- Manifest PWA -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-192.png" />
+    <link rel="icon" type="image/png"               href="/icon-192.png" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         RESOURCE HINTS
+         1. preconnect aux origines critiques (fonts + API)
+         2. preload LCP : icône affiché au 1er paint (fetchpriority=high)
+         3. Police Inter : chargement asynchrone non-bloquant
+            (media=print → onload → media=all, technique standard)
+    ═══════════════════════════════════════════════════════════════════ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- LCP critique -->
+    <link rel="preload" as="image" href="/icon-192.png" fetchpriority="high" />
+
+    <!-- Inter — chargement asynchrone (non-bloquant) -->
+    <link rel="preload" as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'" />
+    <noscript>
+      <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+    </noscript>
+
+    <title>AfriWonder - Super App Africaine</title>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         JSON-LD STRUCTURED DATA
+         @graph : Organization + WebSite (SearchAction) + WebApplication
+    ═══════════════════════════════════════════════════════════════════ -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://afriwonder.com/#organization",
+            "name": "AfriWonder",
+            "url": "https://afriwonder.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://afriwonder.com/icon-512.png",
+              "width": 512,
+              "height": 512
+            },
+            "sameAs": [
+              "https://twitter.com/afriwonder",
+              "https://facebook.com/afriwonder"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://afriwonder.com/#website",
+            "name": "AfriWonder",
+            "url": "https://afriwonder.com/",
+            "publisher": { "@id": "https://afriwonder.com/#organization" },
+            "inLanguage": "fr",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://afriwonder.com/Search?q={search_term_string}"
+              },
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://afriwonder.com/#webapp",
+            "name": "AfriWonder",
+            "alternateName": "AfriWonder - Super App Africaine",
+            "url": "https://afriwonder.com/",
+            "applicationCategory": "SocialNetworkingApplication",
+            "operatingSystem": "Android, iOS, Web",
+            "inLanguage": "fr",
+            "description": "La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés.",
+            "image": "https://afriwonder.com/icon-512.png",
+            "publisher": { "@id": "https://afriwonder.com/#organization" },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "XOF"
+            }
+          }
+        ]
+      }
+    </script>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CSS CRITIQUE — shell PWA minimal (évite flash de fond blanc)
+         Aucune ressource externe ici : tout doit être inline
+    ═══════════════════════════════════════════════════════════════════ -->
+    <style>
+      /* Reset minimal — synchrone */
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: #020617;
+        color: #ffffff;
+        -moz-text-size-adjust: auto;
+      }
+      @supports (text-size-adjust: auto) {
+        html, body {
+          text-size-adjust: auto;
+        }
+      }
+      /* WebKit : 100% — encapsulé pour éviter les avertissements Firefox sur la valeur */
+      @supports (-webkit-text-size-adjust: 100%) {
+        html, body {
+          -webkit-text-size-adjust: 100%;
+        }
+      }
+      #root {
+        min-height: 100%;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        background-color: #020617;
+      }
+      img { max-width: 100%; height: auto; }
+
+      /* Lien d'évitement WCAG 2.1 §2.4.1 — affiché uniquement au focus clavier */
+      .skip-link {
+        position: absolute;
+        top: -100%;
+        left: 0;
+        z-index: 9999;
+        padding: 12px 20px;
+        background: #f97316;
+        color: #ffffff;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        border-radius: 0 0 8px 0;
+        transition: top 0.15s ease;
+      }
+      .skip-link:focus {
+        top: 0;
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
+      /* Loader squelette visible avant hydratation React */
+      #app-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #020617;
+        z-index: 9000;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+      #app-loader.hidden { opacity: 0; }
+      #app-loader img {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        animation: aw-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes aw-pulse {
+        0%, 100% { transform: scale(1);    opacity: 1;   }
+        50%       { transform: scale(1.08); opacity: 0.75; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         Viewport mobile/PWA : même hauteur qu'écran dès le 1er paint.
+         Firefox + DevTools peuvent donner visualViewport.height quasi nul
+         au 1er paint → #root écrasé, feed "vide".
+    ═══════════════════════════════════════════════════════════════════ -->
+    <script>
+      (function () {
+        var vv = window.visualViewport;
+        var inner = typeof window.innerHeight === 'number' ? window.innerHeight : 0;
+        var vvH = vv && typeof vv.height === 'number' ? vv.height : 0;
+        var height = vvH > 32 ? vvH : inner;
+        if (height < 48) height = Math.max(inner, 400);
+        var appVh = Math.max(height * 0.01, 0.5);
+        document.documentElement.style.setProperty('--app-vh', appVh + 'px');
+      })();
+    </script>
+
+    <!-- Lien d'évitement (rendu avant #root pour les lecteurs d'écran) -->
+    <a class="skip-link" href="#main-content">Aller au contenu principal</a>
+
+    <!-- Loader visuel pendant le boot JS -->
+    <div id="app-loader" role="status" aria-label="Chargement d'AfriWonder">
+      <img src="/icon-192.png" alt="AfriWonder" width="72" height="72" />
+    </div>
+
+    <div id="root"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         Désenregistrer le SW en développement local (Vite HMR incompatible)
+         En production, l'enregistrement est dans src/main.jsx
+    ═══════════════════════════════════════════════════════════════════ -->
+    <script>
+      if ('serviceWorker' in navigator &&
+          (location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        });
+      }
+    </script>
+
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Fallback no-JS -->
+    <noscript>
+      <style>
+        #app-loader { display: none; }
+        body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; text-align: center; }
+      </style>
+      <div style="max-width:400px;margin:auto">
+        <img src="/icon-192.png" alt="AfriWonder" width="80" height="80" style="border-radius:20px;margin-bottom:16px" />
+        <h1 style="color:#f97316;font-size:1.5rem;margin-bottom:8px">AfriWonder</h1>
+        <p style="color:rgba(255,255,255,.7);margin-bottom:20px">JavaScript est requis pour utiliser AfriWonder. Veuillez l'activer dans votre navigateur.</p>
+        <a href="https://afriwonder.com" style="display:inline-block;padding:10px 24px;background:#f97316;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Recharger</a>
+      </div>
+    </noscript>
+  </body>
+</html>

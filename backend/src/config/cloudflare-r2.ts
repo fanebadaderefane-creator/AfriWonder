@@ -1,0 +1,56 @@
+import { S3Client } from '@aws-sdk/client-s3';
+
+function sanitizeEnv(value: string | undefined): string {
+  if (value == null || typeof value !== 'string') return '';
+  return value.replace(/^["']|["']$/g, '').trim();
+}
+
+function isValidUrl(s: string): boolean {
+  try {
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const endpoint = sanitizeEnv(process.env.R2_ENDPOINT);
+const accessKeyId = sanitizeEnv(process.env.R2_ACCESS_KEY_ID);
+const secretAccessKey = sanitizeEnv(process.env.R2_SECRET_ACCESS_KEY);
+
+const hasValidEndpoint = endpoint.length > 0 && isValidUrl(endpoint);
+export const r2Client = hasValidEndpoint && accessKeyId && secretAccessKey
+  ? new S3Client({
+      region: 'auto',
+      endpoint,
+      credentials: { accessKeyId, secretAccessKey },
+    })
+  : null;
+
+/** Pour le diagnostic : liste des variables R2 manquantes ou invalides (sans afficher les valeurs) */
+export function getR2ConfigDiagnostic(): string[] {
+  const missing: string[] = [];
+  if (!endpoint.length) missing.push('R2_ENDPOINT (vide ou absent)');
+  else if (!isValidUrl(endpoint)) missing.push('R2_ENDPOINT (URL invalide)');
+  if (!accessKeyId) missing.push('R2_ACCESS_KEY_ID');
+  if (!secretAccessKey) missing.push('R2_SECRET_ACCESS_KEY');
+  return missing;
+}
+
+export const R2_BUCKET_NAME = sanitizeEnv(process.env.R2_BUCKET_NAME) || 'afriwonder';
+
+// URL publique R2
+// Option 1: Custom domain (recommandé pour production) : https://cdn.afriwonder.com
+// Option 2: URL R2 dev (activée) : https://pub-e025f1eec1f248ef91c99a64d9cbb328.r2.dev
+// Option 3: URL R2 directe : https://<account-id>.r2.cloudflarestorage.com/<bucket-name>
+// 
+// ⚠️ L'URL R2 dev est activée mais limitée en débit (non recommandée pour production)
+// ⚠️ Pour utiliser un custom domain, configurez-le dans Cloudflare R2 Dashboard :
+//   1. Allez dans R2 > votre bucket > Settings > Custom Domains
+//   2. Ajoutez votre custom domain (ex: cdn.afriwonder.com)
+//   3. Cloudflare configurera automatiquement le DNS
+export const R2_PUBLIC_URL = sanitizeEnv(process.env.R2_PUBLIC_URL) || '';
+
+/** Indique si R2 est utilisable pour l'upload */
+export const isR2Configured = (): boolean => !!(r2Client && R2_PUBLIC_URL);
+

@@ -1,0 +1,32 @@
+---
+description: Le frontend mobile est la référence qualité ; en cas d’écart API, étendre le backend plutôt que dégrader le mobile
+alwaysApply: true
+---
+
+# Mobile Expo — référence qualité et parité API (AfriWonder)
+
+## Principe
+
+- Le **frontend mobile** (`frontend/`, Expo) représente la **meilleure qualité** produit / UX visée pour AfriWonder. **Ne pas la dégrader** (parcours, densité de fonctionnalités, libellés, interactions) pour « s’aligner » sur une API PWA / Node **incomplète** ou sur un contrat historique plus pauvre.
+- La **PWA** et l’**API Node** (`backend/src`) sont des **supports** : elles doivent **monter en gamme** quand le mobile exige plus, pas l’inverse.
+
+## Quand le backend ne suit pas le mobile
+
+Si une fonctionnalité **spécifique ou attendue côté mobile** (écran, flux, payload, réponse) **n’a pas d’équivalent** dans l’API Node / PWA, ou si le **contrat diffère** (champs, sémantique, erreurs) :
+
+1. **Ne pas** retirer ou simplifier abusivement l’écran mobile pour masquer l’écart.
+2. **Développer des APIs complémentaires** (routes, schémas Zod, services, éventuellement monture `/api/proxy/...` pour `apiClient`) pour **intégrer correctement** le mobile.
+3. **Documenter** le trou couvert ou restant (commentaire court dans le code, ou mention explicite dans la réponse / doc d’audit si une passe d’alignement est en cours).
+
+## Commentaires vidéo — vocaux
+
+- Les **commentaires vocaux** (upload audio + lecture) font partie de l’expérience mobile de référence : prévoir **`audio_url`** (ou équivalent) côté API Prisma / `POST /api/videos/:id/comment` et affichage dans le modal commentaires Expo (`frontend/app/(tabs)/index.tsx`), sans retirer la fonctionnalité au profit d’un commentaire texte seul.
+
+## Intégration technique (rappel)
+
+- Client Expo authentifié : **`apiClient`** → base `…/api/proxy` (voir `frontend/src/api/client.ts` et montures dans `backend/src/app.ts`).
+- Éviter de réintroduire des appels **`/api/mobile/*`** sur Node **sans** routeur Express équivalent ; préférer **le même contrat** que la PWA ou une **extension** documentée.
+
+## Livraison
+
+- Si une partie reste **volontairement** en attente d’API (placeholder, message utilisateur, feature flag), le **signaler clairement** (cf. règle **client-delivery-integrity** : pas de « faux terminé »).

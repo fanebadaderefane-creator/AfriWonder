@@ -1,0 +1,135 @@
+{
+  "expo": {
+    "name": "AfriWonder",
+    "slug": "afriwonder",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "afriwonder",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.afriwonder.app",
+      "usesAppleSignIn": true,
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Enregistrer des messages vocaux dans AfriChat",
+        "NSCameraUsageDescription": "Prendre des photos et vidéos (profil, publication, messages, live streaming)",
+        "NSPhotoLibraryUsageDescription": "Choisir des photos et vidéos (profil, publication, messages)",
+        "NSPhotoLibraryAddUsageDescription": "Enregistrer des photos et vidéos AfriWonder dans votre galerie",
+        "NSLocationWhenInUseUsageDescription": "AfriWonder utilise votre position pour les services locaux et recommandations proches de vous.",
+        "NSContactsUsageDescription": "Trouver vos amis déjà sur AfriWonder à partir de vos contacts (synchronisation locale et opt-in).",
+        "NSFaceIDUsageDescription": "Authentifier rapidement les actions sensibles (paiement, accès au portefeuille).",
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "remote-notification"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.afriwonder.app",
+      "versionCode": 11,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "VIBRATE",
+        "WAKE_LOCK",
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
+        "READ_CONTACTS"
+      ],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withAndroidAdiRegistration.js",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false,
+            "minSdkVersion": 29
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "expo-router",
+      "expo-web-browser",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Prendre des photos et vidéos (publication, live, AR effets temps réel)",
+          "enableMicrophonePermission": true,
+          "microphonePermissionText": "Enregistrer le son avec vos vidéos AfriWonder",
+          "enableCodeScanner": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
+      "expo-image-picker",
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/pwa-icon-192.png",
+          "color": "#FF6B00",
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-pip",
+        {}
+      ],
+      "expo-apple-authentication",
+      "react-native-iap"
+    ],
+    "notification": {
+      "icon": "./assets/images/pwa-icon-192.png",
+      "color": "#FF6B00",
+      "androidMode": "default",
+      "androidCollapsedTitle": "AfriWonder"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f4715a6b-9779-4ec1-841a-9dd7cb73e2b3"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "owner": "abdoulaye_fane"
+  }
+}

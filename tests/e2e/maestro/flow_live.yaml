@@ -1,0 +1,58 @@
+# Hub Live → setup stream (Go Live ouvre /live/stream, pas /live/start).
+# Prérequis: session connectée. Ne lance pas réellement le live : retour arrière avant « Démarrer le Live ».
+# Libellés alignés sur l’app : « Démarrer un Live » / « Démarrer le Live » (accents).
+appId: com.afriwonder.app
+name: AfriWonder - Live streaming
+tags:
+  - critical
+  - live
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "For You"
+    timeout: 45000
+
+# ─── 1. Hub « Live & Replays » depuis le feed ──────────────────
+- tapOn:
+    id: "live-hub-button"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Live & Replays"
+    timeout: 20000
+
+# ─── 2. Écran de préparation (stream) ──────────────────────────
+- tapOn:
+    id: "go-live-button"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Démarrer un Live"
+    timeout: 15000
+
+- tapOn:
+    id: "live-title-input"
+- inputText: "Test Live E2E"
+- hideKeyboard
+
+- tapOn: "Musique"
+- waitForAnimationToEnd
+
+- assertVisible: "Démarrer le Live"
+
+# Ne pas lancer le RTC en E2E : retour au hub
+- back
+- waitForAnimationToEnd
+
+# ─── 3. Section replays sur le hub ─────────────────────────────
+- assertVisible: "Replays"
+
+# ─── 4. Premier replay (si liste non vide) ─────────────────────
+- scrollUntilVisible:
+    element:
+      id: "live-replay-card"
+    direction: DOWN
+    timeout: 8000
+    optional: true
+
+# ─── 5. Retour au feed ─────────────────────────────────────────
+- back

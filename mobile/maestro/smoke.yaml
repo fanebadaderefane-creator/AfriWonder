@@ -1,0 +1,7 @@
+appId: com.afriwonder.mobile
+---
+- launchApp
+- assertVisible:
+    id: "afw-home-root"
+- assertVisible:
+    id: "afw-title"

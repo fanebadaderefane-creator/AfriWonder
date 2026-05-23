@@ -1,0 +1,29 @@
+# Render Blueprint — Backend AfriWonder
+# Ce fichier configure le déploiement Docker du backend sur Render.
+# IMPORTANT : Si le service existe déjà, lie-le via Dashboard → New → Blueprint.
+#
+# Secrets (audit Phase 1) : injecter DATABASE_URL, JWT_*, etc. via Dashboard Render ou Doppler.
+# Noms identiques à backend/.env.example (ex. DATABASE_URL pour Prisma — pas besoin de renommer).
+# (ne pas mettre de valeurs sensibles dans ce fichier versionné).
+# CI/CD : push sur main (backend/**) → .github/workflows/deploy-render.yml (deploy hook).
+#
+# Alignement perf audit (TTFB / cache) : placer le frontend derrière Cloudflare ou équivalent
+# (compression Brotli, cache assets `immutable`, cache API courts pour routes publiques).
+# Optionnel : Redis (Render Key Value ou Upstash) + REDIS_URL pour réponse API &lt; 200 ms cibles.
+
+services:
+  - type: web
+    name: AfriWonder
+    runtime: docker
+    # Utiliser le Dockerfile backend (pas le frontend nginx)
+    dockerfilePath: ./Dockerfile.backend
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET : obligatoires
+      # CORS_ORIGIN : origines frontend séparées par des virgules (ex: https://afri-wonder.vercel.app,https://afri-wonder.app,https://afriwonder.com)
+      # Obligatoire si VITE_API_URL pointe vers ce backend Render.
+      # Ne PAS définir PORT : Render l'injecte automatiquement (10000)

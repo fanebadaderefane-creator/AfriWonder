@@ -1,0 +1,186 @@
+# ============================================
+# AFRI CONNECT - Backend Configuration Template
+# ============================================
+# Référence complète (A–Z) : docs/ENV_REFERENCE.md
+# INSTRUCTIONS :
+# 1. Copier ce contenu dans un fichier .env dans backend/
+# 2. Remplir avec vos vraies valeurs
+# 3. Le fichier .env sera ignoré par Git (sécurité)
+# ============================================
+
+# ============================================
+# DATABASE (Supabase - Recommandé)
+# ============================================
+# Obtenir depuis : Supabase Dashboard → Settings → Database → Connection string
+# Format : postgresql://postgres.xxxxx:PASSWORD@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true
+DATABASE_URL="postgresql://postgres.xxxxxxxxxxxxx:VOTRE_MOT_DE_PASSE@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connect_timeout=15"
+
+# ============================================
+# JWT AUTHENTICATION
+# ============================================
+# Générer un secret aléatoire (minimum 32 caractères)
+# PowerShell : [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+# Ou : https://generate-secret.vercel.app/32
+# Secrets 64+ caractères en production (openssl rand -hex 64) — voir auth.service.ts
+JWT_SECRET="votre_secret_jwt_tres_long_et_aleatoire_ici_minimum_32_caracteres"
+# Audit PDF §6 : access token court (défaut code 15m si absent)
+JWT_EXPIRES_IN="15m"
+JWT_REFRESH_SECRET="votre_refresh_secret_different_du_jwt_secret"
+JWT_REFRESH_EXPIRES_IN="30d"
+
+# ============================================
+# ADMIN (Centre de contrôle)
+# ============================================
+# Email autorisé pour accéder au dashboard admin — seul ce compte peut utiliser le centre de contrôle
+SUPER_ADMIN_EMAIL=fanebadaderefane@gmail.com
+
+# ============================================
+# SERVER
+# ============================================
+PORT=3000
+NODE_ENV=development
+
+# Limite générale /api/* (req/min) : par utilisateur si JWT valide, sinon par IP. Audit PDF = 100.
+# Augmenter si le feed ou l’admin déclenche trop de requêtes parallèles (ex. 300 ou 600).
+API_GENERAL_RATE_LIMIT_MAX=100
+
+# ============================================
+# CORS
+# ============================================
+# PWA (Vite) + Expo web (Metro, souvent :8081 ou :8082). Séparer par des virgules.
+# Même si vous n’indiquez que 5173, l’API merge des origines localhost par défaut (voir app.ts).
+CORS_ORIGIN=http://localhost:5173,http://localhost:8081,http://localhost:8082
+
+# ============================================
+# EMAIL (SendGrid)
+# ============================================
+# Obtenir depuis : https://app.sendgrid.com/settings/api_keys
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=noreply@afriwonder.app
+
+# ============================================
+# SOCIAL AUTHENTICATION
+# ============================================
+# Google OAuth
+# Obtenir depuis : https://console.cloud.google.com/apis/credentials
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+# Optionnel — mobile (id_token) : lister les Client ID Google autorisés comme `aud`, séparés par des virgules
+# (Web + Android + iOS). Sinon seul GOOGLE_CLIENT_ID (Web) est accepté — insuffisant si `aud` = client Android.
+# GOOGLE_OAUTH_AUDIENCES=xxx.apps.googleusercontent.com,yyy.apps.googleusercontent.com
+
+# Facebook OAuth
+# Obtenir depuis : https://developers.facebook.com/apps
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
+# En production, FACEBOOK_APP_SECRET est requis pour debug_token (vérif. mobile OAuth) — même valeur que le tableau Meta.
+
+# ============================================
+# PAYMENTS
+# ============================================
+# Orange Money
+# Obtenir depuis : Orange Money Mali (contact support)
+ORANGE_MONEY_CLIENT_ID=
+ORANGE_MONEY_CLIENT_SECRET=
+ORANGE_MONEY_MERCHANT_ID=
+ORANGE_MONEY_API_KEY=
+ORANGE_MONEY_ENV=test
+# Production — signature webhook (HMAC). En test, peut rester vide selon payment.service.
+ORANGE_MONEY_WEBHOOK_SECRET=
+# ML | SN | CI | BF (défaut ML) — URL API si ORANGE_MONEY_API_URL non défini
+ORANGE_MONEY_REGION=ML
+# ORANGE_MONEY_API_URL=https://api.orange.ml
+
+# Wave (checkout sessions — Bearer WAVE_API_KEY)
+WAVE_API_KEY=
+# WAVE_API_URL=https://api.wave.com/v1
+
+# Stripe
+# Obtenir depuis : https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# ============================================
+# FILE STORAGE (S3 / Cloudflare R2)
+# ============================================
+# AWS S3
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=afriwonder-uploads
+
+# Cloudflare R2 (Requis pour upload images/vidéos en production)
+# Dashboard Cloudflare R2 → bucket → Settings → S3 API
+# ⚠️ EN PRODUCTION (Render, Vercel, etc.) : ajoutez ces variables dans le tableau de bord
+#    de l'hébergeur (Environment). Sinon l'upload échouera sur mobile (iPhone/Android)
+#    avec "R2 non configuré" alors qu'il peut marcher en local (Chrome avec .env).
+R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=afriwonder
+R2_PUBLIC_URL=https://pub-xxxx.r2.dev
+
+# ============================================
+# PUSH NOTIFICATIONS
+# ============================================
+# Firebase Cloud Messaging
+FCM_SERVER_KEY=
+FCM_PROJECT_ID=
+
+# ============================================
+# WEBSOCKET
+# ============================================
+# Socket.io (utilisé par défaut, pas besoin de config)
+# WS_PORT=3001
+
+# ============================================
+# MONITORING (Optionnel)
+# ============================================
+# Sentry (Error Tracking)
+SENTRY_DSN=
+
+# ============================================
+# REDIS (Production — rate limiting distribué + cache)
+# ============================================
+# Exemple : redis://localhost:6379 ou redis://redis:6379 (Docker)
+REDIS_URL=
+
+# ============================================
+# RATE LIMITING
+# ============================================
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# ============================================
+# HEALTH / CRON (Production)
+# ============================================
+# Protéger /health/errors (recommandé en prod)
+HEALTH_API_KEY=
+# Webhook alertes (erreurs 5xx, paiements) — Slack, Discord, etc.
+ERROR_WEBHOOK_URL=
+ERROR_MONITORING_WEBHOOK=
+# Secret pour appels cron (reminders événements, etc.)
+CRON_SECRET=
+EVENTS_REMINDERS_SECRET=
+
+# ============================================
+# WITHDRAWALS (CDC Live Mali: délai 24–48h)
+# ============================================
+# Délai en heures avant qu'un retrait soit traitable (défaut: 48)
+WITHDRAWAL_DELAY_HOURS=48
+
+# ============================================
+# LIVE STREAMING (Agora) — Flux vidéo réel
+# ============================================
+# Guide complet : docs/AGORA_SETUP.md
+# 1. Créer un projet sur https://console.agora.io
+# 2. Activer l'App Certificate (Primary Certificate)
+# 3. Copier App ID et Certificate ci-dessous
+AGORA_APP_ID=
+AGORA_APP_CERTIFICATE=
+# Fallback HMAC si Agora non configuré (défaut: dev-secret)
+STREAM_SECRET=dev-secret
+

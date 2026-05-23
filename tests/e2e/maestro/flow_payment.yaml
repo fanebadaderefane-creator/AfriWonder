@@ -1,0 +1,96 @@
+# Portefeuille → Recharger : Orange Money puis Wave (UI locale, sans valider un vrai paiement).
+# Prérequis: session connectée. Le CTA de recharge est « Recharger maintenant » (pas « Payer »).
+appId: com.afriwonder.app
+name: AfriWonder - Paiement Orange Money et Wave
+tags:
+  - critical
+  - payment
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "For You"
+    timeout: 45000
+
+# ─── 1. Portefeuille (depuis Profil) ───────────────────────────
+- tapOn: "Profil"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    text: "Portefeuille"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Portefeuille"
+- waitForAnimationToEnd
+
+# ─── 2. Solde (FCFA) ───────────────────────────────────────────
+- assertVisible:
+    text: "FCFA"
+    optional: true
+
+# ─── 3. Écran Recharger ───────────────────────────────────────
+- tapOn:
+    id: "wallet-open-recharge"
+    optional: true
+- tapOn:
+    text: "Recharger"
+    optional: true
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Source de paiement"
+    timeout: 15000
+
+# ─── 4. Orange Money (montant + téléphone, sans soumettre) ─────
+- tapOn:
+    id: "wallet-amount-5000"
+    optional: true
+- tapOn:
+    id: "payment-method-orange"
+    optional: true
+- tapOn:
+    text: "Orange Money"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Orange Money"
+    optional: true
+- assertVisible:
+    text: "Numero"
+    optional: true
+- tapOn:
+    id: "phone-input"
+    optional: true
+- inputText: "70123456"
+- hideKeyboard
+- assertVisible:
+    text: "Recharger maintenant"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# ─── 5. Wave (même écran recharge) ─────────────────────────────
+- tapOn:
+    id: "wallet-open-recharge"
+    optional: true
+- tapOn:
+    text: "Recharger"
+    optional: true
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Source de paiement"
+    timeout: 15000
+- tapOn:
+    id: "wallet-amount-5000"
+    optional: true
+- tapOn:
+    id: "payment-method-wave"
+    optional: true
+- tapOn:
+    text: "Wave"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Wave"
+    optional: true
+- back
+- waitForAnimationToEnd
+- back

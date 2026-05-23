@@ -1,0 +1,62 @@
+# Marketplace : onglet Market, recherche, fiche produit, panier.
+# Prérequis : session connectée (comme flow_feed). Données mock : utiliser « Bogolan »
+# (aucun produit mock ne contient « boubou »). testID : marketplace-search-input,
+# market-first-product, product-add-to-cart, cart-button.
+appId: com.afriwonder.app
+name: AfriWonder - Marketplace
+tags:
+  - critical
+  - marketplace
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "For You"
+    timeout: 45000
+
+# ─── 1. Accéder au marketplace ────────────────────────────────
+- tapOn: "Market"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Marketplace"
+    timeout: 15000
+
+# ─── 2. Rechercher un produit (mock Bogolan) ───────────────────
+- tapOn:
+    id: "marketplace-search-input"
+- inputText: "Bogolan"
+- hideKeyboard
+- waitForAnimationToEnd
+
+# ─── 3. Ouvrir le premier produit filtré ───────────────────────
+- tapOn:
+    id: "market-first-product"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "FCFA"
+    optional: true
+
+# ─── 4. Ajouter au panier (CTA → navigation /cart) ──────────────
+- tapOn:
+    id: "product-add-to-cart"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Panier"
+    optional: true
+
+# ─── 5. Retour fiche → market, puis panier depuis l’en-tête ─────
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- tapOn:
+    id: "cart-button"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Panier"
+    optional: true
+
+- back

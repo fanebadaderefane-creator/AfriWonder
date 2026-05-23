@@ -1,0 +1,13 @@
+# Couleur de l’application AfriWonder — BLEU
+
+L’utilisateur a défini que **la couleur de l’application complète est le BLEU**.
+
+## Règle
+
+- **Couleur de marque / primaire** : **bleu** (hex `#2563eb` en priorité ; variantes bleu acceptées selon le contexte).
+- Pour tous les éléments d’identité visuelle (boutons CTA, liens principaux, onglets actifs, barres de progression, icônes d’action principales, etc.) : utiliser le **bleu** comme couleur principale.
+- Référence détaillée : `docs/DESIGN_TOKENS_UI.md` et `docs/VISION_ET_ARCHITECTURE_CIBLE.md`.
+
+## À ne pas faire
+
+- Ne pas remplacer le bleu par une autre couleur primaire (vert, orange, violet, etc.) sans demande explicite de l’utilisateur.

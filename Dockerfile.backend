@@ -1,0 +1,40 @@
+# Backend AfriWonder — déploiement Render (Docker)
+# Build depuis la racine du repo (contexte = root)
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copier tout le backend (évite erreur "backend/prisma not found" sur Render)
+COPY backend/ .
+
+# Installer les dépendances
+RUN npm ci
+
+# prisma.config.ts exige DATABASE_URL ; prisma generate n'utilise pas la DB, placeholder suffit
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+
+# Générer Prisma + build
+RUN npx prisma generate && npm run build
+
+# Image de production
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/scripts ./scripts
+
+RUN npm prune --production && chmod +x scripts/start-with-migrate.sh
+
+EXPOSE 10000
+
+# Render utilise PORT=10000 par défaut — le healthcheck doit utiliser la même variable
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD node -e "const p=process.env.PORT||10000; require('http').get('http://127.0.0.1:'+p+'/health', (r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(r.statusCode===200?0:1));}).on('error',()=>process.exit(1))"
+
+CMD ["sh", "scripts/start-with-migrate.sh"]

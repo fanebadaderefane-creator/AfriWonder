@@ -1,0 +1,9 @@
+# Flux minimal : app démarre et atteint l’écran Connexion (utilisateur non connecté).
+# Prérequis: build dev client Expo (bundle com.afriwonder.app), app installée sur l’émulateur ou l’appareil.
+# Commande: maestro test maestro/smoke.yaml (depuis frontend/)
+appId: com.afriwonder.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Connexion"
+    timeout: 45000

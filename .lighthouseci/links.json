@@ -1,0 +1,16 @@
+{
+  "http://localhost:4173/": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056672384-5269.report.html",
+  "http://localhost:4173/Landing": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056678403-90151.report.html",
+  "http://localhost:4173/News": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056685506-49670.report.html",
+  "http://localhost:4173/Discover": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056696703-81218.report.html",
+  "http://localhost:4173/Marketplace": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056704005-35384.report.html",
+  "http://localhost:4173/FAQ": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056710901-31958.report.html",
+  "http://localhost:4173/Help": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056717686-53243.report.html",
+  "http://localhost:4173/About": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056724200-41447.report.html",
+  "http://localhost:4173/blog": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056731005-69459.report.html",
+  "http://localhost:4173/articles": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056740905-96412.report.html",
+  "http://localhost:4173/dashboard": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056750504-98760.report.html",
+  "http://localhost:4173/features": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056758901-86619.report.html",
+  "http://localhost:4173/Search": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056770425-60803.report.html",
+  "http://localhost:4173/ArticleDetails": "https://storage.googleapis.com/lighthouse-infrastructure.appspot.com/reports/1775056779105-47122.report.html"
+}

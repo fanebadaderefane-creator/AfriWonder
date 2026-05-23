@@ -1,0 +1,29 @@
+{
+  "name": "ServiceCategory",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nom de la catégorie"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description de la catégorie"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Nom de l'icône Lucide"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "URL de l'image de la catégorie"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

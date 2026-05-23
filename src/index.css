@@ -1,0 +1,385 @@
+@import './styles/audit-design-tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* AfriWonder — charte bleue globale */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 47% 11%;
+    --primary: 224 64% 33%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 32% 96%;
+    --secondary-foreground: 224 64% 33%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 224 20% 45%;
+    --accent: 213 94% 95%;
+    --accent-foreground: 224 64% 33%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 224 64% 33%;
+    --chart-1: 224 64% 45%;
+    --chart-2: 217 91% 55%;
+    --chart-3: 213 94% 60%;
+    --chart-4: 142 71% 40%;
+    --chart-5: 43 74% 55%;
+    --radius: 0.75rem; /* 12px cards */
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 224 47% 20%;
+    --sidebar-primary: 224 64% 33%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 213 94% 95%;
+    --sidebar-accent-foreground: 224 64% 33%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 217 91% 60%;
+    /* Audit design system — repères (charte bleue produit ; primary reste HSL ci-dessus) */
+    --afw-space-1: 0.25rem;
+    --afw-space-2: 0.5rem;
+    --afw-space-3: 0.75rem;
+    --afw-space-4: 1rem;
+    --afw-space-6: 1.5rem;
+    --afw-space-8: 2rem;
+    --afw-space-12: 3rem;
+    --afw-radius-card: 12px;
+    --afw-radius-button: 24px;
+    --afw-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --afw-motion-micro: 200ms ease-out;
+    --afw-motion-spring: 400ms cubic-bezier(0.22, 1, 0.36, 1);
+    --afw-success: 142 71% 36%;
+    --afw-danger: 0 72% 51%;
+  }
+
+  .dark {
+    --background: 224 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 224 47% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 224 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 224 47% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 224 47% 15%;
+    --muted-foreground: 214 32% 65%;
+    --accent: 224 47% 18%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 224 32% 18%;
+    --input: 224 32% 18%;
+    --ring: 213 94% 68%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 213 94% 68%;
+    --chart-3: 142 71% 45%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 224 47% 8%;
+    --sidebar-foreground: 210 40% 95%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 47% 15%;
+    --sidebar-accent-foreground: 210 40% 95%;
+    --sidebar-border: 224 32% 18%;
+    --sidebar-ring: 213 94% 68%;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Global reset for predictable layout on mobile */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  --app-vh: 1vh;
+  --keyboard-offset: 0px;
+}
+
+html,
+body {
+  height: 100%;
+  touch-action: manipulation;
+}
+
+#root,
+#app {
+  min-height: 100dvh;
+  height: calc(var(--app-vh) * 100);
+  width: 100%;
+  position: relative;
+}
+
+/* Single scrollable area per screen */
+.screen {
+  height: calc(var(--app-vh) * 100);
+  min-height: calc(var(--app-vh, 1vh) * 100);
+  width: 100%;
+  max-width: none;
+  display: block;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Masquer la scrollbar mais garder le scroll fonctionnel */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Masquer la scrollbar WebKit (Chrome, Safari) */
+.screen::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Scroll fluide mobile : une seule zone de scroll, pas de barre visible */
+.screen {
+  overflow-x: hidden;
+}
+
+/* Pages plein ecran (Home feed video) : un seul scroll interne, pas de scroll externe concurrent */
+.screen-fullscreen {
+  overflow: hidden !important;
+}
+
+/* Utilitaire global : masquer la scrollbar (Marketplace, VideoEditor, etc.) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+/* Feed Home : forcer le paint des lecteurs (évite écran vide si une feuille globale met content-visibility sur video) */
+video[data-afw-feed-video="1"] {
+  content-visibility: visible !important;
+}
+
+/* Même cause que la vidéo : img globales en content-visibility:auto peuvent laisser le poster non peint. */
+img[data-afw-feed-poster="1"] {
+  content-visibility: visible !important;
+}
+
+/*
+ * HTML au-dessus du plan <video> (Safari iOS / WebView / certains Chrome Android) :
+ * sans calque de composition dédié, la vidéo peut recouvrir likes / texte / header alors qu’elle reste visible.
+ */
+.afw-html-composite-layer,
+[data-afw-video-ui-layer="1"] {
+  content-visibility: visible !important;
+  /* Pas de transform ici : sous Firefox, translate3d + ancêtre Framer (opacity) peut masquer tout le feed. */
+}
+
+.scrollable {
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+/* Optimisation scroll : contenu hors viewport moins coÃ»teux (listes longues) */
+@supports (content-visibility: auto) {
+  .scroll-optimize > * {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 100px;
+  }
+}
+
+/* Ã‰cran prÃ©visualisation vidÃ©o (Create) : scroll fluide mobile, une seule zone de scroll */
+.create-preview-step {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+}
+
+/* Fix iOS text rendering issues (texte invisible) sur certains Ã©crans Marketplace / Mes ventes */
+.ios-text-visible {
+  color: #000000 !important;
+  opacity: 1 !important;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+}
+
+/* Rendu texte iOS sans forcer la couleur (pour textes clairs sur fond sombre, ex. erreur vidÃ©o) */
+.ios-text-render {
+  opacity: 1 !important;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fix for logo transparency - remove any black background artifacts */
+.afriwonder-logo,
+.afriwonder-logo *,
+.afriwonder-logo img {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+/* Charte graphique : Politique de confidentialitÃ© â€” dÃ©gradÃ© orange-rouge, titres et gras */
+.legal-content h2 {
+  font-weight: 700;
+  color: hsl(var(--primary));
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.25rem;
+}
+.legal-content h3 {
+  font-weight: 700;
+  color: hsl(var(--primary));
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+}
+.legal-content strong {
+  font-weight: 700;
+  color: hsl(var(--primary));
+}
+
+/* AfriWonder â€” MicrocrÃ©dit: boutons principaux (orange â†’ rose) */
+.afriwonder-btn-gradient {
+  background: linear-gradient(to right, #1E3A8A, #2563EB);
+  color: white;
+}
+.afriwonder-btn-gradient:hover {
+  opacity: 0.95;
+}
+
+/* WCAG 2.1 AA - AccessibilitÃ© */
+/* 2.4.7 Focus visible - contour visible au focus clavier */
+:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.8);
+  outline-offset: 2px;
+}
+
+/* Discover & écrans très sombres (#070a12) — anneau de focus lisible sur le fond */
+.discover-page :focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 3px;
+}
+
+.discover-page a:focus-visible {
+  outline-offset: 2px;
+}
+
+/* Ã‰viter outline sur clic souris (Tap highlight) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Contraste suffisant pour liens (2.4.7) */
+a:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Transitions fluides â€” interactions courantes */
+button, a, [role="button"], input, select {
+  transition: color 0.2s ease-out, background-color 0.2s ease-out, opacity 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+/* 2.3.3 Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Touch feedback lÃ©ger pour renforcer le ressenti "native app" */
+@media (hover: none) and (pointer: coarse) {
+  button:active,
+  a:active,
+  [role="button"]:active,
+  [data-haptic]:active {
+    transform: scale(0.985);
+  }
+}
+
+/* En mode PWA standalone, Ã©viter le bounce visuel iOS */
+.pwa-standalone body {
+  overscroll-behavior-y: contain;
+}
+
+/* ===================================================================
+   ACCESSIBILITE — WCAG 2.1 AA
+   =================================================================== */
+
+/* 2.4.1 Bypass blocks — lien d'evitement */
+.skip-link {
+  position: absolute;
+  top: -200%;
+  left: 0;
+  z-index: 9999;
+  padding: 12px 20px;
+  background: #f97316;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  border-radius: 0 0 8px 0;
+  transition: top 0.15s ease;
+  white-space: nowrap;
+}
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Prevention zoom iOS sans user-scalable=no (WCAG 1.4.4)
+   iOS Safari ne zoome pas sur un champ si font-size >= 16px */
+input,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+select,
+textarea {
+  font-size: max(16px, 1rem) !important;
+}
+
+/* Loader PWA — cache apres hydratation React */
+#app-loader {
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+#app-loader.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}

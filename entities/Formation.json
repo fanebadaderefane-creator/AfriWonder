@@ -1,0 +1,94 @@
+{
+  "name": "Formation",
+  "type": "object",
+  "properties": {
+    "trainer_email": {
+      "type": "string"
+    },
+    "trainer_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "level": {
+      "type": "string",
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced"
+      ],
+      "default": "beginner"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "online",
+        "presential",
+        "hybrid"
+      ],
+      "default": "online"
+    },
+    "duration": {
+      "type": "string"
+    },
+    "price": {
+      "type": "number",
+      "default": 0
+    },
+    "is_free": {
+      "type": "boolean",
+      "default": false
+    },
+    "cover_url": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "video_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "average_rating": {
+      "type": "number",
+      "default": 0
+    },
+    "total_enrollments": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "trainer_email",
+    "title",
+    "category"
+  ]
+}

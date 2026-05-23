@@ -1,0 +1,28 @@
+{
+  "version": "0.2",
+  "language": "fr,en",
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "mobile/**",
+    "*.lock",
+    "*.min.js"
+  ],
+  "words": [
+    "afriwonder", "pourtoi", "abonnements", "hors", "connexion",
+    "préparées", "créateur", "créateurs", "crée", "créé",
+    "suivis", "suivi", "partager", "commenter", "sauvegarder",
+    "vidéo", "vidéos", "musique", "texte", "ligne",
+    "évite", "éviter", "vient", "depuis", "partir",
+    "doublon", "identité", "initiales", "caractères",
+    "indépendants", "passait", "retour", "réponse",
+    "état", "tous", "seul", "avec", "nums",
+    "prêtes", "prête", "pret", "haut", "bas",
+    "abonnés", "abonné", "abonner", "désabonner",
+    "fullscreen", "preload", "prefetch", "buffering",
+    "haptics", "webview", "backdrop", "tailwind",
+    "vscode", "cspell", "jsdom", "eslint",
+    "vitest", "tanstack", "tiktok", "afriwonder"
+  ]
+}

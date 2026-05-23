@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "530d14a4-16a5-4cc2-b6aa-9d46591e68c6"
+      }
+    },
+    "android": {
+      "package": "com.abdoulaye_fane.afriwonderbackend"
+    }
+  }
+}

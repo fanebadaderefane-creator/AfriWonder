@@ -1,0 +1,69 @@
+name: ✨ Feature request
+description: Proposer une nouvelle fonctionnalité ou amélioration
+title: "[Feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci pour ta proposition. Toute feature doit respecter les standards d'`AGENTS.md` et la Definition of Done.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Quel problème utilisateur résout-on ?
+      description: Décris le problème, pas la solution. « En tant que <persona>, je veux <besoin> parce que <bénéfice>. »
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition (optionnel)
+      description: Si tu as déjà une idée d'implémentation.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Périmètre
+      multiple: true
+      options:
+        - Backend (API)
+        - Mobile Expo
+        - Web PWA
+        - Admin dashboard
+        - SDK / public API
+        - Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priorité estimée
+      options:
+        - P3 — nice to have
+        - P2 — utile
+        - P1 — important
+        - P0 — bloquant business
+    validations:
+      required: true
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Critères de succès / DoD
+      description: Comment savoir que c'est livré et utile ?
+      placeholder: |
+        - [ ] La feature est utilisable end-to-end (frontend + backend connectés)
+        - [ ] Tests unitaires + intégration livrés
+        - [ ] Documentation à jour (Swagger / README)
+        - [ ] Métrique d'usage instrumentée
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives écartées
+      description: Quelles autres options ont été considérées et pourquoi tu les écartes ?

@@ -1,0 +1,13 @@
+# Build context (Dockerfile.backend a besoin de backend/, Dockerfile frontend aussi)
+node_modules
+.git
+.env
+.env.*
+*.log
+dist
+coverage
+.cursor
+.vscode
+.idea
+*.md
+!README.md

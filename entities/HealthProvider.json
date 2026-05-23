@@ -1,0 +1,94 @@
+{
+  "name": "HealthProvider",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "specialty": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "doctor",
+        "clinic",
+        "pharmacy",
+        "dentist",
+        "nurse",
+        "other"
+      ]
+    },
+    "phone": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "consultation_fee": {
+      "type": "number"
+    },
+    "teleconsultation": {
+      "type": "boolean",
+      "default": false
+    },
+    "availability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "busy",
+        "unavailable"
+      ],
+      "default": "available"
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "average_rating": {
+      "type": "number",
+      "default": 0
+    },
+    "total_reviews": {
+      "type": "number",
+      "default": 0
+    },
+    "subscription_plan": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "pro",
+        "premium"
+      ],
+      "default": "basic"
+    }
+  },
+  "required": [
+    "user_email",
+    "display_name",
+    "city",
+    "type"
+  ]
+}

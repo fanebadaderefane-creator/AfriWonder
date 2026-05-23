@@ -1,0 +1,49 @@
+# AfriWonder - Architecture 1M utilisateurs simultanés
+# Usage: docker compose -f docker-compose.prod.yml -f docker-compose.prod-1m.yml up -d
+# Prérequis: DATABASE_URL, JWT_SECRET, REDIS_URL
+# Capacité: ~50k-100k connexions (20+ serveurs pour 1M - voir docs/SCALING_1M_USERS.md)
+
+services:
+  backend:
+    deploy:
+      replicas: 10
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 5
+        delay: 10s
+
+  postgres:
+    image: postgres:15-alpine
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=3
+      -c wal_keep_size=1GB
+      -c synchronous_commit=on
+      -c full_page_writes=on
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+  redis:
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru --appendonly yes
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G

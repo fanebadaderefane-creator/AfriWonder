@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/afriwonder/afriwonder/tree/main/docs
+    about: Architecture, Runbook, Sécurité, Standards d'ingénierie.
+  - name: 🚨 Incident en production (SEV-1 / SEV-2)
+    url: https://github.com/afriwonder/afriwonder/blob/main/docs/INCIDENT_RESPONSE.md
+    about: Suivre la procédure d'incident, ne pas créer un ticket bug.
+  - name: 🔐 Vulnérabilité de sécurité
+    url: https://github.com/afriwonder/afriwonder/blob/main/docs/SECURITY.md
+    about: NE PAS créer un ticket public. Suivre la procédure de divulgation responsable.

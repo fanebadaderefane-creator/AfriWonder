@@ -1,70 +1,71 @@
-# Getting Started with Create React App
+# AfriWonder — Application mobile (Expo / React Native)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Client **Expo Router** (Android, iOS).  
+**Standards d’ingénierie pour la durabilité** (document vivant v1.0) : [`../docs/ENGINEERING_STANDARDS.md`](../docs/ENGINEERING_STANDARDS.md) · index [`../docs/DURABILITY_STANDARDS.md`](../docs/DURABILITY_STANDARDS.md) · couverture [`../docs/COVERAGE.md`](../docs/COVERAGE.md) · **dépendances justifiées** [`../docs/DEPENDENCIES.md`](../docs/DEPENDENCIES.md).
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Vérification locale (gate « même commit / même qualité qu’en CI »)
 
-### `npm start`
+```bash
+npm run verify
+# alias explicite :
+npm run standards:mobile
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Exécute : **ESLint** (règle `max-lines` 300, warning — ch.1.2), **TypeScript** `tsc --noEmit` (ch.1 + CI), **Vitest + couverture** ≥ **70 %** sur le périmètre `coverage.include` de `vitest.config.ts` (ch.2.2).  
+Même combinaison via la racine : `npm run standards:expo` / `npm run standards:mobile`.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+---
 
-### `npm test`
+## Cartographie manuel → implémentation mobile (résumé exécutable)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+| Chapitre | Exigence | Où c’est appliqué / noté |
+|----------|----------|-------------------------|
+| **1.1** | Couches UI / API / config | Données et appels : `src/api/`, `src/config/` ; UI dans `app/`, logique partagée dans `src/`. |
+| **1.1** | Config externalisée | `EXPO_PUBLIC_*`, `app.config` / `eas.json`, `src/config/api.ts`, `backendBase` (voir règle mobile Android URL). |
+| **1.1** | Dépendances documentées | [`../docs/DEPENDENCIES.md`](../docs/DEPENDENCIES.md) + justification en PR pour toute lib ajoutée. |
+| **1.2** | Linter, noms, pas de gros fichiers | `eslint.config.js` (`max-lines` 300 en warning) ; `expo lint` dans `verify`. |
+| **2.2** | Couverture ≥ 70 % | `vitest.config.ts` → `coverage.thresholds` 70 + `include` ciblé. |
+| **2.2** | Tests sur chaque PR | CI : job `test-mobile-expo` (`npm run test:coverage` + chrono, voir [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)). |
+| **2.4** | Suite unitaire moins de 5 min (cible) | Même job : avertissement GitHub si la durée dépasse 300 s. |
+| **3** | Sécurité dépendances | `npm audit --audit-level=high` sur `frontend/` dans le job mobile. |
+| **3.3** | Versioning sémantique | `app.json` → `version` / `versionCode` (Android) ; incrément EAS `production` (`eas.json` `autoIncrement`). Changelog = process release (équipe). |
+| **3.2** | Release progressive | Gérer côté **EAS** (canaux / staged rollout) + métriques Sentry : hors dépôt, documenté en process ops. |
+| **4.1** | Taille PR ≤ 400 lignes | Gate repo : job `pr-line-budget` dans le même workflow CI. |
+| **5** | Sentry (erreurs) | `src/lib/sentryMobile.ts`, `@sentry/react-native` ; Crashlytics Firebase = option complémentaire non requise si Sentry actif. |
+| **5–6** | Budgets perf mobile | ch.6.1 / ch.9.3 : **cold start** &lt; 2 s, **APK** &lt; 50 Mo, listes performantes : `AGENTS.md` + `flash-list` / `expo-image` + mesures EAS. |
+| **6** | Données et pagination | Côté app : requêtes via React Query (pas de N+1 côté UI) ; listes longues : FlashList. |
+| **7** | Secrets | Pas de clés en dur : `expo-secure-store`, env, EAS Secrets. |
+| **7.2** | RGPD | Parcours compte / export / suppression portés sur l’API (écrans `settings/` + backend). |
+| **9.3** | Afrique & Mali | **Android 10+** : `app.json` → `expo-build-properties` `minSdkVersion` **29** ; i18n `src/i18n/translations.ts` (fr, FCFA, +223) ; tests bas de gamme = process manuel. |
+| **9.3** | Hors-ligne partiel | `expo-sqlite`, cache React Query, dégradation NetInfo. |
+| **10** | Feedback in-app | Signalements : `ReportModal` / `CommentReportModal` (feed, commentaires, messages, etc.) ; FAQ `app/faq.tsx`. |
 
-### `npm run build`
+Rituels (stand-up, dette, pentest) : ch.1.3, 7.3, 9.1, 10, checklist trimestrielle = **process équipe** — non codables dans l’app seule.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Alignement express (ch.9.3 & ch.6.1)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+| Exigence | Implémentation |
+|----------|----------------|
+| Android 10+ | `minSdkVersion` **29** dans `app.json` |
+| Observabilité | Sentry + `sentryMobile.ts` |
+| APK / perf | Budget **inférieur à 50 Mo** ; optimiser assets et surveiller le binaire EAS |
+| E2E / smoke | `e2e/`, `maestro/*.yaml` (parcours critiques hors CI complets si non branchés) |
 
-### `npm run eject`
+---
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Démarrage
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+npm install
+npx expo start
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Éditer `app/` (Expo Router). Documentation Expo : <https://docs.expo.dev/router/introduction/>.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Variables d’environnement
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Fichier exemple : `.env.example` (à la racine de `frontend/` s’il existe) ; production : **EAS Secrets** + `eas.json` pour les `EXPO_PUBLIC_*` non sensibles.

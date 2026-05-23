@@ -1,0 +1,44 @@
+# ============================================
+# AFRI CONNECT - Configuration Base44
+# ============================================
+# 
+# INSTRUCTIONS :
+# 1. Remplacer les valeurs entre [ ] par vos vraies informations Base44
+# 2. Renommer ce fichier en .env.local
+# 3. Ne JAMAIS commiter ce fichier (déjà dans .gitignore)
+#
+# ============================================
+
+# BASE44 CONFIGURATION (OBLIGATOIRE)
+# Obtenez ces valeurs sur https://base44.com après avoir créé votre application
+VITE_BASE44_APP_ID=[VOTRE_APP_ID_ICI]
+VITE_BASE44_APP_BASE_URL=[VOTRE_APP_BASE_URL_ICI]
+VITE_BASE44_FUNCTIONS_VERSION=v1
+
+# ============================================
+# OPTIONNEL - Paiements
+# ============================================
+
+# Orange Money (Paiements Mobile Money)
+# VITE_REACT_APP_ORANGE_MERCHANT_ID=votre_merchant_id
+# VITE_REACT_APP_ORANGE_API_KEY=votre_api_key
+
+# Stripe (Paiements par Carte)
+# VITE_STRIPE_PUBLISHABLE_KEY=pk_test_votre_cle_publique
+
+# ============================================
+# OPTIONNEL - Autres Services
+# ============================================
+
+# Push Notifications
+# VITE_REACT_APP_VAPID_PUBLIC_KEY=votre_vapid_public_key
+
+# WebSocket (si différent de Base44)
+# VITE_REACT_APP_WS_URL=wss://api.africonnect.app/ws
+
+# API URL (si backend personnalisé)
+# VITE_REACT_APP_API_URL=http://localhost:3000/api
+
+# Mode Environnement
+VITE_REACT_APP_ENV=development
+

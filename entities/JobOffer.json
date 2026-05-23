@@ -1,0 +1,65 @@
+{
+  "name": "JobOffer",
+  "type": "object",
+  "properties": {
+    "employer_email": {
+      "type": "string"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "contract_type": {
+      "type": "string",
+      "enum": [
+        "cdi",
+        "cdd",
+        "freelance",
+        "internship",
+        "parttime"
+      ],
+      "default": "cdi"
+    },
+    "city": {
+      "type": "string"
+    },
+    "salary_min": {
+      "type": "number"
+    },
+    "salary_max": {
+      "type": "number"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "total_applications": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "employer_email",
+    "company_name",
+    "title",
+    "city"
+  ]
+}

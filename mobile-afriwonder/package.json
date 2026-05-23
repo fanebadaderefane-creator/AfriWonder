@@ -1,0 +1,13 @@
+{
+  "name": "mobile-afriwonder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Alias npm du livrable Expo — code source dans ../frontend",
+  "scripts": {
+    "start": "npm run start --prefix ../frontend",
+    "android": "npm run android --prefix ../frontend",
+    "ios": "npm run ios --prefix ../frontend",
+    "test": "npm run test --prefix ../frontend",
+    "typecheck": "npm run typecheck --prefix ../frontend"
+  }
+}

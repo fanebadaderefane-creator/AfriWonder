@@ -1,0 +1,30 @@
+---
+description: Résolution URL backend Expo sur Android (émulateurs, MEmu) — ne pas régresser
+alwaysApply: true
+---
+
+# Client Expo → origine backend (`getBackendOrigin`)
+
+Correction validée (réseau « Network Error » sur MEmu / Metro en `127.0.0.1`). **Ne pas réintroduire le bug.**
+
+## Invariants (à respecter)
+
+1. **`frontend/src/config/backendBase.ts`**
+   - En dev Android **sans** `EXPO_PUBLIC_BACKEND_URL`, **`computeNativeDevBackendOriginSync`** doit traiter les IP dérivées du **packager** (`packagerPrivateLanHostsOrdered` / `NativeModules.SourceCode.scriptURL`, `EXPO_PUBLIC_DEV_PC_LAN_HOST`, etc.) **avant** `androidDevEmulatorBackendOrigin()` (`10.0.2.2` / Genymotion). Ne pas remettre l’ordre inverse (sinon MEmu masque l’IP LAN réelle).
+   - **`probeAndroidDevBackendOrigin`** : candidats **LAN d’abord**, puis origine sync, puis `10.0.2.2` / `10.0.3.2` ; `GET /health` (pas seulement `/api/health`) ; timeout raisonnable (plusieurs secondes si machine lente).
+   - **`_layout.tsx`** : ne pas retirer l’attente du probe Android dev avant le premier écran qui appelle l’API.
+
+2. **`frontend/src/config/devBackendHostUtils.ts`**
+   - Logique pure partagée ; toute évolution du parsing / filtrage RFC1918 doit rester couverte par **`devBackendHostUtils.test.ts`**.
+
+3. **Variables d’environnement** (documentées dans `frontend/.env.example`)
+   - `EXPO_PUBLIC_BACKEND_URL` — origine complète si besoin.
+   - `EXPO_PUBLIC_DEV_PC_LAN_HOST` — IP du PC seule si tout le reste est en `127.0.0.1`.
+
+## Hors périmètre « correction réseau »
+
+- Ne pas modifier la logique **VideoCard** / feed **Home** pour « réparer » l’API (règles `video-player-locked`, `feed-like-scroll-sound`).
+
+## Vérification après changement touchant l’API mobile
+
+- `cd frontend && npm run test -- src/config/devBackendHostUtils.test.ts`

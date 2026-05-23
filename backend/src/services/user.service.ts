@@ -1,0 +1,922 @@
+import prisma from '../config/database.js';
+import { logger } from '../utils/logger.js';
+import { validateUrl } from '../utils/urlValidator.js';
+import GamificationEngine from './gamification.service.js';
+import notificationService from './notification.service.js';
+
+/** Condition Prisma pour exclure les comptes "supprimés" (anonymisés par privacy.service). */
+const NOT_DELETED_USER = {
+  NOT: {
+    OR: [
+      { username: { startsWith: 'deleted_' } },
+      { email: { contains: '@deleted.local' } },
+    ],
+  },
+};
+
+const TEST_ACCOUNT_MARKERS = /\b(e2e|test|mock|qa|dummy|sample|autotest|bot)\b/i;
+const PRIVACY_SETTINGS_KEY = (userId: string) => `privacy_settings:${userId}`;
+
+function isLikelyTestAccount(user: { username?: string | null; full_name?: string | null; email?: string | null }): boolean {
+  const username = (user.username || '').trim().toLowerCase();
+  const fullName = (user.full_name || '').trim().toLowerCase();
+  const email = (user.email || '').trim().toLowerCase();
+  const blob = `${username} ${fullName} ${email}`.trim();
+  if (!blob) return false;
+  if (TEST_ACCOUNT_MARKERS.test(blob)) return true;
+  return (
+    username.startsWith('e2e_') ||
+    username.startsWith('test_') ||
+    username.startsWith('mock_') ||
+    email.endsWith('@example.com') ||
+    email.endsWith('@test.local')
+  );
+}
+
+class UserService {
+  private async getPrivacyVisibility(userId: string): Promise<{
+    followingList: 'everyone' | 'friends' | 'only_me';
+    likedVideos: 'everyone' | 'friends' | 'only_me';
+  }> {
+    const stored = await prisma.platformSettings.findUnique({ where: { key: PRIVACY_SETTINGS_KEY(userId) } });
+    const value = ((stored?.value as Record<string, unknown>) || {});
+    const followingList = String(value.following_list_visibility || 'everyone') as 'everyone' | 'friends' | 'only_me';
+    const likedVideos = String(value.liked_videos_visibility || 'everyone') as 'everyone' | 'friends' | 'only_me';
+    return { followingList, likedVideos };
+  }
+
+  private async canViewerAccessByVisibilityRule(
+    ownerId: string,
+    viewerId: string | null | undefined,
+    rule: 'everyone' | 'friends' | 'only_me'
+  ): Promise<boolean> {
+    if (rule === 'everyone') return true;
+    if (!viewerId) return false;
+    if (viewerId === ownerId) return true;
+    if (rule === 'only_me') return false;
+    const [vToOwner, ownerToV] = await Promise.all([
+      prisma.follow.findFirst({ where: { follower_id: viewerId, following_id: ownerId }, select: { id: true } }),
+      prisma.follow.findFirst({ where: { follower_id: ownerId, following_id: viewerId }, select: { id: true } }),
+    ]);
+    return !!vToOwner && !!ownerToV;
+  }
+
+  async list(page: number = 1, limit: number = 20, search?: string) {
+    const skip = (page - 1) * limit;
+    const where: any = { ...NOT_DELETED_USER };
+    if (search && search.trim().length >= 2) {
+      const term = search.trim().replace(/^@+/, '');
+      if (term.length < 2) return { users: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+      where.AND = [
+        NOT_DELETED_USER,
+        {
+          OR: [
+            { username: { contains: term, mode: 'insensitive' as const } },
+            { full_name: { contains: term, mode: 'insensitive' as const } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+          ],
+        },
+      ];
+      delete where.NOT;
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          role: true,
+          is_verified: true,
+          created_at: true,
+          _count: {
+            select: {
+              videos: true,
+              following: true,
+              follows: true,
+              products: true,
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return {
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /** Profil public par username (page publique / partage). */
+  async getByUsername(username: string, requesterId?: string) {
+    const normalized = String(username).trim().replace(/^@+/, '');
+    if (!normalized) {
+      const err: any = new Error('Username requis');
+      err.statusCode = 400;
+      throw err;
+    }
+    const user = await prisma.user.findFirst({
+      where: { username: { equals: normalized, mode: 'insensitive' }, ...NOT_DELETED_USER },
+      select: {
+        id: true,
+        username: true,
+        full_name: true,
+        profile_image: true,
+        profile_cover_url: true,
+        bio: true,
+        location: true,
+        website: true,
+        is_verified: true,
+        is_private: true,
+        created_at: true,
+        _count: { select: { videos: true, following: true, follows: true, products: true } },
+      },
+    });
+    if (!user) {
+      const error: any = new Error('Utilisateur non trouvé');
+      error.statusCode = 404;
+      throw error;
+    }
+    let isFollowing = false;
+    if (requesterId && requesterId !== user.id) {
+      const follow = await prisma.follow.findFirst({
+        where: { follower_id: requesterId, following_id: user.id },
+      });
+      isFollowing = !!follow;
+    }
+    return { ...user, isFollowing };
+  }
+
+  async getById(userId: string, requesterId?: string) {
+    const [user, likesAgg] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          profile_cover_url: true,
+          bio: true,
+          location: true,
+          website: true,
+          role: true,
+          is_verified: true,
+          is_private: true,
+          created_at: true,
+          seller_profile: {
+            select: {
+              id: true,
+              store_name: true,
+              store_description: true,
+              country: true,
+              city: true,
+              rating: true,
+              total_sales: true,
+              is_verified: true,
+              status: true,
+            },
+          },
+          _count: {
+            select: {
+              videos: true,
+              following: true,
+              follows: true,
+              products: true,
+            },
+          },
+        },
+      }),
+      prisma.video.aggregate({
+        where: { creator_id: userId },
+        _sum: { likes: true },
+      }),
+    ]);
+
+    if (!user) {
+      const error: any = new Error('Utilisateur non trouvé');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Vérifier si l'utilisateur suit ce profil
+    let isFollowing = false;
+    if (requesterId && requesterId !== userId) {
+      const follow = await prisma.follow.findFirst({
+        where: {
+          follower_id: requesterId,
+          following_id: userId,
+        },
+      });
+      isFollowing = !!follow;
+    }
+
+    return {
+      ...user,
+      total_likes: likesAgg._sum.likes ?? 0,
+      isFollowing,
+    };
+  }
+
+  async updateProfile(userId: string, data: {
+    full_name?: string;
+    profile_image?: string;
+    profile_cover_url?: string | null;
+    bio?: string | null;
+    location?: string | null;
+    website?: string | null;
+    country?: string | null;
+    data_saver_mode?: boolean;
+    is_private?: boolean;
+    preferred_language?: string | null;
+    timezone?: string | null;
+    theme?: string | null;
+    preferred_categories?: string[] | null;
+    messaging_e2e_enabled?: boolean;  // CPO 4.40
+    messaging_read_receipts_enabled?: boolean;
+    messaging_cdc_moderation?: Record<string, unknown> | null;
+  }) {
+    validateUrl(data.profile_image, 'profile_image');
+    if (data.profile_cover_url) validateUrl(data.profile_cover_url, 'profile_cover_url');
+    validateUrl(data.website, 'website');
+
+    const payload: Record<string, unknown> = {};
+    if (data.full_name !== undefined) payload.full_name = data.full_name;
+    if (data.profile_image !== undefined) payload.profile_image = data.profile_image;
+    if (data.profile_cover_url !== undefined) payload.profile_cover_url = data.profile_cover_url === '' ? null : data.profile_cover_url;
+    if (data.bio !== undefined) payload.bio = data.bio === '' ? null : data.bio;
+    if (data.location !== undefined) payload.location = data.location === '' ? null : data.location;
+    if (data.website !== undefined) payload.website = data.website === '' ? null : data.website;
+    if (data.country !== undefined) payload.country = data.country === '' ? null : data.country;
+    if (data.data_saver_mode !== undefined) payload.data_saver_mode = data.data_saver_mode;
+    if (data.is_private !== undefined) payload.is_private = data.is_private;
+    if (data.preferred_language !== undefined) payload.preferred_language = data.preferred_language === '' ? null : data.preferred_language;
+    if (data.timezone !== undefined) payload.timezone = data.timezone === '' ? null : data.timezone;
+    if (data.theme !== undefined) payload.theme = data.theme === '' ? null : data.theme;
+    if (data.preferred_categories !== undefined) {
+      payload.preferred_categories = Array.isArray(data.preferred_categories)
+        ? (data.preferred_categories.length ? data.preferred_categories : null)
+        : null;
+    }
+    if (data.messaging_e2e_enabled !== undefined) payload.messaging_e2e_enabled = data.messaging_e2e_enabled;
+    if (data.messaging_read_receipts_enabled !== undefined) {
+      payload.messaging_read_receipts_enabled = data.messaging_read_receipts_enabled;
+    }
+    if (data.messaging_cdc_moderation !== undefined) {
+      payload.messaging_cdc_moderation =
+        data.messaging_cdc_moderation === null ? null : data.messaging_cdc_moderation;
+    }
+
+    const selectFields = {
+      id: true,
+      email: true,
+      username: true,
+      full_name: true,
+      profile_image: true,
+      profile_cover_url: true,
+      bio: true,
+      location: true,
+      website: true,
+      country: true,
+      role: true,
+      is_verified: true,
+      updated_at: true,
+      data_saver_mode: true,
+      is_private: true,
+      preferred_language: true,
+      timezone: true,
+      theme: true,
+      preferred_categories: true,
+      messaging_e2e_enabled: true,
+      messaging_read_receipts_enabled: true,
+      messaging_cdc_moderation: true,
+    } as const;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: payload,
+      select: selectFields,
+    });
+
+    logger.info('Profil utilisateur mis à jour', { userId });
+    return user;
+  }
+
+  /**
+   * Indique si `viewerId` suit chaque utilisateur de la liste (bouton Suivre / Abonné côté client).
+   */
+  private async attachViewerFollows<T extends { id: string }>(
+    users: T[],
+    viewerId?: string | null
+  ): Promise<(T & { is_following: boolean })[]> {
+    if (!viewerId || users.length === 0) {
+      return users.map((u) => ({ ...u, is_following: false }));
+    }
+    const targetIds = users.map((u) => u.id).filter((id) => id !== viewerId);
+    if (targetIds.length === 0) {
+      return users.map((u) => ({ ...u, is_following: false }));
+    }
+    const rows = await prisma.follow.findMany({
+      where: { follower_id: viewerId, following_id: { in: targetIds } },
+      select: { following_id: true },
+    });
+    const set = new Set(rows.map((r) => r.following_id));
+    return users.map((u) => ({
+      ...u,
+      is_following: u.id === viewerId ? false : set.has(u.id),
+    }));
+  }
+
+  async getFollowers(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {
+    const skip = (page - 1) * limit;
+
+    const [follows, total] = await Promise.all([
+      prisma.follow.findMany({
+        where: {
+          following_id: userId,
+          follower: NOT_DELETED_USER,
+        },
+        include: {
+          follower: {
+            select: {
+              id: true,
+              username: true,
+              full_name: true,
+              profile_image: true,
+            },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.follow.count({
+        where: {
+          following_id: userId,
+          follower: NOT_DELETED_USER,
+        },
+      }),
+    ]);
+
+    const followers = follows.map(f => f.follower);
+    const enriched = await this.attachViewerFollows(followers, viewerId);
+
+    return {
+      followers: enriched,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getFollowing(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {
+    const visibility = await this.getPrivacyVisibility(userId);
+    const allowed = await this.canViewerAccessByVisibilityRule(userId, viewerId, visibility.followingList);
+    if (!allowed) {
+      const error: any = new Error('Liste des abonnements privée');
+      error.statusCode = 403;
+      throw error;
+    }
+    const skip = (page - 1) * limit;
+
+    const [follows, total] = await Promise.all([
+      prisma.follow.findMany({
+        where: {
+          follower_id: userId,
+          following: NOT_DELETED_USER,
+        },
+        include: {
+          following: {
+            select: {
+              id: true,
+              username: true,
+              full_name: true,
+              profile_image: true,
+            },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.follow.count({
+        where: {
+          follower_id: userId,
+          following: NOT_DELETED_USER,
+        },
+      }),
+    ]);
+
+    const following = follows.map(f => f.following);
+    const enriched = await this.attachViewerFollows(following, viewerId);
+
+    return {
+      following: enriched,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async toggleFollow(followerId: string, followingId: string) {
+    if (followerId === followingId) {
+      const error: any = new Error('Vous ne pouvez pas vous suivre vous-même');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingFollow = await prisma.follow.findFirst({
+      where: {
+        follower_id: followerId,
+        following_id: followingId,
+      },
+    });
+
+    if (existingFollow) {
+      await prisma.follow.delete({
+        where: { id: existingFollow.id },
+      });
+      await prisma.wonderRelation.deleteMany({
+        where: { follower_id: followerId, creator_id: followingId },
+      });
+      return { following: false };
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: followingId },
+      select: { is_private: true },
+    });
+    if (targetUser?.is_private) {
+      const existingRequest = await prisma.followRequest.findFirst({
+        where: {
+          requester_id: followerId,
+          target_id: followingId,
+          status: 'pending',
+        },
+      });
+      if (existingRequest) {
+        await prisma.followRequest.delete({ where: { id: existingRequest.id } });
+        return { following: false, requestPending: false };
+      }
+      await prisma.followRequest.create({
+        data: {
+          requester_id: followerId,
+          target_id: followingId,
+          status: 'pending',
+        },
+      });
+      const follower = await prisma.user.findUnique({
+        where: { id: followerId },
+        select: { username: true, full_name: true },
+      });
+      const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
+      await notificationService.create(followingId, {
+        type: 'follow_request',
+        title: 'Demande de suivi',
+        message: `${followerName} souhaite vous suivre`,
+        reference_type: 'follow_request',
+        reference_id: followerId,
+        data: { from_user_id: followerId },
+      });
+      return { following: false, requestPending: true };
+    }
+
+    await prisma.follow.create({
+      data: {
+        follower_id: followerId,
+        following_id: followingId,
+      },
+    });
+    const follower = await prisma.user.findUnique({
+      where: { id: followerId },
+      select: { username: true, full_name: true },
+    });
+    const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
+    await notificationService.create(followingId, {
+      type: 'new_follower',
+      title: 'Nouveau follower',
+      message: `${followerName} te suit maintenant`,
+      reference_type: 'user',
+      reference_id: followerId,
+      data: { from_user_id: followerId },
+    });
+    await prisma.wonderRelation.upsert({
+      where: {
+        follower_id_creator_id: { follower_id: followerId, creator_id: followingId },
+      },
+      create: {
+        follower_id: followerId,
+        creator_id: followingId,
+        status: 'active',
+      },
+      update: { status: 'active', updated_at: new Date() },
+    });
+    const followersCount = await prisma.follow.count({
+      where: { following_id: followingId },
+    });
+    if (followersCount >= 100) {
+      GamificationEngine.on100Followers(followingId).catch((e) =>
+        logger.warn('Gamification on100Followers', { followingId, err: e })
+      );
+    }
+    return { following: true };
+  }
+
+  async listFollowRequestsReceived(userId: string) {
+    const list = await prisma.followRequest.findMany({
+      where: { target_id: userId, status: 'pending' },
+      include: {
+        requester: {
+          select: { id: true, username: true, full_name: true, profile_image: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    return list;
+  }
+
+  async acceptFollowRequest(requestId: string, targetUserId: string) {
+    const req = await prisma.followRequest.findFirst({
+      where: { id: requestId, target_id: targetUserId, status: 'pending' },
+    });
+    if (!req) {
+      const err: any = new Error('Demande introuvable ou déjà traitée');
+      err.statusCode = 404;
+      throw err;
+    }
+    await prisma.$transaction([
+      prisma.followRequest.update({
+        where: { id: requestId },
+        data: { status: 'accepted', responded_at: new Date() },
+      }),
+      prisma.follow.create({
+        data: { follower_id: req.requester_id, following_id: req.target_id },
+      }),
+    ]);
+    const follower = await prisma.user.findUnique({
+      where: { id: req.requester_id },
+      select: { username: true, full_name: true },
+    });
+    const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
+    await notificationService.create(req.requester_id, {
+      type: 'follow_request_accepted',
+      title: 'Demande acceptée',
+      message: `Votre demande de suivi a été acceptée`,
+      reference_type: 'user',
+      reference_id: targetUserId,
+      data: { from_user_id: targetUserId },
+    });
+    return { accepted: true };
+  }
+
+  async rejectFollowRequest(requestId: string, targetUserId: string) {
+    const updated = await prisma.followRequest.updateMany({
+      where: { id: requestId, target_id: targetUserId, status: 'pending' },
+      data: { status: 'rejected', responded_at: new Date() },
+    });
+    if (updated.count === 0) {
+      const err: any = new Error('Demande introuvable ou déjà traitée');
+      err.statusCode = 404;
+      throw err;
+    }
+    return { rejected: true };
+  }
+
+  /** Suggestions de comptes à suivre (CPO 2.33) — mélange de comptes récents + populaires non suivis. */
+  async getSuggestedUsersToFollow(userId: string, limit: number = 20) {
+    const safeLimit = Math.min(50, Math.max(1, limit));
+    const followingIds = await prisma.follow.findMany({
+      where: { follower_id: userId },
+      select: { following_id: true },
+    }).then((r) => new Set(r.map((x) => x.following_id)));
+
+    const excludeIds = [userId, ...followingIds];
+    const [recentUsers, popularUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          ...NOT_DELETED_USER,
+          id: { notIn: excludeIds },
+        },
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          email: true,
+          is_verified: true,
+          _count: { select: { follows: true, following: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: safeLimit * 2,
+      }),
+      prisma.user.findMany({
+        where: {
+          ...NOT_DELETED_USER,
+          id: { notIn: excludeIds },
+        },
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          email: true,
+          is_verified: true,
+          _count: { select: { follows: true, following: true } },
+        },
+        orderBy: { following: { _count: 'desc' } },
+        take: safeLimit * 2,
+      }),
+    ]);
+
+    const suggested = [...recentUsers, ...popularUsers];
+    const seen = new Set<string>();
+    const deduped = suggested.filter((u) => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+
+    const base = deduped
+      .filter((u) => !followingIds.has(u.id))
+      .filter((u) => !isLikelyTestAccount(u))
+      .slice(0, safeLimit);
+    if (base.length >= safeLimit) return base;
+
+    const filler = await prisma.user.findMany({
+      where: {
+        ...NOT_DELETED_USER,
+        id: { notIn: excludeIds },
+      },
+      select: {
+        id: true,
+        username: true,
+        full_name: true,
+        profile_image: true,
+        email: true,
+        is_verified: true,
+        _count: { select: { follows: true, following: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: safeLimit * 3,
+    });
+    for (const u of filler) {
+      if (seen.has(u.id)) continue;
+      seen.add(u.id);
+      deduped.push(u);
+    }
+
+    /**
+     * Fallback anti-liste vide:
+     * si l'utilisateur suit déjà presque tout le monde, on complète avec des
+     * comptes supplémentaires (hors self) pour garder un écran "Find friends"
+     * toujours alimenté, comme l'UX TikTok.
+     */
+    const baseIds = new Set(base.map((u) => u.id));
+    const fallback = await prisma.user.findMany({
+      where: {
+        ...NOT_DELETED_USER,
+        id: { not: userId },
+      },
+      select: {
+        id: true,
+        username: true,
+        full_name: true,
+        profile_image: true,
+        email: true,
+        is_verified: true,
+        _count: { select: { follows: true, following: true } },
+      },
+      orderBy: { following: { _count: 'desc' } },
+      take: safeLimit * 2,
+    });
+
+    for (const user of fallback) {
+      if (baseIds.has(user.id)) continue;
+      if (isLikelyTestAccount(user)) continue;
+      base.push(user);
+      baseIds.add(user.id);
+      if (base.length >= safeLimit) break;
+    }
+    return base.slice(0, safeLimit);
+  }
+
+  /** Wonder = s'émerveiller avec un créateur (équivalent follow avec branding Afriwonder) */
+  async toggleWonder(followerId: string, creatorId: string) {
+    if (followerId === creatorId) {
+      const error: any = new Error('Vous ne pouvez pas rejoindre votre propre Wonder');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingWonder = await prisma.wonderRelation.findFirst({
+      where: {
+        follower_id: followerId,
+        creator_id: creatorId,
+        status: 'active',
+      },
+    });
+
+    if (existingWonder) {
+      await prisma.wonderRelation.delete({ where: { id: existingWonder.id } });
+      const existingFollow = await prisma.follow.findFirst({
+        where: { follower_id: followerId, following_id: creatorId },
+      });
+      if (existingFollow) {
+        await prisma.follow.delete({ where: { id: existingFollow.id } });
+      }
+      return { inWonder: false };
+    } else {
+      await prisma.wonderRelation.upsert({
+        where: {
+          follower_id_creator_id: { follower_id: followerId, creator_id: creatorId },
+        },
+        create: {
+          follower_id: followerId,
+          creator_id: creatorId,
+          status: 'active',
+        },
+        update: { status: 'active', updated_at: new Date() },
+      });
+      const wonderer = await prisma.user.findUnique({
+        where: { id: followerId },
+        select: { username: true, full_name: true },
+      });
+      const wondererName = wonderer?.full_name || wonderer?.username || 'Quelqu\'un';
+      await notificationService.create(creatorId, {
+        type: 'new_wonder',
+        title: 'Nouveau Wonder',
+        message: `${wondererName} est dans ton Wonder ✨`,
+        reference_type: 'user',
+        reference_id: followerId,
+        data: { from_user_id: followerId },
+      });
+      await prisma.follow.upsert({
+        where: {
+          follower_id_following_id: { follower_id: followerId, following_id: creatorId },
+        },
+        create: {
+          follower_id: followerId,
+          following_id: creatorId,
+        },
+        update: {},
+      });
+      const wonderersCount = await this.getWonderersCount(creatorId);
+      if (wonderersCount >= 100) {
+        GamificationEngine.on100Followers(creatorId).catch((e) =>
+          logger.warn('Gamification on100Followers', { creatorId, err: e })
+        );
+      }
+      return { inWonder: true };
+    }
+  }
+
+  async getWonderersCount(creatorId: string): Promise<number> {
+    return prisma.wonderRelation.count({
+      where: { creator_id: creatorId, status: 'active' },
+    });
+  }
+
+  async isInWonder(followerId: string, creatorId: string): Promise<boolean> {
+    const w = await prisma.wonderRelation.findFirst({
+      where: {
+        follower_id: followerId,
+        creator_id: creatorId,
+        status: 'active',
+      },
+    });
+    return !!w;
+  }
+
+  async getUserStats(userId: string) {
+    const [user, videosCount, followersCount, followingCount, productsCount, wonderersCount, likesAgg] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          role: true,
+          is_verified: true,
+        },
+      }),
+      prisma.video.count({ where: { creator_id: userId } }),
+      prisma.follow.count({ where: { following_id: userId } }),
+      prisma.follow.count({ where: { follower_id: userId } }),
+      prisma.product.count({ where: { seller_id: userId } }),
+      this.getWonderersCount(userId),
+      prisma.video.aggregate({
+        where: { creator_id: userId, visibility: 'public' },
+        _sum: { likes: true },
+      }),
+    ]);
+
+    if (!user) {
+      throw new Error('Utilisateur non trouvé');
+    }
+
+    const likesReceived = likesAgg._sum.likes ?? 0;
+
+    return {
+      user,
+      stats: {
+        videos: videosCount,
+        followers: followersCount,
+        following: followingCount,
+        products: productsCount,
+        wonderers: Math.max(wonderersCount, followersCount), // compat: wonderers >= followers
+        likesReceived: typeof likesReceived === 'number' && Number.isFinite(likesReceived) ? likesReceived : 0,
+      },
+    };
+  }
+
+  async getLikedVideos(userId: string, page: number = 1, limit?: number, viewerId?: string | null) {
+    const visibility = await this.getPrivacyVisibility(userId);
+    const allowed = await this.canViewerAccessByVisibilityRule(userId, viewerId, visibility.likedVideos);
+    if (!allowed) {
+      const error: any = new Error('Vidéos likées privées');
+      error.statusCode = 403;
+      throw error;
+    }
+    const shouldGetAll = !limit || limit === 0;
+    const actualLimit = shouldGetAll ? 9999 : limit!;
+    const skip = shouldGetAll ? 0 : (page - 1) * limit!;
+
+    try {
+      const [likes, total] = await Promise.all([
+        prisma.like.findMany({
+          where: { user_id: userId },
+          include: {
+            video: {
+              include: {
+                creator: {
+                  select: { id: true, username: true, full_name: true, profile_image: true },
+                },
+              },
+            },
+          },
+          orderBy: { created_at: 'desc' },
+          skip,
+          take: actualLimit,
+        }),
+        prisma.like.count({ where: { user_id: userId } }),
+      ]);
+
+      return {
+        videos: likes.map(like => like.video).filter(Boolean),
+        pagination: {
+          page: shouldGetAll ? 1 : page,
+          limit: shouldGetAll ? total : actualLimit,
+          total,
+          totalPages: shouldGetAll ? 1 : Math.ceil(total / actualLimit),
+        },
+      };
+    } catch {
+      try {
+        const total = await prisma.like.count({ where: { user_id: userId } });
+        const rows = await prisma.$queryRaw<any[]>`
+          SELECT v.*, u.id as "creator_id", u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+          FROM "Like" l
+          JOIN "Video" v ON v.id = l.video_id
+          JOIN "User" u ON u.id = v.creator_id
+          WHERE l.user_id = ${userId}
+          ORDER BY l.created_at DESC
+          LIMIT ${actualLimit} OFFSET ${skip}
+        `;
+        const videos = rows.map((r: any) => ({
+          ...r,
+          creator: { id: r.creator_id, username: r.username, full_name: r.creator_name, profile_image: r.creator_avatar },
+        }));
+        return {
+          videos,
+          pagination: { page: shouldGetAll ? 1 : page, limit: actualLimit, total, totalPages: Math.ceil(total / actualLimit) },
+        };
+      } catch {
+        return { videos: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } };
+      }
+    }
+  }
+}
+
+export const userService = new UserService();
+export default userService;
+
