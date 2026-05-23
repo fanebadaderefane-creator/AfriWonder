@@ -26,7 +26,8 @@ import {
 import { startBackendWarmupAtBoot } from '../src/api/backendWarmup';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
-import { initIncomingCallService, wireIncomingCallSocket } from '../src/services/incomingCallService';
+import { initIncomingCallService, wireIncomingCallSocket, displayIncomingCall } from '../src/services/incomingCallService';
+import { initVoipPushService } from '../src/services/voipPushService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
 import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils/mobileDeepLink';
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
@@ -211,7 +212,30 @@ function RootLayoutContent() {
     uploadRecoveryService.start();
     // CallKit iOS + Notifee Android pour appels entrants en background
     void initIncomingCallService();
+    void initVoipPushService();
     const offIncomingSocket = wireIncomingCallSocket();
+
+    // Intercepte les push FCM/APNs `incoming_call` → réveille Notifee Android / CallKit iOS
+    let offPushReceived: (() => void) | null = null;
+    void notificationService
+      .onNotificationReceived((notif) => {
+        const data = (notif?.request?.content?.data || {}) as Record<string, unknown>;
+        if (data?.type !== 'incoming_call') return;
+        const callId = String(data.callId || data.call_id || '');
+        if (!callId) return;
+        void displayIncomingCall({
+          callId,
+          callerName: String(data.callerName || data.caller_name || 'Contact'),
+          callerAvatar: data.callerAvatar ? String(data.callerAvatar) : undefined,
+          callerUserId: String(data.fromUserId || data.from_user_id || ''),
+          fromUserId: String(data.fromUserId || data.from_user_id || ''),
+          type: String(data.callType || data.call_type || 'audio') === 'video' ? 'video' : 'audio',
+        });
+      })
+      .then((sub) => {
+        offPushReceived = () => sub.remove();
+      });
+
     void Linking.getInitialURL().then((url) => handleIncomingUrl(url));
 
     let subscription: { remove: () => void } | null = null;
@@ -267,6 +291,7 @@ function RootLayoutContent() {
       offlineSyncCleanup?.();
       uploadRecoveryService.stop();
       offIncomingSocket?.();
+      offPushReceived?.();
     };
   }, [loadStoredAuth, tryOpenIncomingCallFromPush]);
 

@@ -15,61 +15,76 @@ Clients : Mobile Android/iOS — Mali, Sénégal, Côte d'Ivoire, etc.
 ### Session 2 — Messagerie : transcription Whisper + historique appels ✅
 ### Session 3 — Traduction GPT-5.2 multi-langue (FR/EN/BM/WO) ✅
 ### Session 4 — Appels WebRTC optimisés Afrique ✅
+### Session 5 — CallKit iOS + Notifee Android (background incoming) ✅
+### Session 6 — VoIP Push iOS + FCM data-only Android ✅
+- `frontend/src/services/voipPushService.ts` (NEW) — PushKit iOS
+- `frontend/app/_layout.tsx` : init service + intercept push `incoming_call` → displayIncomingCall
+- `backend/src/routes/calls.routes.ts` : endpoint `POST /api/calls/voip-token` (stocke en `PushSubscription`)
+- `react-native-voip-push-notification@3.3.3` ajouté
 
-### Session 5 — CallKit iOS + Notifee Android (background incoming calls) ✅
-**Packages ajoutés** :
-- `@notifee/react-native@9.1.8` (full-screen notifications Android)
-- `react-native-callkeep@4.3.16` (CallKit iOS)
+### Session 7 — Lot 3 Live TikTok-like ✅
+**Floating Hearts ❤️** :
+- `frontend/src/live/FloatingHeartsBurst.tsx` (NEW, 130 lignes) — composant cœurs flottants
+- `frontend/app/live/[id].tsx` : zone tap invisible + bursts locaux + envoi backend batché (1.2s) + socket relay
+- `frontend/app/live/stream.tsx` : host voit les cœurs de son audience
+- `backend/src/index.ts` : socket relay event `live:hearts` avec rate-limit 30/min/socket
 
-**Fichiers créés** :
-- `frontend/src/services/incomingCallService.ts` (NEW, 280 lignes)
-- `memory/GUIDE_TEST_APK.md` (NEW, instructions test)
-
-**Fichiers modifiés** :
-- `frontend/app.json` : permissions Android (USE_FULL_SCREEN_INTENT, FOREGROUND_SERVICE_PHONE_CALL, DISABLE_KEYGUARD, TURN_SCREEN_ON, MANAGE_OWN_CALLS) + iOS UIBackgroundModes += "voip"
-- `frontend/app/_layout.tsx` : init CallKit/Notifee au démarrage + wire socket `call:invite`
-- `frontend/eas.json` : profile development complet avec env vars
-
-**Fonctionnalités** :
-1. ✅ **Notification full-screen Android** : sonnerie + boutons Repondre/Refuser au-dessus écran lock
-2. ✅ **CallKit iOS** : popup système natif (même app killed via PushKit + VoIP push)
-3. ✅ **Channel haute priorité** Android avec `bypassDnd`, `lightUpScreen`, `loopSound`
-4. ✅ **Wire socket `call:invite`** → affiche notif uniquement si app en background (foreground = IncomingCallOverlay existant)
-5. ✅ **Routing après accept** : `/messages/call` avec `peerId/peerName/peerAvatar/callType/role=receiver`
-6. ✅ **Signaling socket** : émission `call:accept`/`call:decline` au tap utilisateur
+**Guide créé** : `memory/GUIDE_LIVE_AGORA.md` (audit complet 22 fonctionnalités, config Render, tests, coûts Agora)
 
 ## What's NOT yet implemented
 
-### Lot 2 Appels — Restant
-- [ ] **VoIP Push iOS** (PushKit) pour réveiller app killed — nécessite cert APNs VoIP + endpoint backend qui envoie push silencieux
-- [ ] **FCM data-only Android** pour réveiller app killed — nécessite Firebase config + endpoint backend
-- [ ] Tests E2E 2 devices physiques (à faire par utilisateur après EAS Build)
-- [ ] Group calls multi-party (>2 personnes)
+### Lot 3 Live — Restant (TikTok-like)
+- [ ] Swipe up/down navigation entre lives (Reels-style)
+- [ ] Stickers AR / Lenses (nécessite Banuba/ARKit)
+- [ ] Live battle 1v1
+- [ ] Tests E2E sur APK (user action)
 
-### Lot 3 — Live Streaming Agora (à venir)
-### Lot 4 — Live Cadeaux / Multi-host / Replay
+### Lot 4 (futur) — Live shopping, multi-host battle, replay analytics avancé
 
-## Configuration Render prod requise (action utilisateur)
+## Configuration Render prod requise
 - ⚠️ `OPENAI_API_KEY` → Whisper + GPT-5.2
-- ⚠️ TURN server (Metered.ca free recommandé) → `TURN_URL`, `TURN_SHARED_SECRET`, `TURN_REALM`
-- ⚠️ Optionnel : Firebase Server Key (FCM) si vous voulez wake-up app killed
-- ⚠️ Optionnel : APNs VoIP cert (iOS PushKit) si app killed sur iPhone
+- ⚠️ TURN server (Metered.ca free recommandé) → cf. GUIDE_TURN_SERVER.md
+- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → Live (cf. GUIDE_LIVE_AGORA.md)
+- ⚠️ Optionnel : APNs VoIP cert pour iOS PushKit (à configurer dans Render env si app killed sur iPhone)
 
-## Tests requis
-- 2 comptes test sur Render prod
-- 2 devices Android physiques (1 au Mali idéal pour test Carrier-Grade NAT)
-- EAS Build dev-client APK (cf. `GUIDE_TEST_APK.md`)
+## Tests à faire (action utilisateur)
+1. Save to GitHub → Render redeploy
+2. Configure les env vars ci-dessus
+3. `eas build --platform android --profile development`
+4. Tester sur 2 devices physiques :
+   - Messagerie (transcription + traduction)
+   - Appels audio/vidéo (cross-NAT)
+   - Background incoming call (Notifee)
+   - Live broadcast + viewer
+   - Floating hearts TikTok ❤️
+   - Co-host + raise-hand
+   - Cadeaux
 
-## Files created in /app/memory
+## Files in /app/memory
 - PRD.md (ce fichier)
 - PLAN_LOTS.md (plan général)
 - GUIDE_TURN_SERVER.md (config TURN options)
 - GUIDE_TEST_APK.md (procédure test sur APK)
+- GUIDE_LIVE_AGORA.md (audit Live + config Agora + tests)
+
+## Cumul total sessions 1-7
+- 9 fichiers modifiés / 6 fichiers créés
+- ~1100 lignes ajoutées
+- 5 fonctionnalités IA/réseau/UX majeures :
+  1. Transcription IA (Whisper)
+  2. Traduction multi-langue (GPT-5.2, FR/EN/BM/WO)
+  3. Appels WebRTC optimisés Afrique (STUN multi, profil adaptatif, NetInfo)
+  4. CallKit iOS + Notifee Android (background incoming)
+  5. VoIP Push iOS + FCM hooks (app killed wake-up)
+  6. Live TikTok-like floating hearts (tap + socket relay)
 
 ## Next Action Items
-1. **User** : Save to GitHub → Render redeploy
-2. **User** : `OPENAI_API_KEY` + TURN config sur Render
-3. **User** : `eas build --platform android --profile development` → APK
-4. **User** : Installer APK sur 2 devices + tester (cf. GUIDE_TEST_APK.md)
-5. **User** : Report bugs/issues observés
-6. **Agent** : Si bugs → fix. Sinon → **Lot 3 (Live Agora TikTok-like)**
+1. User : Save to GitHub → configure env vars Render → EAS Build APK
+2. User : Tester 6 scenarios Live + 7 scenarios Messages/Calls
+3. Si tout OK → on peut faire Lot 4 (swipe-to-next-live, live shopping, live battles)
+4. Si bugs → fix par session
+
+## Suggestions business
+- **Top 1** : Activer les cadeaux Mobile Money (Orange Money/Wave) — déjà partial, finir le wiring = revenu direct
+- **Top 2** : Push notif "Tel ami est en live maintenant" — boost massif des views (TikTok le fait)
+- **Top 3** : Live battle 1v1 entre 2 streamers (audience vote avec cadeaux) — viralité explosive

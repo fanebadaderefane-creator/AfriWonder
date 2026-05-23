@@ -34,6 +34,7 @@ import { LiveGiftsPanel, useGiftAnimations } from './gifts';
 import { LiveTopFansSheet } from './_liveTopFansSheet';
 import { uploadImageForLive } from '../../src/live/uploadImageForLive';
 import { LivePollStrip } from '../../src/live/LivePollStrip';
+import FloatingHeartsBurst, { type FloatingHeartsBurstHandle } from '../../src/live/FloatingHeartsBurst';
 
 type LiveCategoryRow = { id: string; name: string; icon?: string };
 
@@ -179,6 +180,23 @@ export default function LiveStreamScreen() {
   });
 
   const { animations, removeAnimation, GiftAnimationBubble, GiftFullscreenHost } = useGiftAnimations(liveId || '');
+  const hostHeartsRef = useRef<FloatingHeartsBurstHandle>(null);
+
+  /** Le host reçoit les cœurs de son audience via socket → burst côté broadcaster. */
+  useEffect(() => {
+    if (!liveId) return;
+    const handler = (data: { liveId?: string; count?: number }) => {
+      if (data?.liveId !== liveId) return;
+      const n = Math.min(8, Math.max(1, Number(data?.count || 1)));
+      for (let i = 0; i < n; i += 1) {
+        setTimeout(() => hostHeartsRef.current?.burst(), i * 100);
+      }
+    };
+    socketService.on?.('live:hearts', handler);
+    return () => {
+      socketService.off?.('live:hearts', handler);
+    };
+  }, [liveId]);
 
   const fetchTopDonors = useCallback(async (id: string) => {
     try {
@@ -1318,6 +1336,8 @@ export default function LiveStreamScreen() {
         <GiftAnimationBubble key={anim.id} gift={anim} onRemove={removeAnimation} />
       ))}
       <GiftFullscreenHost />
+      {/* Cœurs flottants que le host voit quand son audience tap pour liker. */}
+      <FloatingHeartsBurst ref={hostHeartsRef} />
 
       <LiveTopFansSheet
         liveId={liveId || ''}

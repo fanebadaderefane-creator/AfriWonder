@@ -709,6 +709,25 @@ io.on('connection', (socket) => {
   socket.on('live:leave-room', (streamId: string) => {
     if (streamId) socket.leave(`stream:${streamId}`);
   });
+
+  /**
+   * Cœurs flottants TikTok-like — relay best-effort sans persistance.
+   * Le client émet { liveId, count } quand un viewer tap pour liker.
+   * On rediffuse à tous les autres viewers du stream (sauf l'émetteur).
+   * Rate-limit côté serveur : max 30 events/min/socket (anti-spam).
+   */
+  const heartsRateLimit = new Map<string, number[]>();
+  socket.on('live:hearts', (payload: { liveId?: string; count?: number }) => {
+    const liveId = String(payload?.liveId || '').trim();
+    if (!liveId) return;
+    const count = Math.min(20, Math.max(1, Number(payload?.count || 1)));
+    const now = Date.now();
+    const arr = (heartsRateLimit.get(socket.id) || []).filter((t) => now - t < 60_000);
+    if (arr.length >= 30) return; // anti-spam
+    arr.push(now);
+    heartsRateLimit.set(socket.id, arr);
+    socket.to(`stream:${liveId}`).emit('live:hearts', { liveId, count });
+  });
 });
 
 // Export io for use in routes
