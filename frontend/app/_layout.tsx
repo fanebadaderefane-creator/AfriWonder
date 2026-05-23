@@ -28,6 +28,7 @@ import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
 import { initIncomingCallService, wireIncomingCallSocket, displayIncomingCall } from '../src/services/incomingCallService';
 import { initVoipPushService } from '../src/services/voipPushService';
+import { initLiveStartedNotifService } from '../src/services/liveStartedNotifService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
 import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils/mobileDeepLink';
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
@@ -215,6 +216,12 @@ function RootLayoutContent() {
     void initVoipPushService();
     const offIncomingSocket = wireIncomingCallSocket();
 
+    // Notif "ami en live" - écoute socket + affiche notif locale + tap = ouvre live
+    let offLiveStarted: (() => void) | null = null;
+    void initLiveStartedNotifService().then((cleanup) => {
+      offLiveStarted = cleanup;
+    });
+
     // Intercepte les push FCM/APNs `incoming_call` → réveille Notifee Android / CallKit iOS
     let offPushReceived: (() => void) | null = null;
     void notificationService
@@ -292,6 +299,7 @@ function RootLayoutContent() {
       uploadRecoveryService.stop();
       offIncomingSocket?.();
       offPushReceived?.();
+      offLiveStarted?.();
     };
   }, [loadStoredAuth, tryOpenIncomingCallFromPush]);
 

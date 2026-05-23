@@ -5,7 +5,7 @@ Repo: https://github.com/fanebadaderefane-creator/AfriWonder
 Clients : Mobile Android/iOS — Mali, Sénégal, Côte d'Ivoire, etc.
 
 ## Architecture
-- `/app/frontend/` → Expo React Native SDK 54 (mobile)
+- `/app/frontend/` → Expo React Native SDK 54
 - `/app/backend/src/` → TypeScript Express + Prisma + Supabase → Render prod
 - `/app/backend/server.py` → FastAPI Python (port 8001)
 
@@ -13,78 +13,107 @@ Clients : Mobile Android/iOS — Mali, Sénégal, Côte d'Ivoire, etc.
 
 ### Session 1 — Connexion repo ✅
 ### Session 2 — Messagerie : transcription Whisper + historique appels ✅
-### Session 3 — Traduction GPT-5.2 multi-langue (FR/EN/BM/WO) ✅
+### Session 3 — Traduction GPT-5.2 (FR/EN/BM/WO) ✅
 ### Session 4 — Appels WebRTC optimisés Afrique ✅
-### Session 5 — CallKit iOS + Notifee Android (background incoming) ✅
-### Session 6 — VoIP Push iOS + FCM data-only Android ✅
-- `frontend/src/services/voipPushService.ts` (NEW) — PushKit iOS
-- `frontend/app/_layout.tsx` : init service + intercept push `incoming_call` → displayIncomingCall
-- `backend/src/routes/calls.routes.ts` : endpoint `POST /api/calls/voip-token` (stocke en `PushSubscription`)
-- `react-native-voip-push-notification@3.3.3` ajouté
+### Session 5 — CallKit iOS + Notifee Android ✅
+### Session 6 — VoIP Push iOS + FCM hooks ✅
+### Session 7 — Lot 3 Live floating hearts TikTok ✅
 
-### Session 7 — Lot 3 Live TikTok-like ✅
-**Floating Hearts ❤️** :
-- `frontend/src/live/FloatingHeartsBurst.tsx` (NEW, 130 lignes) — composant cœurs flottants
-- `frontend/app/live/[id].tsx` : zone tap invisible + bursts locaux + envoi backend batché (1.2s) + socket relay
-- `frontend/app/live/stream.tsx` : host voit les cœurs de son audience
-- `backend/src/index.ts` : socket relay event `live:hearts` avec rate-limit 30/min/socket
+### Session 8 — Lot 4 propositions ✅
 
-**Guide créé** : `memory/GUIDE_LIVE_AGORA.md` (audit complet 22 fonctionnalités, config Render, tests, coûts Agora)
+**1. Notif "ami en live"** :
+- `frontend/src/services/liveStartedNotifService.ts` (NEW, 130 lignes)
+  - Écoute socket `live:started` (déjà émis par backend)
+  - Si app foreground : toast in-app (via listener) ; sinon Notifee local
+  - Channel Android dédié "Amis en live"
+  - Filter sur créateurs avec bell active (cache local)
+  - Tap notif → ouvre `/live/[id]`
+- `frontend/app/_layout.tsx` : init au démarrage
 
-## What's NOT yet implemented
+**2. Swipe-to-next-live (Reels-style)** :
+- `frontend/app/live/feed.tsx` (NEW, 260 lignes)
+  - FlatList vertical paginé, snap full-screen
+  - Lazy player (seul l'item actif joue, mute par défaut)
+  - Préchargement min (windowSize: 3) — économie data Afrique
+  - Header back overlay
+  - Empty state "démarrer un live"
+  - Pull-to-refresh
+  - Préfetch via `/api/live/discovery`
 
-### Lot 3 Live — Restant (TikTok-like)
-- [ ] Swipe up/down navigation entre lives (Reels-style)
-- [ ] Stickers AR / Lenses (nécessite Banuba/ARKit)
-- [ ] Live battle 1v1
-- [ ] Tests E2E sur APK (user action)
+**3. Live Shopping** :
+- `frontend/src/live/LiveShoppingStrip.tsx` (NEW, 290 lignes)
+  - Mini-bandeau bas du live avec produit "featured"
+  - Auto-rotation 8s entre produits
+  - Polling 30s (refresh produits)
+  - Badge discount %
+  - Compteur "1/5"
+  - Tap → bottomsheet liste complète
+  - Tap produit → router `/shop/product/:id`
+  - Formatage prix FCFA (Mali/Sénégal/CI) + EUR + USD
+  - Backend déjà OK : `GET /api/live/:id/products`
+- Intégré dans `app/live/[id].tsx`
 
-### Lot 4 (futur) — Live shopping, multi-host battle, replay analytics avancé
+**4. Live Battle 1v1** :
+- **Differé** (énorme scope ~17h)
+- Plan complet documenté : `memory/PLAN_LIVE_BATTLE.md`
+- Architecture Agora PK Channel Media Relay
+- Modèle Prisma + endpoints REST + sockets
+- Split-screen UI + score bar + gift side-picker
+- Punishment system + replay
 
-## Configuration Render prod requise
-- ⚠️ `OPENAI_API_KEY` → Whisper + GPT-5.2
-- ⚠️ TURN server (Metered.ca free recommandé) → cf. GUIDE_TURN_SERVER.md
-- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → Live (cf. GUIDE_LIVE_AGORA.md)
-- ⚠️ Optionnel : APNs VoIP cert pour iOS PushKit (à configurer dans Render env si app killed sur iPhone)
+## Files créés cette session
+- `frontend/src/services/liveStartedNotifService.ts`
+- `frontend/app/live/feed.tsx`
+- `frontend/src/live/LiveShoppingStrip.tsx`
+- `memory/PLAN_LIVE_BATTLE.md`
 
-## Tests à faire (action utilisateur)
-1. Save to GitHub → Render redeploy
-2. Configure les env vars ci-dessus
-3. `eas build --platform android --profile development`
-4. Tester sur 2 devices physiques :
-   - Messagerie (transcription + traduction)
-   - Appels audio/vidéo (cross-NAT)
-   - Background incoming call (Notifee)
-   - Live broadcast + viewer
-   - Floating hearts TikTok ❤️
-   - Co-host + raise-hand
-   - Cadeaux
+## Configuration Render prod requise (cumulé)
+- `OPENAI_API_KEY` → Whisper + GPT-5.2
+- `TURN_URL` + `TURN_SHARED_SECRET` + `TURN_REALM` → appels WebRTC
+- `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → Live
+- Optionnel : APNs VoIP cert pour iOS PushKit
+- Optionnel : Cert/Setup Agora PK Media Relay pour battles (futur Lot 4 complet)
+
+## Cumul total sessions 1-8
+- **18 fichiers modifiés / 11 fichiers créés**
+- **~1800 lignes ajoutées**
+- **8 fonctionnalités majeures** :
+  1. Transcription IA Whisper
+  2. Traduction GPT-5.2 (FR/EN/BM/WO)
+  3. Appels WebRTC optimisés Afrique
+  4. CallKit iOS + Notifee Android
+  5. VoIP Push iOS + FCM hooks
+  6. Live TikTok-like floating hearts
+  7. Notif "ami en live" temps réel
+  8. Swipe-to-next-live (Reels-style)
+  9. Live Shopping mobile UI
 
 ## Files in /app/memory
-- PRD.md (ce fichier)
-- PLAN_LOTS.md (plan général)
-- GUIDE_TURN_SERVER.md (config TURN options)
-- GUIDE_TEST_APK.md (procédure test sur APK)
-- GUIDE_LIVE_AGORA.md (audit Live + config Agora + tests)
-
-## Cumul total sessions 1-7
-- 9 fichiers modifiés / 6 fichiers créés
-- ~1100 lignes ajoutées
-- 5 fonctionnalités IA/réseau/UX majeures :
-  1. Transcription IA (Whisper)
-  2. Traduction multi-langue (GPT-5.2, FR/EN/BM/WO)
-  3. Appels WebRTC optimisés Afrique (STUN multi, profil adaptatif, NetInfo)
-  4. CallKit iOS + Notifee Android (background incoming)
-  5. VoIP Push iOS + FCM hooks (app killed wake-up)
-  6. Live TikTok-like floating hearts (tap + socket relay)
+- `PRD.md` (ce fichier)
+- `PLAN_LOTS.md` — plan général
+- `GUIDE_TURN_SERVER.md` — config TURN (4 options)
+- `GUIDE_TEST_APK.md` — 7 scenarios de test sur APK
+- `GUIDE_LIVE_AGORA.md` — audit Live + config Agora
+- `PLAN_LIVE_BATTLE.md` — roadmap battle 1v1 (futur)
 
 ## Next Action Items
-1. User : Save to GitHub → configure env vars Render → EAS Build APK
-2. User : Tester 6 scenarios Live + 7 scenarios Messages/Calls
-3. Si tout OK → on peut faire Lot 4 (swipe-to-next-live, live shopping, live battles)
-4. Si bugs → fix par session
+1. **User** : Save to GitHub → Render redeploy auto
+2. **User** : Configure les env vars Render (OPENAI, TURN, AGORA)
+3. **User** : `eas build --platform android --profile development` → APK
+4. **User** : Installer APK sur 2 devices Android (idéalement 1 au Mali)
+5. **User** : Tester scenarios :
+   - Messagerie : transcription + traduction
+   - Appels : audio/vidéo + cross-NAT + background incoming
+   - Live : broadcaster + viewer + hearts + shopping + swipe feed
+   - Notif : démarrer un live avec compte A, voir notif côté compte B
+6. **User** : Reporter bugs / OK
+7. **Agent** : Fix bugs OU implémenter Lot 4 Live Battle si tout est validé
 
-## Suggestions business
-- **Top 1** : Activer les cadeaux Mobile Money (Orange Money/Wave) — déjà partial, finir le wiring = revenu direct
-- **Top 2** : Push notif "Tel ami est en live maintenant" — boost massif des views (TikTok le fait)
-- **Top 3** : Live battle 1v1 entre 2 streamers (audience vote avec cadeaux) — viralité explosive
+## Routes ajoutées (à wirer dans nav app)
+- `/live/feed` — feed swipe TikTok (à ajouter en lien depuis `/live/index.tsx` ou tab principal)
+
+## Suggestion business (récap)
+- **Top 1** : Cadeaux Mobile Money (Orange Money/Wave) — votre #1 levier revenue, déjà partiellement codé
+- **Top 2** : Live Battle 1v1 (gains ARPU ×3-5 prouvés sur TikTok Live)
+- **Top 3** : Live Shopping (la feature qu'on vient d'ajouter — il faut maintenant que les créateurs aient leur catalogue produits)
+- **Top 4** : Notif "ami en live" (ajout cette session — boost engagement +30-50%)

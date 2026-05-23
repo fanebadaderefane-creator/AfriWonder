@@ -40,6 +40,7 @@ import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlacehold
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import FloatingHeartsBurst, { type FloatingHeartsBurstHandle } from '../../src/live/FloatingHeartsBurst';
+import LiveShoppingStrip from '../../src/live/LiveShoppingStrip';
 
 const { width, height } = Dimensions.get('window');
 const LIVE_REMINDER_KEY = (creatorId: string) => `afw_live_reminder_${creatorId}`;
@@ -1015,6 +1016,9 @@ export default function LiveStreamViewerScreen() {
 
         {/* Couche cœurs flottants TikTok-like (rendue au-dessus de la vidéo, sous la barre input). */}
         <FloatingHeartsBurst ref={heartsBurstRef} />
+
+        {/* Live Shopping — produits en promo pendant le live */}
+        {liveId ? <LiveShoppingStrip liveId={liveId} bottomOffset={insets.bottom} /> : null}
 
         {/* Zone tappable invisible pour déclencher les cœurs (au-dessus de la vidéo, sous le chat). */}
         <View
