@@ -93,6 +93,7 @@ const GIFT_CATEGORIES: { id: string; label: string; icon: string }[] = [
   { id: 'all', label: 'Tous', icon: '🎁' },
   { id: 'classic', label: 'Classique', icon: '🌹' },
   { id: 'african', label: 'Afrique', icon: '🦁' },
+  { id: 'animals', label: 'Animaux', icon: '🐘' },
   { id: 'culture', label: 'Culture', icon: '🇲🇱' },
   { id: 'luxury', label: 'Luxe', icon: '💎' },
   { id: 'fantasy', label: 'Fantastique', icon: '🐉' },
