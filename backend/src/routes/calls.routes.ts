@@ -21,6 +21,17 @@ function parseTurnUrls(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * STUN publics fournis aux clients en plus du TURN privé.
+ * Améliore la résilience NAT en Afrique de l'Ouest (Mali, Sénégal, Côte d'Ivoire).
+ */
+const PUBLIC_STUN_FALLBACKS = [
+  'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+  'stun:stun.cloudflare.com:3478',
+  'stun:global.stun.twilio.com:3478',
+];
+
 function createTemporaryTurnCredentials(userId: string) {
   const secret = String(process.env.TURN_SHARED_SECRET || '').trim();
   const realm = String(process.env.TURN_REALM || '').trim();
@@ -30,7 +41,15 @@ function createTemporaryTurnCredentials(userId: string) {
   const exp = Math.floor(Date.now() / 1000) + ttlSec;
   const username = `${exp}:${userId}`;
   const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
-  return { urls: urls.length === 1 ? urls[0] : urls, username, credential, expiresAt: exp * 1000, ttlSec, realm };
+  return {
+    urls,
+    username,
+    credential,
+    expiresAt: exp * 1000,
+    ttlSec,
+    realm,
+    publicStun: PUBLIC_STUN_FALLBACKS,
+  };
 }
 
 // GET /api/calls/turn-credentials - Credentials TURN temporaires (ne pas exposer VITE_TURN_CREDENTIAL côté client)
@@ -38,12 +57,27 @@ router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
   const userId = String(req.user?.id || '').trim();
   const creds = createTemporaryTurnCredentials(userId || 'anonymous');
   if (!creds) {
-    return res.status(503).json({
-      success: false,
-      error: { message: 'TURN non configuré', code: 'TURN_NOT_CONFIGURED' },
+    /**
+     * TURN non configuré : on renvoie quand même les STUN publics pour que l'appel
+     * puisse fonctionner sur réseaux ouverts (WiFi, ADSL).
+     * Sur réseaux mobiles restrictifs Afrique, l'appel échouera silencieusement —
+     * l'admin doit configurer TURN (variables TURN_URL/TURN_SHARED_SECRET/TURN_REALM).
+     */
+    return res.json({
+      success: true,
+      data: {
+        urls: [],
+        username: '',
+        credential: '',
+        expiresAt: 0,
+        ttlSec: 0,
+        realm: '',
+        publicStun: PUBLIC_STUN_FALLBACKS,
+        turnConfigured: false,
+      },
     });
   }
-  return res.json({ success: true, data: creds });
+  return res.json({ success: true, data: { ...creds, turnConfigured: true } });
 });
 
 // POST /api/calls/initiate - Initier un appel payant

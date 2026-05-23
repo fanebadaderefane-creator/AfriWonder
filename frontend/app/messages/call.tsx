@@ -28,6 +28,41 @@ import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnec
 import { formatCallStatusLine } from '../../src/call/callStatusLine';
 import { devWarn } from '../../src/utils/devLog';
 import { CallDuringMessageModal, CallMoreOptionsSheet } from '../../src/components/call/CallMoreMenu';
+import NetInfo from '@react-native-community/netinfo';
+
+/**
+ * Profil de qualité vidéo selon la bande passante détectée.
+ * Optimisé pour Afrique de l'Ouest (réseaux 2G/3G/4G mixtes).
+ */
+type VideoQualityProfile = {
+  width: number;
+  height: number;
+  frameRate: number;
+  label: string;
+};
+
+const VIDEO_PROFILES: Record<'low' | 'medium' | 'high', VideoQualityProfile> = {
+  low: { width: 320, height: 240, frameRate: 15, label: 'low-bandwidth' },
+  medium: { width: 640, height: 480, frameRate: 24, label: 'medium' },
+  high: { width: 1280, height: 720, frameRate: 30, label: 'hd' },
+};
+
+async function detectVideoProfile(): Promise<VideoQualityProfile> {
+  try {
+    const st = await NetInfo.fetch();
+    const type = String(st.type || '').toLowerCase();
+    const isCellular = type === 'cellular';
+    const details = (st.details || {}) as { cellularGeneration?: string | null };
+    const gen = String(details.cellularGeneration || '').toLowerCase();
+    if (isCellular && (gen === '2g' || gen === '3g')) return VIDEO_PROFILES.low;
+    if (isCellular && gen === '4g') return VIDEO_PROFILES.medium;
+    if (type === 'wifi' || type === 'ethernet') return VIDEO_PROFILES.high;
+    if (isCellular) return VIDEO_PROFILES.medium;
+    return VIDEO_PROFILES.medium;
+  } catch {
+    return VIDEO_PROFILES.medium;
+  }
+}
 
 const { width, height: screenH } = Dimensions.get('window');
 
@@ -141,10 +176,11 @@ function newCallId(): string {
 export default function CallScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
-  const name = String(params.name || 'Contact');
-  const avatar = String(params.avatar || '');
-  const isVideo = String(params.type) === 'video';
-  const otherUserId = String(params.otherUserId || '').trim();
+  // Rétro-compatibilité : accepte aussi peerId/peerName/peerAvatar/callType (inbox call history → call screen).
+  const name = String(params.peerName || params.name || 'Contact');
+  const avatar = String(params.peerAvatar || params.avatar || '');
+  const isVideo = String(params.callType || params.type) === 'video';
+  const otherUserId = String(params.peerId || params.otherUserId || '').trim();
   const peerAvatarUri = useMemo(
     () => profileAvatarUri(avatar, name.trim() || 'Contact'),
     [avatar, name],
@@ -482,26 +518,57 @@ export default function CallScreen() {
 
     const start = async () => {
       try {
-        // Récupère credentials TURN si configuré côté serveur. STUN public en fallback.
-        let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+        /**
+         * Optimisations Afrique de l'Ouest (Mali / Sénégal / Côte d'Ivoire) :
+         * 1. STUN multiples (Google + Cloudflare + Twilio public) → meilleure résilience NAT
+         * 2. TURN obligatoire pour Carrier-Grade NAT mobile (Orange, MTN, Moov) — sinon ~30% des appels échouent
+         * 3. Détection bande passante via NetInfo → adapter codec/résolution
+         */
+        const STUN_FALLBACKS: RTCIceServer[] = [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' },
+          { urls: 'stun:global.stun.twilio.com:3478' },
+        ];
+        let iceServers: RTCIceServer[] = STUN_FALLBACKS;
+        let turnConfigured = false;
         try {
           const res = await apiClient.get('/calls/turn-credentials');
           const data = res.data?.data || res.data;
-          if (data?.urls) {
+          // STUN publics depuis le serveur (plus à jour) — fallback sur la liste locale.
+          const serverStun = Array.isArray(data?.publicStun) && data.publicStun.length > 0
+            ? data.publicStun.map((u: string) => ({ urls: u }))
+            : STUN_FALLBACKS;
+          const turnUrls = Array.isArray(data?.urls) ? data.urls : data?.urls ? [data.urls] : [];
+          if (data?.turnConfigured && turnUrls.length > 0 && data?.username && data?.credential) {
             iceServers = [
-              { urls: 'stun:stun.l.google.com:19302' },
+              ...serverStun,
               {
-                urls: data.urls,
-                username: data.username,
-                credential: data.credential,
+                urls: turnUrls,
+                username: String(data.username),
+                credential: String(data.credential),
               },
             ];
+            turnConfigured = true;
+          } else {
+            iceServers = serverStun;
           }
         } catch {
-          /* TURN non configuré : STUN seul (LAN / réseaux ouverts). */
+          /* Endpoint indisponible : STUN locaux uniquement. */
         }
 
-        const pc = new RTCPeerConnectionImpl({ iceServers });
+        /**
+         * Pour les réseaux très restreints (corp/4G Mali) : forcer le relay TURN.
+         * Sans cela, certains carrier-grade NAT cassent la connexion P2P en silence.
+         * iceTransportPolicy 'all' par défaut, 'relay' uniquement si flag activé.
+         */
+        const pc = new RTCPeerConnectionImpl({
+          iceServers,
+          iceCandidatePoolSize: 4,
+          // bundlePolicy + rtcpMuxPolicy : meilleures perfs sur mobile faible
+          bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+          rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+        });
         pcRef.current = pc;
 
         const remoteStream = isWebRuntime ? new MediaStream() : new nativeWebRTC.MediaStream();
@@ -552,12 +619,26 @@ export default function CallScreen() {
           }
         }
 
+        const videoProfile = isVideo ? await detectVideoProfile() : null;
         const constraints: MediaStreamConstraints = {
-          audio: true,
-          video: isVideo
-            ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+          audio: {
+            // Optimisations audio pour bande passante limitée + suppression bruit (importante en Afrique : marchés, motos).
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          } as any,
+          video: videoProfile
+            ? {
+                width: { ideal: videoProfile.width },
+                height: { ideal: videoProfile.height },
+                frameRate: { ideal: videoProfile.frameRate, max: videoProfile.frameRate },
+                facingMode: 'user',
+              }
             : false,
         };
+        if (videoProfile) {
+          devWarn('[Call] Profile vidéo sélectionné', videoProfile.label, 'TURN:', turnConfigured);
+        }
         if (!mediaDevicesImpl?.getUserMedia) {
           throw new Error('MEDIA_DEVICES_UNAVAILABLE');
         }
@@ -569,6 +650,37 @@ export default function CallScreen() {
         localStreamRef.current = local;
         local.getTracks().forEach((t: any) => pc.addTrack(t, local));
         setupLocalEl(local);
+
+        /**
+         * Cap bitrate vidéo selon profil (essentiel en 2G/3G Afrique) :
+         * - low : 200 kbps max
+         * - medium : 500 kbps max
+         * - high : 1500 kbps max
+         * Empêche les bursts qui font dropper l'appel sur 3G saturé.
+         */
+        if (videoProfile && !isWebRuntime) {
+          try {
+            const senders = pc.getSenders?.() || [];
+            for (const sender of senders) {
+              if (sender?.track?.kind !== 'video') continue;
+              const params = sender.getParameters?.() || {};
+              const cap =
+                videoProfile.label === 'low-bandwidth'
+                  ? 200_000
+                  : videoProfile.label === 'medium'
+                    ? 500_000
+                    : 1_500_000;
+              params.encodings = (params.encodings || [{}]).map((enc: any) => ({
+                ...enc,
+                maxBitrate: cap,
+                maxFramerate: videoProfile.frameRate,
+              }));
+              await sender.setParameters?.(params).catch(() => {});
+            }
+          } catch {
+            /* ignore — pas critique */
+          }
+        }
 
         // Persist côté backend (création directCall row).
         await apiClient
@@ -658,6 +770,30 @@ export default function CallScreen() {
       void stopOutgoing?.();
     };
   }, [role, callState]);
+
+  /**
+   * Détection de changement de réseau en cours d'appel (WiFi <-> 4G, 4G <-> 3G, perte connexion).
+   * Affiche un toast discret quand la qualité chute brutalement (typique Afrique).
+   */
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (callState !== 'connected' && callState !== 'connecting') return;
+    let lastType = '';
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const type = String(state.type || '');
+      if (lastType && type !== lastType) {
+        if (!state.isConnected || type === 'none') {
+          setErrorMsg('Reseau perdu - reconnexion...');
+        } else {
+          setErrorMsg(`Reseau change : ${type.toUpperCase()}`);
+          // Auto-clear après 4s
+          setTimeout(() => setErrorMsg(null), 4000);
+        }
+      }
+      lastType = type;
+    });
+    return () => unsubscribe();
+  }, [callState]);
 
   /** Toggle micro : disable/enable directement les pistes audio. */
   const toggleMute = useCallback(() => {

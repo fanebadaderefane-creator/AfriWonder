@@ -2,98 +2,81 @@
 
 ## Original Problem Statement
 Repo: https://github.com/fanebadaderefane-creator/AfriWonder
+Clients : Mobile Android/iOS uniquement — Mali, Sénégal, Côte d'Ivoire, etc.
 
-Demande utilisateur :
-1. Connexion à son repo GitHub (frontend Expo + backend) — ✅ FAIT
-2. Compléter et tester pour la production : **Messagerie (Inbox)**, **Appels vidéo/vocaux**, **Live (TikTok-like)**
-
-**Clients cibles : Mobile (Android, iOS) uniquement — pas web.**
-
-## Architecture réelle (découverte)
-- `/app/frontend/` → Expo React Native SDK 54 (mobile uniquement)
-- `/app/backend/` → 2 backends coexistent :
-  - `backend/src/` → TypeScript Express + Prisma + Supabase → déployé sur **Render prod** (`afriwonder.onrender.com`)
-  - `backend/server.py` → FastAPI Python (complément mobile) → port 8001 supervisor
-- `/app/src/` → PWA Vite (non utilisé pour mobile clients)
+## Architecture
+- `/app/frontend/` → Expo React Native SDK 54 (mobile)
+- `/app/backend/src/` → TypeScript Express + Prisma + Supabase → Render prod
+- `/app/backend/server.py` → FastAPI Python (complément) — port 8001
 
 ## What's Been Implemented
 
-### Session 1 — Connexion repo
-- Repo cloné dans `/app`, `.git` et `.emergent` préservés
-- Frontend `.env` : `EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com`
-- Backend Python `.env` + dépendances installées
-- Supervisor : backend uvicorn :8001, frontend `yarn start` → `expo start --web --tunnel --port 3000`
-- Tunnel ngrok actif pour Expo Go
-- Backend Python `/api/health` → 200 OK
-- Frontend Metro bundling OK
+### Session 1 — Connexion repo ✅
+### Session 2 — Messagerie : transcription Whisper + historique appels ✅
+### Session 3 — Traduction GPT-5.2 multi-langue (FR/EN/BM/WO) ✅
 
-### Session 2 — Lot 1 Messagerie (transcription + historique appels)
+### Session 4 — Lot 2 Appels WebRTC optimisé Afrique ✅
 **Fichiers modifiés** :
-- `frontend/app/messages/[id].tsx` (+120 lignes)
-- `frontend/app/messages/index.tsx` (+205 lignes)
+- `backend/src/routes/calls.routes.ts` (+/- 30 lignes)
+- `frontend/app/messages/call.tsx` (+/- 80 lignes)
+- `memory/GUIDE_TURN_SERVER.md` (NEW)
 
-**Fonctionnalités** :
-1. ✅ Transcription IA Whisper sur vocaux (UI + appel backend)
-2. ✅ Onglet Appels = historique réel `/me/call-history`
-3. ✅ FAB Appels → picker contact
+**Améliorations backend (à pousser sur Render)** :
+1. ✅ `urls` toujours retourné en array (cohérence clients)
+2. ✅ Liste STUN publics renvoyée (publicStun) — clients toujours à jour
+3. ✅ Fallback graceful : si TURN non configuré, retourne 200 + STUN (au lieu de 503)
+4. ✅ Champ `turnConfigured: bool` pour debug
 
-### Session 3 — Traduction GPT-5.2 multi-langue
-**Fichiers créés/modifiés** :
-- `backend/src/utils/openaiTranslate.ts` (NEW) — utilitaire OpenAI Chat API
-- `backend/src/routes/messages.routes.ts` — ajout 2 routes :
-  - `GET /api/messages/translation/languages` (liste langues)
-  - `POST /api/messages/message/:id/translate` (transcrit puis traduit)
-- `frontend/app/messages/[id].tsx` — UI chips drapeaux 🇫🇷🇬🇧🇲🇱🇸🇳 sous transcription
+**Améliorations frontend mobile** :
+1. ✅ **Bug fix** : params mismatch inbox → call.tsx (peerId/peerName/peerAvatar/callType + rétro-compat)
+2. ✅ **STUN multiples** : Google ×2, Cloudflare, Twilio public (résilience NAT)
+3. ✅ **Détection bande passante** via NetInfo (`@react-native-community/netinfo`)
+4. ✅ **Profil vidéo adaptatif** :
+   - 2G/3G mobile → 320x240 @ 15fps, max 200 kbps
+   - 4G mobile → 640x480 @ 24fps, max 500 kbps
+   - WiFi → 1280x720 @ 30fps, max 1.5 Mbps
+5. ✅ **Cap bitrate** appliqué via `RTCRtpSender.setParameters()` (évite bursts qui dropent en 3G)
+6. ✅ **Audio amélioré** : echoCancellation + noiseSuppression + autoGainControl (marchés, motos)
+7. ✅ **bundlePolicy max-bundle + rtcpMuxPolicy require** (moins de ports — meilleur sur restrict carrier-grade NAT)
+8. ✅ **iceCandidatePoolSize: 4** — connexion plus rapide
+9. ✅ **Détection changement réseau** en cours d'appel (WiFi ↔ 4G handover) avec notification
+10. ✅ **Toast erreur réseau** auto-clear après 4s
 
-**Détails traduction** :
-- Modèle : `gpt-5.2` (OpenAI) via `OPENAI_API_KEY`
-- Langues : Français (fr), Anglais (en), Bambara (bm), Wolof (wo)
-- Prompt système optimisé pour low-resource languages (Bambara/Wolof orthographe latine)
-- Conserve noms propres, ton, registre
-- Cap 4000 chars en entrée, 8000 en sortie
-- Affichage : zone violette sous transcription orange (couleurs distinctes)
+**Documentation** :
+- `memory/GUIDE_TURN_SERVER.md` : 4 options (Metered free, Twilio, Coturn DO, Xirsys) + variables Render à ajouter + tests
 
 ## What's NOT yet implemented
 
-### Lot 1 Messagerie — finition restante
-- [ ] Audit `requests.tsx` (DM Requests)
-- [ ] Audit `new-group.tsx` (création groupes)
-- [ ] Audit groupes : `app/messages/[id].tsx` route group → mêmes features
-- [ ] Push notifications messagerie
-- [ ] Tests E2E avec compte réel (besoin identifiants)
+### Lot 2 Appels — Reste
+- [ ] CallKit iOS (incoming call native UI) — nécessite `react-native-callkeep`
+- [ ] Notifee + FCM Android (incoming call full-screen)
+- [ ] Background killed app : wake-up via push to receive call
+- [ ] Group calls multi-party (>2 personnes) — actuellement 1-1 uniquement
+- [ ] Recording d'appel (optionnel, légal selon pays)
 
-### Lot 2 — Appels Audio/Vidéo WebRTC
-- [ ] Audit `app/messages/call.tsx` (1444 lignes existantes)
-- [ ] TURN server (Twilio/Metered/Xirsys)
-- [ ] CallKit iOS / Notifee FCM Android pour incoming calls
-- [ ] Tests E2E 2 devices
-
-### Lot 3 — Live Streaming Agora
+### Lot 3 — Live Streaming Agora (TikTok-like)
 - [ ] Audit 9 écrans `app/live/*`
 - [ ] Config `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` sur Render
 - [ ] Tests broadcast + viewing
 
 ### Lot 4 — Live Cadeaux / Multi-host / Replay
-- [ ] Gifts catalog UI complète
-- [ ] Multi-host approval flow
-- [ ] Replay chat sync
-- [ ] Analytics créateur
 
 ## Configuration Render prod requise (action utilisateur)
-- ⚠️ **`OPENAI_API_KEY`** → pour Whisper transcription ET GPT-5.2 traduction
-- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → pour Live (Lot 3)
-- ⚠️ TURN server creds (`TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`) → pour appels (Lot 2)
+- ⚠️ **`OPENAI_API_KEY`** → Whisper + GPT-5.2 (déjà demandé)
+- ⚠️ **TURN server** (4 options dans `GUIDE_TURN_SERVER.md`, gratuit possible via Metered.ca) :
+  - `TURN_URL` (comma-separated URLs avec ports + transports)
+  - `TURN_SHARED_SECRET`
+  - `TURN_REALM`
+  - `TURN_CREDENTIAL_TTL_SEC` (optionnel, default 3600)
+- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → Live (Lot 3)
 
-## Tests requis (besoin de l'utilisateur)
-- Identifiants test sur `afriwonder.onrender.com` (2 comptes pour tester chat/calls 1-1)
-
-## Notes critiques
-- `react-native-agora`, `react-native-webrtc`, `react-native-vision-camera` **ne fonctionnent PAS sur Expo Go**
-- Test natif obligatoire = EAS Build dev-client
-- Pour déployer : "Save to GitHub" → Render auto-redeploy + nouveau EAS Build
+## Tests requis
+- 2 comptes test sur Render prod
+- 2 devices physiques (1 en France + 1 au Mali via 4G idéal)
 
 ## Next Action Items
-1. Utilisateur push to GitHub → Render redeploy (pour activer endpoints translate)
-2. Utilisateur configure `OPENAI_API_KEY` sur Render
-3. Utilisateur fournit identifiants test
-4. Continuer Lot 2 (Appels WebRTC) puis Lot 3 (Live Agora)
+1. User push to GitHub → Render redeploy
+2. User configure `OPENAI_API_KEY` + TURN sur Render
+3. User fait EAS Build dev-client Android + installe APK
+4. User teste appels sur 2 devices
+5. Je passe au **Lot 3 (Live Agora)**
