@@ -1,50 +1,93 @@
 # AfriWonder - PRD & Setup Memory
 
 ## Original Problem Statement
-> "voici mon repot github essayer de te connecté avec mon frontend exact et mon backend exacte mobile dossier frontend mobile expo react native..."
-> Repo: https://github.com/fanebadaderefane-creator/AfriWonder
+Repo: https://github.com/fanebadaderefane-creator/AfriWonder
 
-## Goal
-Connect Emergent preview environment to the user's real existing AfriWonder project:
-- Mobile Frontend (Expo React Native, SDK 54) → runnable in preview (web) + Expo Go tunnel
-- Backend → use existing production backend already deployed at https://afriwonder.onrender.com (no local setup needed for now)
+Demande utilisateur :
+1. Connexion à son repo GitHub (frontend Expo + backend) — ✅ FAIT
+2. Compléter et tester pour la production : **Messagerie (Inbox)**, **Appels vidéo/vocaux**, **Live (TikTok-like)**
 
-## Architecture
-- `/app/frontend/` → Expo React Native app (expo-router, SDK 54)
-  - Web mode: served on port 3000 via supervisor (`yarn start` → `expo start --web --tunnel --port 3000`)
-  - Tunnel mode: ngrok tunnel exposes the dev server publicly for Expo Go on phone
-  - Points to production backend: `EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com`
-- `/app/backend/` → FastAPI Python (mobile-specific complementary APIs: messaging, wallet, etc.)
-  - Runs on port 8001 via supervisor
-  - Uses local MongoDB
-- Existing production backend on Render (Node.js Express + Prisma + Supabase) → real API
+**Clients cibles : Mobile (Android, iOS) uniquement — pas web.**
 
-## What's Been Implemented (May 23, 2026)
-- ✅ Cloned full AfriWonder monorepo into `/app`
-- ✅ Configured `/app/backend/.env` (local Mongo + JWT secret)
-- ✅ Configured `/app/frontend/.env` with `EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com`
-- ✅ Installed Python deps (FastAPI, Motor, python-socketio, ...)
-- ✅ Installed Node deps via yarn (Expo SDK 54, React Native, expo-router, ~74 deps)
-- ✅ Backend running on :8001 (verified `/api/health` returns 200)
-- ✅ Frontend Metro running on :3000 (Web bundle compiled, 2599 modules)
-- ✅ Ngrok tunnel active: `qk3mbp0-anonymous-3000.exp.direct` (for Expo Go on phone)
-- ✅ Modified `package.json`: `"start": "EXPO_NO_TELEMETRY=1 expo start --web --tunnel --port 3000"`
+## Architecture réelle (découverte)
+- `/app/frontend/` → Expo React Native SDK 54 (mobile uniquement)
+- `/app/backend/` → 2 backends coexistent :
+  - `backend/src/` → TypeScript Express + Prisma + Supabase → déployé sur **Render prod** (`afriwonder.onrender.com`)
+  - `backend/server.py` → FastAPI Python (complément mobile : messaging local, wallet, lives) → port 8001 supervisor
+- `/app/src/` → PWA Vite (non utilisé pour mobile clients)
 
-## Access URLs
-- **Web preview**: https://8aa9b04a-6536-44d3-a9f5-f6d8bae82239.preview.emergentagent.com (Expo web)
-- **Expo Go on phone**: `exp://qk3mbp0-anonymous-3000.exp.direct` (tunnel URL — peut changer si Metro redémarre)
-- **Local backend API**: http://localhost:8001/api/* (mobile-specific endpoints)
-- **Production backend** (used by app): https://afriwonder.onrender.com/api/*
+## What's Been Implemented (Sessions cumulées)
+
+### Session 1 (2026-05-23) — Connexion repo
+- Repo cloné dans `/app`, `.git` et `.emergent` préservés
+- Frontend `.env` : `EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com`
+- Backend Python `.env` + dépendances installées
+- Supervisor : backend uvicorn :8001, frontend `yarn start` → `expo start --web --tunnel --port 3000`
+- Tunnel ngrok actif pour Expo Go (URL change à chaque restart Metro)
+- Backend Python `/api/health` → 200 OK
+- Frontend Metro bundling OK (2599 modules)
+
+### Session 2 (2026-05-23) — Lot 1 Messagerie (partiel)
+**Fichiers modifiés** : 
+- `frontend/app/messages/[id].tsx` (+120 lignes)
+- `frontend/app/messages/index.tsx` (+205 lignes)
+
+**Fonctionnalités ajoutées** :
+1. ✅ **Transcription IA des notes vocales (Whisper)**
+   - Long-press sur message vocal → "Transcrire (IA)" dans context menu
+   - Appel `POST /messages/message/:id/transcribe` (backend existant)
+   - Affichage texte transcrit sous bulle vocale (icône ✨ orange)
+   - Indicateur loading "Transcription en cours..."
+   - Bouton "Voir la transcription" si déjà transcrit
+2. ✅ **Onglet Appels — Historique réel**
+   - `GET /me/call-history` (DM + groupes)
+   - Liste avec avatar, nom, flèche in/out, badge missed rouge
+   - Format temps : "il y a Xh · 14:32 · 2min 15s"
+   - Tap row ou bouton callback pour rappeler (audio/vidéo)
+   - Refresh control
+3. ✅ **FAB Appels** → ouvre picker contact pour nouveau call (au lieu d'alert)
+
+## What's NOT yet implemented (Lots restants)
+
+### Lot 1 Messagerie — finition restante
+- [ ] Vérifier le mode ephemeral (disparition auto) UI complète
+- [ ] Tester E2E avec compte réel (besoin identifiants)
+- [ ] Audit `requests.tsx` (DM Requests)
+- [ ] Audit `new-group.tsx` (création groupes)
+- [ ] Push notifications messagerie
+
+### Lot 2 — Appels Audio/Vidéo WebRTC
+- [ ] Audit `app/messages/call.tsx` (1444 lignes existantes)
+- [ ] TURN server (Twilio/Metered/Xirsys)
+- [ ] CallKit iOS / Notifee FCM Android pour incoming calls
+- [ ] Tests E2E 2 devices
+
+### Lot 3 — Live Streaming Agora (TikTok-like)
+- [ ] Audit 9 écrans `app/live/*` + 30 utilitaires `src/live/*`
+- [ ] Config `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` sur Render
+- [ ] Tests broadcast + viewing
+
+### Lot 4 — Live Cadeaux / Multi-host / Replay
+- [ ] Gifts catalog UI (déjà codé `src/live/extendedGiftCatalog.ts`)
+- [ ] Raise-hand → multi-host approval
+- [ ] Replay avec chat synchronisé
+- [ ] Analytics créateur
+
+## Configuration Render prod requise (action utilisateur)
+- ⚠️ `OPENAI_API_KEY` → pour transcription Whisper
+- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → pour Live
+- ⚠️ TURN server creds (`TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`) → pour appels WebRTC
+
+## Tests requis (besoin de l'utilisateur)
+- Identifiants test sur `afriwonder.onrender.com` (2 comptes pour tester chat/calls 1-1)
+- OU autoriser la création de comptes test via `/api/proxy/auth/register`
+
+## Notes critiques
+- `react-native-agora`, `react-native-webrtc`, `react-native-vision-camera` **ne fonctionnent PAS sur Expo Go**
+- Test en natif obligatoire = EAS Build dev-client
+- Pour deployer les changements mobile : "Save to GitHub" → trigger Render redeploy (uniquement si backend modifié) + nouveau EAS Build pour APK
 
 ## Next Action Items
-- Awaiting user's next instructions (the user said "une fois realiser je vais te dire quoi faire par la suite")
-- If Expo Go tunnel URL changes after restart, re-extract from `curl http://localhost:3000/ -H "Expo-Platform: ios" | jq .extra.expoClient.hostUri`
-
-## Backlog / Future Improvements (P2)
-- Add a small landing page at root that displays the QR code + tunnel URL for easier Expo Go onboarding
-- Wire backend Python (port 8001) endpoints into the mobile app (if needed) — currently the app primarily talks to production Render backend
-
-## Notes
-- The repo is a large monorepo (web `src/`, mobile `frontend/`, backend `backend/`, flutter `flutter_app/`, etc.). We only run the mobile `frontend/` + Python `backend/`.
-- First Web bundle compile takes ~60s due to size (2599 modules).
-- Tunnel URL changes on Metro restart (typical for free ngrok via `@expo/ngrok`).
+1. Utilisateur configure `OPENAI_API_KEY` sur Render
+2. Utilisateur fournit identifiants test ou autorise création test accounts
+3. Continuer Lot 2 (Appels WebRTC) puis Lot 3 (Live Agora)
