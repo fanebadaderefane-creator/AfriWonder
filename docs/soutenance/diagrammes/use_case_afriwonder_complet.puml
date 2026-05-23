@@ -1,0 +1,268 @@
+@startuml AfriWonder_Cas_utilisation_complet
+' Généré à partir du backend Express (backend/src/app.ts + routes).
+' Copier-coller dans https://www.plantuml.com/plantuml ou extension IDE PlantUML.
+' Astuce : si trop large, découper par commentaires @startuml/@enduml ci-dessous (packages séparés).
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #FEFECE
+  BorderColor #4A4A4A
+}
+
+title Diagramme de cas d'utilisation — AfriWonder (recensement code backend)
+
+actor "Visiteur" as ActVisitor
+actor "Utilisateur" as ActUser
+actor "Créateur / vendeur contenu" as ActCreator
+actor "Marchand (seller)" as ActSeller
+actor "Prestataire de service" as ActProvider
+actor "Chauffeur / livreur" as ActDriver
+actor "Star (appels payants)" as ActStar
+actor "Développeur mini-app" as ActDev
+actor "Administrateur" as ActAdmin
+actor "Modérateur" as ActMod
+
+rectangle "Système AfriWonder" {
+
+  package "Compte, identité et profil" as P_ACCOUNT {
+    usecase "S'inscrire, se connecter, OAuth, reset mot de passe" as UC_AUTH
+    usecase "Gérer profil, préférences, compte (me)" as UC_ME
+    usecase "Gérer carnet d'adresses" as UC_ADDR
+    usecase "Paramètres confidentialité et données" as UC_PRIV
+    usecase "Vérification d'identité (KYC)" as UC_VERIF
+    usecase "Early access / liste d'attente" as UC_EARLY
+  }
+
+  package "Social, feed et média" as P_SOCIAL {
+    usecase "Consulter feed vidéo et recommandations" as UC_FEED
+    usecase "Publier, éditer, supprimer vidéos ; upload médias" as UC_VIDEO
+    usecase "Liker, commenter, sauvegarder, historique de vues" as UC_ENGAGE
+    usecase "Stories et posts sociaux" as UC_STORIES
+    usecase "Playlists et musique" as UC_PLAY
+    usecase "Découvrir utilisateurs, amis, recherche" as UC_SOCIAL_GRAPH
+    usecase "Notifications in-app et push" as UC_NOTIF
+    usecase "Modération de contenu (signalements)" as UC_MODREQ
+  }
+
+  package "Live et monétisation créateur" as P_LIVE {
+    usecase "Lancer / rejoindre live streaming" as UC_LIVE
+    usecase "Live commerce" as UC_LIVECOM
+    usecase "Tableau de bord créateur et analytics" as UC_CREATOR_DASH
+    usecase "Abonnements créateur, soutien, brand deals" as UC_CREATOR_MON
+    usecase "Marketplace créateur (goods/services)" as UC_CREATOR_MKT
+    usecase "Leaderboard, gamification, défis, badges" as UC_GAME
+  }
+
+  package "Marketplace e-commerce" as P_MKT {
+    usecase "Parcourir produits, recherche, filtres, comparateur" as UC_CATALOG
+    usecase "Panier, commandes, avis, wishlist" as UC_ORDER_FLOW
+    usecase "Litiges, retours, remboursements, expéditions" as UC_POST_SALES
+    usecase "Abonnement vendeur marketplace" as UC_MKT_SUB
+    usecase "Profil vendeur et commissions" as UC_SELLER_PROF
+    usecase "Achats groupés, covoiturage commandes" as UC_GROUP
+  }
+
+  package "Finance et wallet" as P_WALLET {
+    usecase "Wallet : solde, recharge, retraits" as UC_WALLET
+    usecase "Paiements (Stripe, mobile money, passerelles)" as UC_PAY
+    usecase "Webhooks paiement et traçabilité" as UC_PAY_WH
+    usecase "Pièces (coins), commissions, demandes de paiement" as UC_COINS
+    usecase "Microcrédit, épargne, tontines" as UC_FIN_INCL
+    usecase "Cartes virtuelles, factures utilitaires, airtime" as UC_UTIL_PAY
+    usecase "Abonnements plateforme et donations plateforme" as UC_PLATFORM_PAY
+  }
+
+  package "Messagerie et communication" as P_MSG {
+    usecase "Messagerie instantanée (rooms, threads)" as UC_MSG
+    usecase "Chiffrement E2EE (clés, sessions)" as UC_E2EE
+    usecase "Appels audio/vidéo et appels de groupe" as UC_CALLS
+    usecase "Stickers et enrichissement messages" as UC_STICK
+  }
+
+  package "Stars — appels vidéo payants" as P_STARS {
+    usecase "Réserver / passer appel vidéo payant avec une Star" as UC_STAR_CALL
+    usecase "Profil Star et tarification" as UC_STAR_PROF
+  }
+
+  package "Super-app : mobilité, food, billetterie" as P_SUPER {
+    usecase "Courses VTC, chauffeurs, partage de trajet" as UC_RIDE
+    usecase "Billets bus, hôtels, alertes voyage" as UC_TRAVEL
+    usecase "Restaurants, commandes food" as UC_FOOD
+    usecase "Billets événements" as UC_TICKETS
+    usecase "Carte / lieux (map-places)" as UC_MAP
+  }
+
+  package "Services locaux et réservations" as P_SVC {
+    usecase "Annuaire prestataires et prise de RDV" as UC_BOOK
+    usecase "Avis et litiges prestations, reversements" as UC_SVC_REV
+    usecase "Services publics référencés" as UC_PUB_SVC
+  }
+
+  package "Santé (télémédecine si activé)" as P_HEALTH {
+    usecase "Médecins, rendez-vous, pharmacies" as UC_HEALTH
+  }
+
+  package "Immobilier et assurance" as P_PROP {
+    usecase "Annonces immobilières" as UC_PROP
+    usecase "Assurance (module dédié)" as UC_INS
+  }
+
+  package "Emploi, formation, civique" as P_EDU {
+    usecase "Offres d'emploi et candidatures" as UC_JOBS
+    usecase "Formations, cours, certificats" as UC_COURSES
+    usecase "Communautés, événements, défis" as UC_COMM
+    usecase "Civic / engagement citoyen" as UC_CIVIC
+    usecase "Crowdfunding" as UC_CROWD
+    usecase "Actualités et publication d'articles" as UC_NEWS
+  }
+
+  package "IA, recherche et internationalisation" as P_AI {
+    usecase "Recherche globale et recommandations" as UC_SEARCH
+    usecase "Traduction multilingue" as UC_TR
+    usecase "Chatbot et assistance IA (routes /ai)" as UC_AI
+    usecase "Cloud stockage (module cloud)" as UC_CLOUD
+    usecase "Matching (centre de matching)" as UC_MATCH
+  }
+
+  package "Publicité et pages pro" as P_ADS {
+    usecase "Campagnes publicitaires" as UC_ADS
+    usecase "Page entreprise / business page" as UC_BIZ
+  }
+
+  package "Mini-apps et écosystème développeurs" as P_MINI {
+    usecase "Catalogue et runtime mini-apps" as UC_MINI
+    usecase "Portail développeur, API publique" as UC_DEV
+  }
+
+  package "Support, légal et plateforme" as P_SUPPORT {
+    usecase "Tickets support et retours utilisateurs" as UC_SUP
+    usecase "Pages légales, conformité" as UC_LEGAL
+    usecase "Télémétrie analytics (usage produit)" as UC_ANALYTICS
+  }
+
+  package "Administration système" as P_ADMIN {
+    usecase "Admin général (users, config)" as UC_ADMIN
+    usecase "Admin super-app (KPI modules)" as UC_ADMIN_SA
+    usecase "Admin Stars et modération avancée" as UC_ADMIN_STAR
+    usecase "Moteur IA admin et business intelligence" as UC_ADMIN_BI
+    usecase "Proxy médias sécurisé (anti-SSRF)" as UC_PROXY
+  }
+}
+
+' --- Liens acteurs → cas (lecture rapide du périmètre) ---
+
+ActVisitor --> UC_AUTH
+ActVisitor --> UC_FEED
+
+ActUser --> UC_AUTH
+ActUser --> UC_ME
+ActUser --> UC_ADDR
+ActUser --> UC_PRIV
+ActUser --> UC_VERIF
+ActUser --> UC_EARLY
+ActUser --> UC_FEED
+ActUser --> UC_VIDEO
+ActUser --> UC_ENGAGE
+ActUser --> UC_STORIES
+ActUser --> UC_PLAY
+ActUser --> UC_SOCIAL_GRAPH
+ActUser --> UC_NOTIF
+ActUser --> UC_LIVE
+ActUser --> UC_LIVECOM
+ActUser --> UC_CREATOR_MON
+ActUser --> UC_CREATOR_MKT
+ActUser --> UC_GAME
+ActUser --> UC_CATALOG
+ActUser --> UC_ORDER_FLOW
+ActUser --> UC_GROUP
+ActUser --> UC_WALLET
+ActUser --> UC_PAY
+ActUser --> UC_COINS
+ActUser --> UC_FIN_INCL
+ActUser --> UC_UTIL_PAY
+ActUser --> UC_PLATFORM_PAY
+ActUser --> UC_MSG
+ActUser --> UC_E2EE
+ActUser --> UC_CALLS
+ActUser --> UC_STICK
+ActUser --> UC_RIDE
+ActUser --> UC_TRAVEL
+ActUser --> UC_FOOD
+ActUser --> UC_TICKETS
+ActUser --> UC_MAP
+ActUser --> UC_BOOK
+ActUser --> UC_SVC_REV
+ActUser --> UC_PUB_SVC
+ActUser --> UC_HEALTH
+ActUser --> UC_PROP
+ActUser --> UC_INS
+ActUser --> UC_JOBS
+ActUser --> UC_COURSES
+ActUser --> UC_COMM
+ActUser --> UC_CIVIC
+ActUser --> UC_CROWD
+ActUser --> UC_NEWS
+ActUser --> UC_SEARCH
+ActUser --> UC_TR
+ActUser --> UC_AI
+ActUser --> UC_CLOUD
+ActUser --> UC_MATCH
+ActUser --> UC_ADS
+ActUser --> UC_BIZ
+ActUser --> UC_MINI
+ActUser --> UC_SUP
+ActUser --> UC_LEGAL
+
+ActCreator --> UC_VIDEO
+ActCreator --> UC_LIVE
+ActCreator --> UC_LIVECOM
+ActCreator --> UC_CREATOR_DASH
+ActCreator --> UC_CREATOR_MON
+ActCreator --> UC_CREATOR_MKT
+ActCreator --> UC_STORIES
+ActCreator --> UC_FEED
+
+ActSeller --> UC_ORDER_FLOW
+ActSeller --> UC_POST_SALES
+ActSeller --> UC_MKT_SUB
+ActSeller --> UC_SELLER_PROF
+ActSeller --> UC_CATALOG
+
+ActProvider --> UC_BOOK
+ActProvider --> UC_SVC_REV
+
+ActDriver --> UC_RIDE
+
+ActStar --> UC_STAR_CALL
+ActStar --> UC_STAR_PROF
+
+ActDev --> UC_MINI
+ActDev --> UC_DEV
+
+ActMod --> UC_MODREQ
+ActMod --> UC_ADMIN
+
+ActAdmin --> UC_ADMIN
+ActAdmin --> UC_ADMIN_SA
+ActAdmin --> UC_ADMIN_STAR
+ActAdmin --> UC_ADMIN_BI
+ActAdmin --> UC_PROXY
+ActAdmin --> UC_MODREQ
+ActAdmin --> UC_PAY_WH
+
+note bottom of P_ADMIN
+  Routes types : /api/admin, /api/admin/super-app,
+  /api/admin/stars, /api/admin/ai-engine,
+  /api/admin/business-intelligence
+end note
+
+note bottom of P_WALLET
+  Routes types : /api/wallet, /api/payments,
+  /api/coins, /api/microcredit, /api/tontines,
+  /api/savings, /api/virtual-cards, /api/utility-bills,
+  /api/airtime, /api/bills, /api/payment-request
+end note
+
+@enduml

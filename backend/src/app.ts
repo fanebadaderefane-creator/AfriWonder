@@ -239,6 +239,8 @@ const corsOptions: cors.CorsOptions = {
     'X-Device-Id',
     /** Client Expo / PWA — alertes de connexion (`frontend/src/api/client.ts`) */
     'X-AFW-Device-Id',
+    /** POST multipart / JSON création vidéo & reprises upload (`frontend/app/(tabs)/create.tsx`, routes `videos`) */
+    'Idempotency-Key',
     'X-Requested-With',
     'X-Webhook-Secret',
     'X-Payment-Webhook-Secret',

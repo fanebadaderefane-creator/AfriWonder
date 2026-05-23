@@ -233,6 +233,8 @@ const MAX_TTFF_SENT_KEYS = 4000;
 export interface VideoItemProps {
   video: Video;
   isActive: boolean;
+  /** Pour invalider le memo quand la session s’hydrate (web : feed avant `loadStoredAuth`). */
+  isAuthenticated: boolean;
   /** Hauteur d’une page du feed (doit matcher snapToInterval / getItemLayout). */
   slideHeight?: number;
   onLike: () => void;
@@ -1244,6 +1246,7 @@ const VideoItemImpl: React.FC<VideoItemProps> = (props) => {
  */
 const VideoItem = React.memo(VideoItemImpl, (prev, next) => {
   if (prev.video.id !== next.video.id) return false;
+  if (prev.isAuthenticated !== next.isAuthenticated) return false;
   if (prev.video.videoUrl !== next.video.videoUrl) return false;
   if (prev.video.mediaType !== next.video.mediaType) return false;
   if (prev.isActive !== next.isActive) return false;
@@ -2543,6 +2546,13 @@ export default function FeedScreen(props?: {
       normalized === 'liker' || normalized === 'commenter' || normalized === 'réagir'
         ? "Connectez-vous d'abord pour liker ou commenter."
         : `Connectez-vous d'abord pour ${action}.`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const goLogin = window.confirm(`${message}\n\nVoulez-vous vous connecter maintenant ?`);
+      if (goLogin) {
+        router.push({ pathname: '/(auth)/login', params: { returnTo: '/(tabs)' } });
+      }
+      return;
+    }
     Alert.alert('Connexion requise', message, [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -3389,6 +3399,7 @@ export default function FeedScreen(props?: {
               <VideoItem
                 video={item}
                 slideHeight={feedItemHeight}
+                isAuthenticated={isAuthenticated}
                 isActive={playbackAllowed && item.id === activeVideoId}
                 onLike={() => handleLike(item.id)}
                 onDoubleTapLike={() => handleDoubleTapLike(item.id)}
@@ -3517,6 +3528,7 @@ export default function FeedScreen(props?: {
               <VideoItem
                 video={item}
                 slideHeight={feedItemHeight}
+                isAuthenticated={isAuthenticated}
                 isActive={playbackAllowed && item.id === activeVideoId}
                 onLike={() => handleLike(item.id)}
                 onDoubleTapLike={() => handleDoubleTapLike(item.id)}

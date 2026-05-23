@@ -51,8 +51,8 @@ NODE_ENV=development
 # ============================================
 # CORS
 # ============================================
-# URL du frontend (pour développement)
-CORS_ORIGIN=http://localhost:5173
+# PWA + Expo web (Metro) — ports typiques 5173 / 8081 / 8082
+CORS_ORIGIN=http://localhost:5173,http://localhost:8081,http://localhost:8082
 
 # ============================================
 # SUPABASE API

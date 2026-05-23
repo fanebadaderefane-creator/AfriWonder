@@ -47,8 +47,9 @@ API_GENERAL_RATE_LIMIT_MAX=100
 # ============================================
 # CORS
 # ============================================
-# URL du frontend (pour développement)
-CORS_ORIGIN=http://localhost:5173
+# PWA (Vite) + Expo web (Metro, souvent :8081 ou :8082). Séparer par des virgules.
+# Même si vous n’indiquez que 5173, l’API merge des origines localhost par défaut (voir app.ts).
+CORS_ORIGIN=http://localhost:5173,http://localhost:8081,http://localhost:8082
 
 # ============================================
 # EMAIL (SendGrid)

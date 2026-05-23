@@ -2,7 +2,7 @@
   "expo": {
     "name": "AfriWonder",
     "slug": "afriwonder",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "afriwonder",
@@ -31,7 +31,7 @@
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 7,
+      "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"

@@ -20,7 +20,9 @@
     "quality": "npm run verify",
     "standards:mobile": "npm run verify",
     "eas:android:preview": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile preview",
-    "eas:android:production": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile production"
+    "eas:android:production": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile production",
+    "android:aab:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/android-bundle-release-windows.ps1",
+    "android:windows:defender-exclude": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/defender-exclude-frontend-folder.ps1"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",
