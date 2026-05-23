@@ -26,6 +26,7 @@ import {
 import { startBackendWarmupAtBoot } from '../src/api/backendWarmup';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
+import { initIncomingCallService, wireIncomingCallSocket } from '../src/services/incomingCallService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
 import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils/mobileDeepLink';
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
@@ -208,6 +209,9 @@ function RootLayoutContent() {
     void notificationService.initialize();
     const offlineSyncCleanup = offlineActionSyncService.initAutoFlush();
     uploadRecoveryService.start();
+    // CallKit iOS + Notifee Android pour appels entrants en background
+    void initIncomingCallService();
+    const offIncomingSocket = wireIncomingCallSocket();
     void Linking.getInitialURL().then((url) => handleIncomingUrl(url));
 
     let subscription: { remove: () => void } | null = null;
@@ -262,6 +266,7 @@ function RootLayoutContent() {
       urlSubscription.remove();
       offlineSyncCleanup?.();
       uploadRecoveryService.stop();
+      offIncomingSocket?.();
     };
   }, [loadStoredAuth, tryOpenIncomingCallFromPush]);
 
