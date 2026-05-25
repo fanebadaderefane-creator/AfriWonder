@@ -39,6 +39,8 @@ import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import FloatingHeartsBurst, { type FloatingHeartsBurstHandle } from '../../src/live/FloatingHeartsBurst';
+import LiveShoppingStrip from '../../src/live/LiveShoppingStrip';
 
 const { width, height } = Dimensions.get('window');
 const LIVE_REMINDER_KEY = (creatorId: string) => `afw_live_reminder_${creatorId}`;
@@ -163,6 +165,53 @@ export default function LiveStreamViewerScreen() {
   const [showCaptions, setShowCaptions] = useState(true);
   const chatTimesRef = useRef<number[]>([]);
   const reactionCooldownRef = useRef(0);
+  const heartsBurstRef = useRef<FloatingHeartsBurstHandle>(null);
+  const likeBatchRef = useRef<{ count: number; flushTimer: NodeJS.Timeout | null }>({ count: 0, flushTimer: null });
+
+  /** Tap sur la vidéo live = cœur flottant + batch d'envoi de likes au backend. */
+  const onLiveTap = useCallback(
+    (evt: { nativeEvent: { locationX: number; locationY: number } }) => {
+      const x = evt?.nativeEvent?.locationX ?? Math.random() * 80;
+      const y = evt?.nativeEvent?.locationY ?? 200;
+      heartsBurstRef.current?.burst(x, y);
+      if (!liveId) return;
+      // Batch : on accumule les taps puis envoie au plus toutes les 1.2s pour épargner le backend
+      likeBatchRef.current.count += 1;
+      if (likeBatchRef.current.flushTimer) return;
+      likeBatchRef.current.flushTimer = setTimeout(() => {
+        const burstCount = likeBatchRef.current.count;
+        likeBatchRef.current.count = 0;
+        likeBatchRef.current.flushTimer = null;
+        if (burstCount <= 0) return;
+        void apiClient
+          .post(`/live/${encodeURIComponent(liveId)}/like`, { count: burstCount })
+          .catch(() => {});
+        // Émet aussi via socket pour que les autres viewers voient des cœurs (best-effort)
+        try {
+          socketService.emit?.('live:hearts', { liveId, count: burstCount });
+        } catch {
+          /* ignore */
+        }
+      }, 1200);
+    },
+    [liveId],
+  );
+
+  /** Reçoit les cœurs des autres viewers via socket → burst depuis bord droit. */
+  useEffect(() => {
+    if (!liveId) return;
+    const handler = (data: { liveId?: string; count?: number }) => {
+      if (data?.liveId !== liveId) return;
+      const n = Math.min(8, Math.max(1, Number(data?.count || 1)));
+      for (let i = 0; i < n; i += 1) {
+        setTimeout(() => heartsBurstRef.current?.burst(), i * 90);
+      }
+    };
+    socketService.on?.('live:hearts', handler);
+    return () => {
+      socketService.off?.('live:hearts', handler);
+    };
+  }, [liveId]);
 
   const { animations, removeAnimation, GiftAnimationBubble, GiftFullscreenHost } = useGiftAnimations(liveId || '');
 
@@ -965,6 +1014,21 @@ export default function LiveStreamViewerScreen() {
           </View>
         ) : null}
 
+        {/* Couche cœurs flottants TikTok-like (rendue au-dessus de la vidéo, sous la barre input). */}
+        <FloatingHeartsBurst ref={heartsBurstRef} />
+
+        {/* Live Shopping — produits en promo pendant le live */}
+        {liveId ? <LiveShoppingStrip liveId={liveId} bottomOffset={insets.bottom} /> : null}
+
+        {/* Zone tappable invisible pour déclencher les cœurs (au-dessus de la vidéo, sous le chat). */}
+        <View
+          style={styles.heartTapZone}
+          pointerEvents="box-only"
+          onStartShouldSetResponder={() => true}
+          onResponderRelease={(evt) => onLiveTap(evt as any)}
+          testID="live-heart-tap-zone"
+        />
+
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + Spacing.sm }]}>
           <View style={{ flex: 1 }}>
             <TextInput
@@ -1341,6 +1405,14 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
   },
   giftsOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 40, justifyContent: 'flex-end' },
+  heartTapZone: {
+    position: 'absolute',
+    right: 0,
+    bottom: 100,
+    width: 100,
+    height: 280,
+    zIndex: 45,
+  },
   giftsBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   inputBar: {
     flexDirection: 'row',

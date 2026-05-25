@@ -53,10 +53,22 @@ interface Message {
   forwarded?: boolean;
   edited?: boolean;
   deleted?: boolean;
+  transcription?: string;
+  transcribing?: boolean;
+  translation?: { targetLang: string; text: string };
+  translating?: boolean;
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const FAILED_MESSAGE_SILENT_RETRY_DELAY_MS = 900;
+
+/** Langues supportées par GPT-5.2 pour la traduction des transcriptions vocales. */
+const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; flag: string }[] = [
+  { code: 'fr', label: 'FR', flag: '🇫🇷' },
+  { code: 'en', label: 'EN', flag: '🇬🇧' },
+  { code: 'bm', label: 'BM', flag: '🇲🇱' },
+  { code: 'wo', label: 'WO', flag: '🇸🇳' },
+];
 
 async function runWithSingleSilentRetry<T>(operation: () => Promise<T>): Promise<T> {
   try {
@@ -1405,6 +1417,71 @@ export default function ChatScreen() {
     }
   };
 
+  const handleTranscribe = async () => {
+    if (!selectedMessage) return;
+    const target = selectedMessage;
+    setContextMenuVisible(false);
+    if (target.transcription) {
+      Alert.alert('Transcription', target.transcription);
+      return;
+    }
+    setMessages((prev) => prev.map((m) => (m.id === target.id ? { ...m, transcribing: true } : m)));
+    try {
+      const res = await apiClient.post(
+        `/messages/message/${encodeURIComponent(target.id)}/transcribe`,
+        {},
+      );
+      const text = String(res?.data?.data?.text ?? res?.data?.text ?? '').trim();
+      if (!text) throw new Error('Transcription vide');
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === target.id ? { ...m, transcribing: false, transcription: text } : m,
+        ),
+      );
+    } catch (e) {
+      setMessages((prev) => prev.map((m) => (m.id === target.id ? { ...m, transcribing: false } : m)));
+      Alert.alert(
+        'Transcription impossible',
+        getAlertMessageForCaughtError(e, 'Reessayez plus tard.'),
+      );
+    }
+  };
+
+  const handleTranslateMessage = useCallback(
+    async (messageId: string, targetLang: 'fr' | 'en' | 'bm' | 'wo') => {
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, translating: true } : m)));
+      try {
+        const res = await apiClient.post(
+          `/messages/message/${encodeURIComponent(messageId)}/translate`,
+          { target_lang: targetLang },
+        );
+        const data = res?.data?.data ?? res?.data ?? {};
+        const text = String(data.translation || '').trim();
+        const transcribedText = String(data.transcription || '').trim();
+        if (!text) throw new Error('Traduction vide');
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  translating: false,
+                  transcription: m.transcription || transcribedText || undefined,
+                  translation: { targetLang, text },
+                }
+              : m,
+          ),
+        );
+      } catch (e) {
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, translating: false } : m)));
+        Alert.alert(
+          'Traduction impossible',
+          getAlertMessageForCaughtError(e, 'Verifiez votre connexion ou reessayez plus tard.'),
+        );
+      }
+    },
+    [],
+  );
+
   const doForward = async (targetConvId: string) => {
     if (!selectedMessage) return;
     setForwardModalVisible(false);
@@ -1539,20 +1616,83 @@ export default function ChatScreen() {
               </Text>
             </TouchableOpacity>
           ) : item.type === 'voice' || item.type === 'audio' ? (
-            <TouchableOpacity style={styles.voiceBubble} onPress={() => playAudio(item)} activeOpacity={0.7}>
-              <Ionicons name={playingAudioId === item.id ? 'pause' : 'play'} size={28} color="#FFF" />
-              <View style={styles.voiceWaveContainer}>
-                <View style={styles.voiceWaveTrack}>
-                  <View style={[styles.voiceWaveProgress, { width: playingAudioId === item.id ? `${audioProgress * 100}%` : '0%' }]} />
+            <View>
+              <TouchableOpacity style={styles.voiceBubble} onPress={() => playAudio(item)} activeOpacity={0.7}>
+                <Ionicons name={playingAudioId === item.id ? 'pause' : 'play'} size={28} color="#FFF" />
+                <View style={styles.voiceWaveContainer}>
+                  <View style={styles.voiceWaveTrack}>
+                    <View style={[styles.voiceWaveProgress, { width: playingAudioId === item.id ? `${audioProgress * 100}%` : '0%' }]} />
+                  </View>
+                  <Text style={styles.voiceDurationText}>
+                    {item.voiceDuration || (item.type === 'audio' ? 'Fichier audio' : '0:00')}
+                  </Text>
                 </View>
-                <Text style={styles.voiceDurationText}>
-                  {item.voiceDuration || (item.type === 'audio' ? 'Fichier audio' : '0:00')}
-                </Text>
-              </View>
-              <View style={[styles.voiceMicBadge, { backgroundColor: item.isMine ? '#005C4B' : '#1F2C34' }]}>
-                <Ionicons name="mic" size={14} color={Colors.primary} />
-              </View>
-            </TouchableOpacity>
+                <View style={[styles.voiceMicBadge, { backgroundColor: item.isMine ? '#005C4B' : '#1F2C34' }]}>
+                  <Ionicons name="mic" size={14} color={Colors.primary} />
+                </View>
+              </TouchableOpacity>
+              {item.transcribing ? (
+                <View style={styles.transcriptionRow}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.transcriptionPending}>Transcription en cours...</Text>
+                </View>
+              ) : item.transcription ? (
+                <View style={styles.transcriptionBox}>
+                  <View style={styles.transcriptionHeader}>
+                    <Ionicons name="sparkles" size={12} color={Colors.primary} />
+                    <Text style={styles.transcriptionLabel}>Transcription IA</Text>
+                  </View>
+                  <Text style={styles.transcriptionText}>{item.transcription}</Text>
+                  {/* Boutons traduction (GPT-5.2) */}
+                  <View style={styles.translateRow}>
+                    <Text style={styles.translateRowLabel}>Traduire :</Text>
+                    {TRANSLATION_LANGUAGES.map((lang) => {
+                      const active = item.translation?.targetLang === lang.code;
+                      return (
+                        <TouchableOpacity
+                          key={lang.code}
+                          testID={`translate-${item.id}-${lang.code}`}
+                          style={[styles.translateChip, active && styles.translateChipActive]}
+                          disabled={item.translating}
+                          onPress={() => handleTranslateMessage(item.id, lang.code)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.translateChipFlag}>{lang.flag}</Text>
+                          <Text
+                            style={[
+                              styles.translateChipLabel,
+                              active && styles.translateChipLabelActive,
+                            ]}
+                          >
+                            {lang.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {item.translating ? (
+                    <View style={styles.transcriptionRow}>
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                      <Text style={styles.transcriptionPending}>Traduction en cours...</Text>
+                    </View>
+                  ) : item.translation ? (
+                    <View style={styles.translationBox}>
+                      <View style={styles.transcriptionHeader}>
+                        <Ionicons name="language" size={12} color="#9C27B0" />
+                        <Text style={[styles.transcriptionLabel, { color: '#9C27B0' }]}>
+                          {(TRANSLATION_LANGUAGES.find((l) => l.code === item.translation?.targetLang)
+                            ?.flag ?? '') +
+                            ' ' +
+                            (TRANSLATION_LANGUAGES.find((l) => l.code === item.translation?.targetLang)
+                              ?.label ?? '')}
+                        </Text>
+                      </View>
+                      <Text style={styles.transcriptionText}>{item.translation.text}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
           ) : item.type === 'video' && (item.thumbnailUri || item.imageUri) ? (
             <TouchableOpacity
               style={styles.imageBubble}
@@ -1631,15 +1771,29 @@ export default function ChatScreen() {
     ],
   );
 
-  const CONTEXT_MENU_ITEMS = [
-    { icon: 'arrow-undo', label: 'Repondre', action: handleReply },
-    { icon: 'happy-outline', label: 'Reagir', action: handleReact },
-    { icon: 'copy-outline', label: 'Copier', action: handleCopy },
-    { icon: 'arrow-redo', label: 'Transferer', action: handleForward },
-    { icon: 'pin', label: 'Epingler', action: handlePin },
-    { icon: 'star-outline', label: 'Important', action: handleStar },
-    { icon: 'trash-outline', label: 'Supprimer', action: handleDelete, destructive: true },
-  ];
+  const CONTEXT_MENU_ITEMS = useMemo(() => {
+    const isVoice = !!selectedMessage && (selectedMessage.type === 'voice' || selectedMessage.type === 'audio');
+    const items: { icon: string; label: string; action: () => void; destructive?: boolean }[] = [
+      { icon: 'arrow-undo', label: 'Repondre', action: handleReply },
+      { icon: 'happy-outline', label: 'Reagir', action: handleReact },
+    ];
+    if (isVoice) {
+      items.push({
+        icon: 'sparkles-outline',
+        label: selectedMessage?.transcription ? 'Voir la transcription' : 'Transcrire (IA)',
+        action: handleTranscribe,
+      });
+    } else {
+      items.push({ icon: 'copy-outline', label: 'Copier', action: handleCopy });
+    }
+    items.push(
+      { icon: 'arrow-redo', label: 'Transferer', action: handleForward },
+      { icon: 'pin', label: 'Epingler', action: handlePin },
+      { icon: 'star-outline', label: 'Important', action: handleStar },
+      { icon: 'trash-outline', label: 'Supprimer', action: handleDelete, destructive: true },
+    );
+    return items;
+  }, [selectedMessage]);
 
   return (
     <KeyboardAvoidingView style={[styles.container, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -2144,6 +2298,61 @@ const styles = StyleSheet.create({
   voiceWaveTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 2, overflow: 'hidden' },
   voiceWaveProgress: { height: '100%', backgroundColor: Colors.primary, borderRadius: 2 },
   voiceDurationText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 3 },
+  transcriptionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 },
+  transcriptionPending: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic' },
+  transcriptionBox: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,107,0,0.08)',
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+    borderRadius: 6,
+  },
+  transcriptionHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  transcriptionLabel: { color: Colors.primary, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  transcriptionText: { color: Colors.text, fontSize: 13, lineHeight: 18 },
+  translateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    gap: 6,
+  },
+  translateRowLabel: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginRight: 2,
+  },
+  translateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    gap: 4,
+  },
+  translateChipActive: {
+    backgroundColor: 'rgba(156,39,176,0.18)',
+    borderColor: '#9C27B0',
+  },
+  translateChipFlag: { fontSize: 11 },
+  translateChipLabel: { color: Colors.text, fontSize: 10, fontWeight: '700' },
+  translateChipLabelActive: { color: '#9C27B0' },
+  translationBox: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(156,39,176,0.08)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#9C27B0',
+    borderRadius: 6,
+  },
   voiceMicBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Image bubble
   imageBubble: { marginBottom: 2, position: 'relative', overflow: 'hidden', borderRadius: 8 },

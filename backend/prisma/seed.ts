@@ -217,10 +217,26 @@ async function main() {
       is_popular: boolean;
       sort_order: number;
     }> = [
+      // Petit pack pour essayer (test new user)
+      { slug: 'coins-50', name: 'Pack Découverte', coins_amount: 50, price_fcfa: 250, bonus_coins: 0, is_popular: false, sort_order: 5 },
+      // Starter — équivalent ~1-2 cadeaux moyens
       { slug: 'coins-100', name: 'Pack 100', coins_amount: 100, price_fcfa: 500, bonus_coins: 0, is_popular: false, sort_order: 10 },
+      // Standard — 5% bonus
+      { slug: 'coins-300', name: 'Pack 300', coins_amount: 300, price_fcfa: 1500, bonus_coins: 15, is_popular: false, sort_order: 15 },
+      // Populaire — 5% bonus
       { slug: 'coins-500', name: 'Pack 500', coins_amount: 500, price_fcfa: 2500, bonus_coins: 25, is_popular: true, sort_order: 20 },
+      // Pro — 7.5% bonus
       { slug: 'coins-1000', name: 'Pack 1000', coins_amount: 1000, price_fcfa: 5000, bonus_coins: 75, is_popular: false, sort_order: 30 },
+      // Premium — 10% bonus
+      { slug: 'coins-2500', name: 'Pack 2500', coins_amount: 2500, price_fcfa: 12500, bonus_coins: 250, is_popular: false, sort_order: 35 },
+      // Power user — 10% bonus
       { slug: 'coins-5000', name: 'Pack 5000', coins_amount: 5000, price_fcfa: 25000, bonus_coins: 500, is_popular: false, sort_order: 40 },
+      // VIP — 12% bonus
+      { slug: 'coins-10000', name: 'Pack VIP 10K', coins_amount: 10000, price_fcfa: 50000, bonus_coins: 1200, is_popular: false, sort_order: 50 },
+      // Whale — 15% bonus + badge VIP
+      { slug: 'coins-25000', name: 'Pack Whale 25K', coins_amount: 25000, price_fcfa: 125000, bonus_coins: 3750, is_popular: false, sort_order: 60 },
+      // Mythic — 18% bonus (cap supérieur)
+      { slug: 'coins-50000', name: 'Pack Légende 50K', coins_amount: 50000, price_fcfa: 250000, bonus_coins: 9000, is_popular: false, sort_order: 70 },
     ];
     for (const p of packs) {
       await prisma.coinPackage.upsert({
@@ -241,7 +257,7 @@ async function main() {
         },
       });
     }
-    console.log('   ✓ CoinPackage (Phase 9) initialisés');
+    console.log(`   ✓ CoinPackage (Phase 9) initialisés (${packs.length} packs)`);
   } catch (err: any) {
     console.warn('   ⚠ CoinPackage non initialisés — migration Phase 9 appliquée ?', err?.message);
   }

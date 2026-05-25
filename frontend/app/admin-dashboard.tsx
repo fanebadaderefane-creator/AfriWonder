@@ -567,6 +567,11 @@ export default function AdminDashboardScreen() {
                       onPress: () => router.push('/(admin)/creators' as never),
                     },
                     {
+                      label: 'Revenus Live par créateur 💰',
+                      icon: 'cash-outline' as const,
+                      onPress: () => router.push('/(admin)/live-revenue' as never),
+                    },
+                    {
                       label: 'Signalements (tous statuts)',
                       icon: 'flag-outline' as const,
                       onPress: () => router.push('/(admin)/reports' as never),

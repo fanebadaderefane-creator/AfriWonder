@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -60,6 +60,8 @@ const FALLBACK_GIFT_CATALOG: GiftCatalogRow[] = [
 
 function rarityColor(rarity?: string | null): string {
   switch (String(rarity || '').toLowerCase()) {
+    case 'mythic':
+      return '#FF1744';
     case 'legendary':
       return '#f59e0b';
     case 'epic':
@@ -73,6 +75,8 @@ function rarityColor(rarity?: string | null): string {
 
 function rarityLabelFr(rarity?: string | null): string | null {
   switch (String(rarity || '').toLowerCase()) {
+    case 'mythic':
+      return 'Mythique';
     case 'legendary':
       return 'Légendaire';
     case 'epic':
@@ -83,6 +87,25 @@ function rarityLabelFr(rarity?: string | null): string | null {
       return null;
   }
 }
+
+/** Onglets catégories (TikTok-style). */
+const GIFT_CATEGORIES: { id: string; label: string; icon: string }[] = [
+  { id: 'all', label: 'Tous', icon: '🎁' },
+  { id: 'classic', label: 'Classique', icon: '🌹' },
+  { id: 'african', label: 'Afrique', icon: '🦁' },
+  { id: 'animals', label: 'Animaux', icon: '🐘' },
+  { id: 'culture', label: 'Culture', icon: '🇲🇱' },
+  { id: 'luxury', label: 'Luxe', icon: '💎' },
+  { id: 'fantasy', label: 'Fantastique', icon: '🐉' },
+  { id: 'party', label: 'Fête', icon: '🎆' },
+  { id: 'music', label: 'Musique', icon: '🎵' },
+  { id: 'food', label: 'Resto', icon: '🍕' },
+  { id: 'sport', label: 'Sport', icon: '⚽' },
+  { id: 'gaming', label: 'Gaming', icon: '🎮' },
+  { id: 'nature', label: 'Nature', icon: '🌈' },
+  { id: 'reaction', label: 'Réaction', icon: '👏' },
+  { id: 'vip', label: 'VIP', icon: '🔱' },
+];
 
 function isLikelyEmojiIcon(s: string): boolean {
   const t = String(s || '').trim();
@@ -305,6 +328,26 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
   const [economyHint, setEconomyHint] = useState<string | null>(null);
   const [fcfaPerCoin, setFcfaPerCoin] = useState(5);
   const [creatorShare, setCreatorShare] = useState(0.7);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+
+  /** Catalogue filtré par catégorie. Toujours trié par prix croissant. */
+  const filteredCatalog = useMemo(() => {
+    const base = activeCategory === 'all'
+      ? catalog
+      : catalog.filter((g) => String(g.category || '').toLowerCase() === activeCategory);
+    return [...base].sort((a, b) => Number(a.coin_value) - Number(b.coin_value));
+  }, [catalog, activeCategory]);
+
+  /** Compte des cadeaux par catégorie pour les badges (TikTok-style). */
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const g of catalog) {
+      const c = String(g.category || '').toLowerCase();
+      counts.set(c, (counts.get(c) || 0) + 1);
+    }
+    counts.set('all', catalog.length);
+    return counts;
+  }, [catalog]);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -620,13 +663,50 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
       ) : (
         <>
+          {/* Onglets catégories TikTok-style — défilement horizontal */}
           <FlatList
-            data={catalog}
+            horizontal
+            data={GIFT_CATEGORIES.filter((c) => c.id === 'all' || (categoryCounts.get(c.id) || 0) > 0)}
+            keyExtractor={(c) => c.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryTabsRow}
+            style={{ maxHeight: 48, marginBottom: 4 }}
+            renderItem={({ item: cat }) => {
+              const active = activeCategory === cat.id;
+              const count = categoryCounts.get(cat.id) || 0;
+              return (
+                <TouchableOpacity
+                  testID={`gift-cat-tab-${cat.id}`}
+                  style={[styles.categoryTab, active && styles.categoryTabActive]}
+                  onPress={() => setActiveCategory(cat.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.categoryTabIcon, !active && { opacity: 0.7 }]}>{cat.icon}</Text>
+                  <Text style={[styles.categoryTabLabel, active && styles.categoryTabLabelActive]}>
+                    {cat.label}
+                  </Text>
+                  {count > 0 ? (
+                    <Text style={[styles.categoryTabCount, active && { color: '#FFF' }]}>{count}</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            }}
+          />
+          <FlatList
+            data={filteredCatalog}
             numColumns={2}
             columnWrapperStyle={styles.giftRowWrap}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.giftGrid}
             style={{ maxHeight: height * 0.42 }}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Ionicons name="gift-outline" size={48} color={Colors.textMuted} />
+                <Text style={{ color: Colors.textSecondary, marginTop: 8 }}>
+                  Aucun cadeau dans cette catégorie
+                </Text>
+              </View>
+            }
             renderItem={({ item }) => {
               const c = rarityColor(item.rarity);
               const coins = Math.round(item.coin_value || item.price);
@@ -886,6 +966,35 @@ const styles = StyleSheet.create({
   coinBalanceText: { color: '#FFD700', fontSize: FontSizes.sm, fontWeight: '600' },
   giftGrid: { padding: Spacing.sm, paddingBottom: Spacing.lg },
   giftRowWrap: { justifyContent: 'space-between', paddingHorizontal: Spacing.xs },
+  categoryTabsRow: { paddingHorizontal: Spacing.sm, gap: 6, alignItems: 'center' },
+  categoryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 5,
+  },
+  categoryTabActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  categoryTabIcon: { fontSize: 14 },
+  categoryTabLabel: { color: Colors.text, fontSize: 12, fontWeight: '600' },
+  categoryTabLabelActive: { color: '#FFF', fontWeight: '700' },
+  categoryTabCount: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   giftItem: {
     flex: 1,
     maxWidth: (width - 48) / 2,

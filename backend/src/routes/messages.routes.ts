@@ -11,6 +11,12 @@ import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import prisma from '../config/database.js';
 import {
+  translateTextWithGPT,
+  isSupportedTranslationLang,
+  SUPPORTED_TRANSLATION_LANGUAGES,
+  type SupportedTranslationLang,
+} from '../utils/openaiTranslate.js';
+import {
   messagesConversationArchiveSchema,
   messagesConversationDraftSchema,
   messagesConversationNotificationsSchema,
@@ -408,6 +414,74 @@ router.post('/message/:messageId/transcribe', authenticate, sendLimiter, validat
     next(error);
   }
 });
+
+// GET /api/messages/translation/languages — langues supportées pour la traduction
+router.get('/translation/languages', authenticate, async (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      languages: Object.values(SUPPORTED_TRANSLATION_LANGUAGES),
+      defaultModel: 'gpt-5.2',
+    },
+  });
+});
+
+/**
+ * POST /api/messages/message/:messageId/translate — traduit la transcription d'un vocal
+ *   body: { target_lang: 'fr'|'en'|'bm'|'wo', source_lang?: same }
+ *   1) si le message a déjà une transcription : traduit
+ *   2) sinon : transcrit d'abord (Whisper) puis traduit
+ */
+router.post(
+  '/message/:messageId/translate',
+  authenticate,
+  sendLimiter,
+  validateBody(jsonObjectBodySchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const messageId = param(req, 'messageId');
+      const userId = req.user!.id;
+      const targetLang = String(req.body?.target_lang || '').trim().toLowerCase();
+      const sourceLangRaw = String(req.body?.source_lang || '').trim().toLowerCase();
+
+      if (!isSupportedTranslationLang(targetLang)) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Langue cible non supportée. Utilisez : ${Object.keys(SUPPORTED_TRANSLATION_LANGUAGES).join(', ')}`,
+          },
+        });
+      }
+      const sourceLang: SupportedTranslationLang | undefined = isSupportedTranslationLang(sourceLangRaw)
+        ? sourceLangRaw
+        : undefined;
+
+      const transcription = await messageService.transcribeVoiceMessage(messageId, userId);
+      const sourceText = String(transcription?.text ?? '').trim();
+      if (!sourceText) {
+        return res.status(422).json({
+          success: false,
+          error: { message: 'Transcription vide, impossible de traduire' },
+        });
+      }
+
+      const result = await translateTextWithGPT(sourceText, targetLang, sourceLang);
+      res.json({
+        success: true,
+        data: {
+          messageId,
+          transcription: sourceText,
+          translation: result.text,
+          targetLang: result.targetLang,
+          sourceLang: result.sourceLang,
+          model: result.model,
+        },
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  },
+);
 
 // ========== Group messaging (CDC) ==========
 // GET /api/messages/groups/export — export JSON agrégé de tous les groupes du membre (plafonné côté service)

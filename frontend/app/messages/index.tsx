@@ -100,6 +100,29 @@ type StoryFeedItem = {
   story_ids: string[];
 };
 
+type CallHistoryItem = {
+  id: string;
+  type: 'audio' | 'video';
+  direction: 'incoming' | 'outgoing';
+  status: 'completed' | 'missed' | 'declined' | 'failed';
+  durationSec: number;
+  startedAt: string;
+  peer: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+  isGroup?: boolean;
+};
+
+function formatCallDuration(sec: number) {
+  if (!sec || sec < 1) return '';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}min ${s.toString().padStart(2, '0')}s`;
+}
+
 export default function MessagesListScreen() {
   const insets = useSafeAreaInsets();
   const currentUser = useAuthStore((s) => s.user);
@@ -114,6 +137,8 @@ export default function MessagesListScreen() {
   const [requestCount, setRequestCount] = useState(0);
   const [storyFeed, setStoryFeed] = useState<StoryFeedItem[]>([]);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
+  const [callsLoading, setCallsLoading] = useState(false);
 
   /** Avatar du compte connecté — utilisé sur la carte « Mon statut » de l'onglet Statuts. */
   const myAvatarUri = profileAvatarUri(
@@ -130,6 +155,53 @@ export default function MessagesListScreen() {
       setStoryFeed(items);
     } catch {
       setStoryFeed([]);
+    }
+  }, []);
+
+  const loadCallHistory = useCallback(async () => {
+    setCallsLoading(true);
+    try {
+      const res = await apiClient.get('/me/call-history', { params: { page: 1, limit: 50 } });
+      const data = res.data?.data ?? res.data;
+      const rawItems: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      const mapped: CallHistoryItem[] = rawItems.map((c: any) => {
+        const dir: string = String(c.direction || '').toLowerCase();
+        const direction: 'incoming' | 'outgoing' = dir === 'out' || dir === 'outgoing' ? 'outgoing' : 'incoming';
+        const statusRaw = String(c.status || '').toLowerCase();
+        let status: CallHistoryItem['status'] = 'completed';
+        if (statusRaw.includes('miss') || statusRaw.includes('no_answer')) status = 'missed';
+        else if (statusRaw.includes('declin') || statusRaw.includes('reject') || statusRaw.includes('busy'))
+          status = 'declined';
+        else if (statusRaw.includes('fail') || statusRaw.includes('error')) status = 'failed';
+        else if (statusRaw.includes('end') || statusRaw.includes('complet') || statusRaw.includes('answer'))
+          status = 'completed';
+        const callType = String(c.call_type || c.type || '').toLowerCase();
+        const isVideo = callType.includes('video');
+        const peerRaw = c.peer || {};
+        const groupRaw = c.group || null;
+        const isGroup = c.channel === 'group' || !!groupRaw;
+        return {
+          id: String(c.id || Math.random()),
+          type: isVideo ? 'video' : 'audio',
+          direction,
+          status,
+          durationSec: Number(c.duration_sec || 0),
+          startedAt: String(c.started_at || c.ended_at || new Date().toISOString()),
+          peer: {
+            id: String(peerRaw.id || ''),
+            name: isGroup
+              ? String(groupRaw?.name || 'Groupe')
+              : String(peerRaw.full_name || peerRaw.username || 'Contact'),
+            avatar: peerRaw.profile_image || null,
+          },
+          isGroup,
+        };
+      });
+      setCallHistory(mapped);
+    } catch {
+      setCallHistory([]);
+    } finally {
+      setCallsLoading(false);
     }
   }, []);
 
@@ -234,6 +306,13 @@ export default function MessagesListScreen() {
       void loadStories();
     }, [loadConversations, loadRequestCount, loadStories]),
   );
+
+  /** Charge l'historique d'appels uniquement quand on ouvre l'onglet Appels. */
+  useEffect(() => {
+    if (activeTab === 2) {
+      void loadCallHistory();
+    }
+  }, [activeTab, loadCallHistory]);
 
   /**
    * Temps réel : présence en ligne (point vert), nouveaux messages, lectures.
@@ -641,11 +720,103 @@ export default function MessagesListScreen() {
       )}
 
       {activeTab === 2 && (
-        <View style={styles.emptyState}>
-          <Ionicons name="call-outline" size={64} color={Colors.textMuted} />
-          <Text style={styles.emptyTitle}>Appels</Text>
-          <Text style={styles.emptyText}>Vos appels apparaitront ici</Text>
-        </View>
+        callsLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : callHistory.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="call-outline" size={64} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>Aucun appel</Text>
+            <Text style={styles.emptyText}>Vos appels apparaitront ici</Text>
+          </View>
+        ) : (
+          <FlatList
+            testID="call-history-list"
+            data={callHistory}
+            keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl
+                refreshing={callsLoading}
+                onRefresh={loadCallHistory}
+                tintColor={Colors.primary}
+              />
+            }
+            contentContainerStyle={{ paddingBottom: 100 }}
+            renderItem={({ item }) => {
+              const avatar = profileAvatarUri(item.peer.avatar || '', item.peer.name);
+              const isMissed = item.status === 'missed' || item.status === 'declined';
+              const arrowIcon =
+                item.direction === 'outgoing'
+                  ? 'arrow-up-outline'
+                  : isMissed
+                    ? 'arrow-down-outline'
+                    : 'arrow-down-outline';
+              const arrowColor = isMissed ? Colors.error : Colors.primary;
+              const date = new Date(item.startedAt);
+              const timeLabel = `${formatTimeAgo(item.startedAt)} · ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+              const durLabel = item.durationSec > 0 ? ` · ${formatCallDuration(item.durationSec)}` : '';
+              return (
+                <TouchableOpacity
+                  testID={`call-history-item-${item.id}`}
+                  style={styles.callRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (!item.peer.id) return;
+                    router.push({
+                      pathname: '/messages/call',
+                      params: {
+                        peerId: item.peer.id,
+                        peerName: item.peer.name,
+                        peerAvatar: item.peer.avatar || '',
+                        callType: item.type,
+                        role: 'caller',
+                      },
+                    } as never);
+                  }}
+                >
+                  <Image source={{ uri: avatar }} style={styles.callAvatar} />
+                  <View style={styles.callBody}>
+                    <Text style={[styles.callName, isMissed && { color: Colors.error }]} numberOfLines={1}>
+                      {item.peer.name}
+                    </Text>
+                    <View style={styles.callSubRow}>
+                      <Ionicons name={arrowIcon as any} size={14} color={arrowColor} />
+                      <Text style={styles.callSubText} numberOfLines={1}>
+                        {timeLabel}
+                        {durLabel}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    testID={`call-history-callback-${item.id}`}
+                    style={styles.callActionBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      if (!item.peer.id) return;
+                      router.push({
+                        pathname: '/messages/call',
+                        params: {
+                          peerId: item.peer.id,
+                          peerName: item.peer.name,
+                          peerAvatar: item.peer.avatar || '',
+                          callType: item.type,
+                          role: 'caller',
+                        },
+                      } as never);
+                    }}
+                  >
+                    <Ionicons
+                      name={item.type === 'video' ? 'videocam' : 'call'}
+                      size={22}
+                      color={Colors.primary}
+                    />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )
       )}
 
       {/* FAB */}
@@ -656,7 +827,7 @@ export default function MessagesListScreen() {
           if (activeTab === 0) setShowContacts(true);
           else if (activeTab === 1) router.push('/stories' as never);
           else if (activeTab === 2) {
-            Alert.alert('Appels', 'Lancez un appel depuis une conversation : ouvrez la discussion puis touchez le bouton 📞 ou 📹.');
+            setShowContacts(true);
           }
         }}
       >
@@ -822,6 +993,28 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
   emptyTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', marginTop: 16 },
   emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center', marginTop: 8 },
+  callRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  callAvatar: { width: 52, height: 52, borderRadius: 26, marginRight: Spacing.md, backgroundColor: Colors.surface },
+  callBody: { flex: 1, minWidth: 0 },
+  callName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  callSubRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
+  callSubText: { color: Colors.textSecondary, fontSize: FontSizes.xs, flexShrink: 1 },
+  callActionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,107,0,0.12)',
+    marginLeft: Spacing.sm,
+  },
   // Status
   statusContainer: { flex: 1, paddingTop: Spacing.md },
   myStatusCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
