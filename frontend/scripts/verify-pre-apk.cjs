@@ -118,6 +118,9 @@ function checkStaticModulesAndFiles() {
     'src/call/openNativeCallScreen.ts',
     'src/call/callSignalingPayload.ts',
     'src/call/callNetworkConfig.ts',
+    'src/call/parseTurnCredentialsResponse.ts',
+    'src/call/callRemoteMedia.ts',
+    'src/call/callDebug.ts',
     'src/messages/sendDmOutboundMedia.ts',
     'src/messages/dmDirectR2Upload.ts',
     'src/messages/dmThreadMessageCache.ts',
@@ -158,6 +161,24 @@ function checkStaticInvariants() {
     pass('invariants', 'call.tsx envoie call:accept (receveur)');
   } else {
     fail('invariants', 'call.tsx : flux call:accept receveur introuvable');
+  }
+
+  if (callTsx.includes('parseTurnCredentialsResponse')) {
+    pass('invariants', 'call.tsx utilise parseTurnCredentialsResponse (iceServers Metered)');
+  } else {
+    fail('invariants', 'call.tsx : parseTurnCredentialsResponse manquant');
+  }
+
+  if (callTsx.includes('shouldMarkCallConnected')) {
+    pass('invariants', 'Chronomètre lié à l’audio distant (shouldMarkCallConnected)');
+  } else {
+    fail('invariants', 'shouldMarkCallConnected manquant — risque faux « connecté »');
+  }
+
+  if (callTsx.includes('remoteStreamUrl && RTCViewNative') && callTsx.includes('remote-video-${remoteStreamKey}')) {
+    pass('invariants', 'Vidéo native : RTCView distant monté + remoteStreamKey');
+  } else {
+    fail('invariants', 'RTCView vidéo distant / remoteStreamKey incomplet');
   }
 
   if (callTsx.includes('hiddenRemoteRtc') && callTsx.includes('RTCViewNative')) {

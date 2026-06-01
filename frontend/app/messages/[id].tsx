@@ -75,7 +75,7 @@ interface Message {
   isMine: boolean;
   time: string;
   status: 'sent' | 'delivered' | 'read' | 'failed' | 'sending';
-  type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'file';
+  type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'file' | 'call';
   imageUri?: string;
   thumbnailUri?: string;
   voiceDuration?: string;
@@ -104,6 +104,10 @@ interface Message {
   translating?: boolean;
   /** Fil groupe : nom de l’expéditeur au-dessus de la bulle. */
   senderLabel?: string;
+  callLogTitle?: string;
+  callLogSubtitle?: string;
+  callLogIcon?: 'call' | 'videocam' | 'call-outline';
+  callLogTint?: string;
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -514,7 +518,8 @@ export default function ChatScreen() {
 
     const appendIncoming = (raw: Record<string, unknown>) => {
       const senderId = String(raw.sender_id || '');
-      if (senderId === currentUserId) return;
+      const isCallLog = String(raw.type || '').toLowerCase() === 'call';
+      if (senderId === currentUserId && !isCallLog) return;
       const ui = mapApiMessageToChatUi(raw, currentUserId, peerName, { isGroup: isGroupThread });
       setMessages((prev) => (prev.some((m) => m.id === ui.id) ? prev : [...prev, ui as Message]));
       markThreadOpened(threadApi, apiClient).catch(() => {});
@@ -1794,6 +1799,28 @@ export default function ChatScreen() {
       );
     }
 
+    if (item.type === 'call' && item.callLogTitle) {
+      return (
+        <View style={styles.callLogRow}>
+          <View style={styles.callLogChip}>
+            <Ionicons
+              name={item.callLogIcon || 'call'}
+              size={16}
+              color={item.callLogTint || '#94A3B8'}
+            />
+            <View style={styles.callLogTextWrap}>
+              <Text style={[styles.callLogTitle, { color: item.callLogTint || '#E2E8F0' }]}>
+                {item.callLogTitle}
+              </Text>
+              {item.callLogSubtitle ? (
+                <Text style={styles.callLogSubtitle}>{item.callLogSubtitle}</Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showTail = !prevMsg || prevMsg.isMine !== item.isMine || prevMsg.date;
 
@@ -2547,6 +2574,20 @@ const styles = StyleSheet.create({
   dateSeparator: { alignItems: 'center', marginVertical: Spacing.md },
   dateBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.sm },
   dateText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.xs },
+  callLogRow: { alignItems: 'center', marginVertical: Spacing.sm },
+  callLogChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.lg,
+    maxWidth: '92%',
+  },
+  callLogTextWrap: { flexShrink: 1 },
+  callLogTitle: { fontSize: FontSizes.sm, fontWeight: '600' },
+  callLogSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: FontSizes.xs, marginTop: 2 },
   // Message bubble
   messageRow: { flexDirection: 'row', marginBottom: 2 },
   messageRowMine: { justifyContent: 'flex-end' },

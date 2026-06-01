@@ -305,7 +305,7 @@ export default function CallScreen() {
   }, []);
 
   const finishCall = useCallback(
-    (reason: 'ended' | 'failed' | 'declined' = 'ended') => {
+    (reason: 'ended' | 'failed' | 'declined' | 'cancelled' | 'missed' = 'ended') => {
       if (callState === 'ended') return;
       setPeerRaisedHand(false);
       setMyRaisedHand(false);
@@ -316,18 +316,35 @@ export default function CallScreen() {
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
       stopAllMedia();
-      if (otherUserId && myUserId) {
+      const elapsed = startedAtRef.current ? Math.floor((Date.now() - startedAtRef.current) / 1000) : 0;
+      if (otherUserId && myUserId && reason !== 'declined') {
+        let socketReason: 'completed' | 'cancelled' | 'missed' | 'failed' = 'completed';
+        if (reason === 'cancelled') socketReason = 'cancelled';
+        else if (reason === 'missed') socketReason = 'missed';
+        else if (reason === 'failed') socketReason = 'failed';
+        else if (callStateRef.current !== 'connected' && role === 'caller') socketReason = 'cancelled';
         void socketService.ensureConnectedEmit('call:end', {
           callId: callIdRef.current,
           fromUserId: myUserId,
           toUserId: otherUserId,
           endedBy: myUserId,
+          reason: socketReason,
+          durationSec: socketReason === 'completed' ? elapsed : 0,
         });
       }
-      const elapsed = startedAtRef.current ? Math.floor((Date.now() - startedAtRef.current) / 1000) : 0;
+      const sessionStatus =
+        reason === 'failed'
+          ? 'failed'
+          : reason === 'declined'
+            ? 'declined'
+            : reason === 'cancelled'
+              ? 'cancelled'
+              : reason === 'missed'
+                ? 'missed'
+                : 'completed';
       apiClient
         .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, {
-          status: reason === 'failed' ? 'failed' : reason === 'declined' ? 'declined' : 'completed',
+          status: sessionStatus,
           duration: elapsed,
         })
         .catch(() => {
@@ -341,7 +358,7 @@ export default function CallScreen() {
         }
       }, 600);
     },
-    [callState, otherUserId, myUserId, stopAllMedia],
+    [callState, otherUserId, myUserId, stopAllMedia, role],
   );
 
   /** Animation de pulse pendant le ringing. */
@@ -925,7 +942,7 @@ export default function CallScreen() {
           ringTimeoutRef.current = setTimeout(() => {
             if (callStateRef.current !== 'connected') {
               setErrorMsg('Pas de réponse.');
-              finishCall('ended');
+              finishCall('missed');
             }
           }, CALL_RING_MS);
         } else {
@@ -1087,7 +1104,13 @@ export default function CallScreen() {
     });
   }, []);
 
-  const endCall = useCallback(() => finishCall('ended'), [finishCall]);
+  const endCall = useCallback(() => {
+    if (callState === 'ringing' && role === 'caller') {
+      finishCall('cancelled');
+      return;
+    }
+    finishCall('ended');
+  }, [callState, role, finishCall]);
 
   const emitCallRelay = useCallback(
     (event: string, extra: Record<string, unknown>) => {

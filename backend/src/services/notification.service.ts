@@ -438,7 +438,13 @@ class NotificationService {
 
     const expoData = expoStringData(dataObj);
     const tIncoming = String(dataObj.type || '');
-    const incomingCallExpo = tIncoming === 'call_incoming' || tIncoming === 'call_participant_invite';
+    const incomingCallExpo =
+      tIncoming === 'call_incoming' ||
+      tIncoming === 'call_participant_invite' ||
+      tIncoming === 'call_missed' ||
+      tIncoming === 'call_declined' ||
+      tIncoming === 'call_cancelled' ||
+      tIncoming === 'call_ended';
     const expoMessages: {
       to: string;
       title: string;

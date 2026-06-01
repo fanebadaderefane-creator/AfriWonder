@@ -2,8 +2,10 @@ import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import { Platform } from 'react-native';
 import { RING_PULSE_MS, type CallRingPreset } from './callRingtoneTiming';
 
-/** Sonnerie appel. Remplaçable par un asset produit sans changer le code. */
+/** Sonnerie entrante (style WhatsApp : tiiiii — pause — tiiiii). */
 const INCOMING_WAV = require('../../assets/sounds/incoming_call.wav');
+/** Tonalité d’attente appelant — fichier distinct (ringback plus court). */
+const OUTGOING_WAV = require('../../assets/sounds/outgoing_ringback.wav');
 
 export type { CallRingPreset } from './callRingtoneTiming';
 export { ringPulseTiming } from './callRingtoneTiming';
@@ -42,6 +44,7 @@ async function startPulsedCallRing(
   }
 
   const { burstMs, pauseMs } = RING_PULSE_MS[preset];
+  const soundAsset = preset === 'outgoing' ? OUTGOING_WAV : INCOMING_WAV;
   let cancelled = false;
   let burstTimer: ReturnType<typeof setTimeout> | null = null;
   let pauseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,7 +88,7 @@ async function startPulsedCallRing(
     if (cancelled) return;
     await unloadSound();
     try {
-      const { sound } = await Audio.Sound.createAsync(INCOMING_WAV, {
+      const { sound } = await Audio.Sound.createAsync(soundAsset, {
         shouldPlay: true,
         isLooping: false,
         volume: Math.min(1, Math.max(0.05, volume)),

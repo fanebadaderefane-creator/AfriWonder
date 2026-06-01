@@ -51,6 +51,9 @@ const NOTIF_ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; color:
   system: { name: 'information-circle', color: '#6B7280' },
   call_incoming: { name: 'call', color: '#10B981' },
   call_missed: { name: 'call', color: '#EF4444' },
+  call_declined: { name: 'call', color: '#F59E0B' },
+  call_cancelled: { name: 'call', color: '#94A3B8' },
+  call_ended: { name: 'call', color: '#10B981' },
   achievement: { name: 'trophy', color: '#FFD700' },
   subscription: { name: 'star', color: '#A855F7' },
 };
@@ -65,7 +68,7 @@ const FILTERS = [
 ] as const;
 
 const SOCIAL_TYPES = ['like', 'comment', 'follow', 'mention', 'achievement', 'new_wonder'];
-const MESSAGE_TYPES = ['message', 'message_new', 'call_incoming', 'call_missed'];
+const MESSAGE_TYPES = ['message', 'message_new', 'call_incoming', 'call_missed', 'call_declined', 'call_cancelled', 'call_ended'];
 const FINANCE_TYPES = ['payment', 'order', 'gift', 'tip', 'withdrawal', 'subscription'];
 const LIVE_TYPES = ['live', 'live_started'];
 
@@ -259,6 +262,9 @@ export default function NotificationsScreen() {
         break;
       case 'call_incoming':
       case 'call_missed':
+      case 'call_declined':
+      case 'call_cancelled':
+      case 'call_ended':
         router.push('/messages');
         break;
       case 'subscription':

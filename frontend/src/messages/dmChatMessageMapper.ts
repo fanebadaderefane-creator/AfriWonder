@@ -1,6 +1,14 @@
 /** Transforme un message API (DM ou groupe) en ligne UI du fil `messages/[id]`. */
 
 import { mapApiMessageStatus } from './dmReadReceipt';
+import {
+  callLogIconName,
+  callLogTint,
+  formatCallLogSubtitle,
+  formatCallLogTitle,
+  parseCallLogContent,
+  type CallLogMeta,
+} from './callLogDisplay';
 
 export type ChatUiMessage = {
   id: string;
@@ -8,7 +16,7 @@ export type ChatUiMessage = {
   isMine: boolean;
   time: string;
   status: 'read' | 'delivered' | 'sent' | 'failed' | 'sending';
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'location' | 'contact';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'location' | 'contact' | 'call';
   imageUri?: string;
   thumbnailUri?: string;
   replyTo?: { id: string; name: string; text: string };
@@ -20,6 +28,11 @@ export type ChatUiMessage = {
   locationLabel?: string;
   contactShareLine?: string;
   senderLabel?: string;
+  callLog?: CallLogMeta;
+  callLogTitle?: string;
+  callLogSubtitle?: string;
+  callLogIcon?: 'call' | 'videocam' | 'call-outline';
+  callLogTint?: string;
 };
 
 function formatMsgTime(iso: string): string {
@@ -92,6 +105,27 @@ export function mapApiMessageToChatUi(
 ): ChatUiMessage {
   const isDeleted = Boolean(m.is_deleted) || Boolean(m.deleted_for_all_at);
   const msgType = String(m.type || 'text').toLowerCase();
+  const createdAt = String(m.created_at || new Date().toISOString());
+
+  if (msgType === 'call' && !isDeleted) {
+    const callLog = parseCallLogContent(String(m.content || ''));
+    if (callLog) {
+      return {
+        id: String(m.id),
+        text: formatCallLogTitle(callLog, currentUserId),
+        isMine: false,
+        time: formatMsgTime(createdAt),
+        status: 'read',
+        type: 'call',
+        callLog,
+        callLogTitle: formatCallLogTitle(callLog, currentUserId),
+        callLogSubtitle: formatCallLogSubtitle(callLog, createdAt),
+        callLogIcon: callLogIconName(callLog),
+        callLogTint: callLogTint(callLog),
+      };
+    }
+  }
+
   const mediaUrl = typeof m.media_url === 'string' ? m.media_url.trim() : '';
   const thumbUrl = typeof m.thumbnail_url === 'string' ? m.thumbnail_url.trim() : '';
   const uiType: ChatUiMessage['type'] =

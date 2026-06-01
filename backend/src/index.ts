@@ -10,6 +10,7 @@ import prisma from './config/database.js';
 import { logger } from './utils/logger.js';
 import { setMessageIo, broadcastPresence } from './services/message.service.js';
 import notificationService from './services/notification.service.js';
+import { recordCallLogMessage } from './services/callLogMessage.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
@@ -51,7 +52,7 @@ async function upsertDirectCallState(
   callId: string,
   fromUserId: string,
   toUserId: string,
-  status: 'pending' | 'active' | 'declined' | 'missed' | 'completed' | 'ended',
+  status: 'pending' | 'active' | 'declined' | 'missed' | 'completed' | 'ended' | 'cancelled',
 ) {
   try {
     const existing = await prisma.directCall.findUnique({ where: { id: callId } });
@@ -64,7 +65,7 @@ async function upsertDirectCallState(
           receiver_id: toUserId,
           status,
           started_at: status === 'active' ? now : null,
-          ended_at: ['declined', 'missed', 'completed', 'ended'].includes(status) ? now : null,
+          ended_at: ['declined', 'missed', 'completed', 'ended', 'cancelled'].includes(status) ? now : null,
         },
       });
       return;
@@ -74,7 +75,7 @@ async function upsertDirectCallState(
       data: {
         status,
         started_at: status === 'active' && !existing.started_at ? now : existing.started_at,
-        ended_at: ['declined', 'missed', 'completed', 'ended'].includes(status) ? now : existing.ended_at,
+        ended_at: ['declined', 'missed', 'completed', 'ended', 'cancelled'].includes(status) ? now : existing.ended_at,
       },
     });
   } catch (err) {
@@ -535,24 +536,16 @@ io.on('connection', (socket) => {
         });
         await upsertDirectCallState(meta.callId, meta.fromUserId, meta.toUserId, 'missed');
         try {
-          await notificationService.create(meta.fromUserId, {
-            type: 'call_missed',
-            title: 'Appel manqué',
-            message: `${meta.callerName || 'Votre contact'} n’a pas répondu`,
-            reference_type: 'direct_call',
-            reference_id: meta.callId,
-            data: { callId: meta.callId, callerId: meta.fromUserId, callMediaType: meta.type },
-          });
-          await notificationService.create(meta.toUserId, {
-            type: 'call_missed',
-            title: 'Appel manqué',
-            message: `Vous avez manqué un appel ${meta.type === 'video' ? 'vidéo' : 'audio'}`,
-            reference_type: 'direct_call',
-            reference_id: meta.callId,
-            data: { callId: meta.callId, callerId: meta.fromUserId, callMediaType: meta.type },
+          await recordCallLogMessage({
+            callId: meta.callId,
+            callerId: meta.fromUserId,
+            receiverId: meta.toUserId,
+            media: meta.type,
+            outcome: 'missed',
+            callerName: meta.callerName,
           });
         } catch (err) {
-          logger.warn('Missed call notifications failed', { callId: meta.callId, err });
+          logger.warn('Missed call log failed', { callId: meta.callId, err });
         }
       }, CALL_RING_TIMEOUT_MS)
     );
@@ -603,17 +596,107 @@ io.on('connection', (socket) => {
 
   socket.on('call:decline', async (payload: { toUserId: string; fromUserId: string; callId?: string; reason?: string }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
+    const meta = payload.callId ? pendingCallMeta.get(payload.callId) : undefined;
     clearPendingCall(payload.callId);
-    if (payload.callId) await upsertDirectCallState(payload.callId, payload.toUserId, payload.fromUserId, 'declined');
+    const callerId = payload.toUserId;
+    const receiverId = payload.fromUserId;
+    if (payload.callId) await upsertDirectCallState(payload.callId, callerId, receiverId, 'declined');
     io.to(`user:${payload.toUserId}`).emit('call:decline', payload);
+    const callId = payload.callId || '';
+    if (callId) {
+      try {
+        await recordCallLogMessage({
+          callId,
+          callerId,
+          receiverId,
+          media: meta?.type ?? 'audio',
+          outcome: 'declined',
+          callerName: meta?.callerName,
+        });
+      } catch (err) {
+        logger.warn('Declined call log failed', { callId, err });
+      }
+    }
   });
 
-  socket.on('call:end', async (payload: { toUserId?: string; fromUserId?: string; callId?: string; endedBy?: string }) => {
+  socket.on(
+    'call:end',
+    async (payload: {
+      toUserId?: string;
+      fromUserId?: string;
+      callId?: string;
+      endedBy?: string;
+      reason?: 'completed' | 'cancelled' | 'missed' | 'declined' | 'failed';
+      durationSec?: number;
+    }) => {
     if (!payload) return;
-    clearPendingCall(payload.callId);
-    if (payload.callId && payload.fromUserId && payload.toUserId) {
-      await upsertDirectCallState(payload.callId, payload.fromUserId, payload.toUserId, 'completed');
+    const callId = payload.callId || '';
+    const meta = callId ? pendingCallMeta.get(callId) : undefined;
+    clearPendingCall(callId);
+
+    let dbStatus: 'completed' | 'cancelled' | 'missed' | 'ended' = 'completed';
+    let outcome: 'completed' | 'cancelled' | 'missed' = 'completed';
+    const reason = payload.reason;
+
+    if (reason === 'cancelled') {
+      dbStatus = 'cancelled';
+      outcome = 'cancelled';
+    } else if (reason === 'missed') {
+      dbStatus = 'missed';
+      outcome = 'missed';
+    } else if (reason === 'failed') {
+      dbStatus = 'ended';
+      outcome = 'cancelled';
     }
+
+    if (callId && payload.fromUserId && payload.toUserId) {
+      let callerId = meta?.fromUserId ?? payload.fromUserId;
+      let receiverId = meta?.toUserId ?? payload.toUserId;
+      try {
+        const existing = await prisma.directCall.findUnique({ where: { id: callId } });
+        if (existing) {
+          callerId = existing.caller_id;
+          receiverId = existing.receiver_id;
+          if (existing.status === 'pending' && !reason) {
+            const endedBy = payload.endedBy || payload.fromUserId;
+            if (endedBy === existing.caller_id) {
+              dbStatus = 'cancelled';
+              outcome = 'cancelled';
+            } else {
+              dbStatus = 'missed';
+              outcome = 'missed';
+            }
+          } else if (existing.status === 'active') {
+            dbStatus = 'completed';
+            outcome = 'completed';
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      await upsertDirectCallState(callId, callerId, receiverId, dbStatus);
+      const durationSec =
+        typeof payload.durationSec === 'number'
+          ? Math.max(0, Math.floor(payload.durationSec))
+          : undefined;
+      if (outcome === 'completed' || outcome === 'cancelled' || outcome === 'missed') {
+        try {
+          await recordCallLogMessage({
+            callId,
+            callerId,
+            receiverId,
+            media: meta?.type ?? 'audio',
+            outcome,
+            durationSec: outcome === 'completed' ? durationSec : 0,
+            callerName: meta?.callerName,
+          });
+        } catch (err) {
+          logger.warn('Call end log failed', { callId, outcome, err });
+        }
+      }
+    }
+
     if (payload.toUserId) io.to(`user:${payload.toUserId}`).emit('call:end', payload);
     if (payload.fromUserId) io.to(`user:${payload.fromUserId}`).emit('call:end', payload);
   });

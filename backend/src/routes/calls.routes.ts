@@ -12,6 +12,8 @@ import {
   fetchMeteredTurnCredentials,
   PUBLIC_STUN_FALLBACKS,
 } from '../services/meteredTurn.service.js';
+import { recordCallLogMessage } from '../services/callLogMessage.service.js';
+import type { CallLogOutcome } from '../utils/callLogPayload.js';
 
 const router = Router();
 
@@ -285,6 +287,28 @@ router.post('/:id/session-state', authenticate, validateBody(jsonObjectBodySchem
       where: { id: callId },
       data,
     });
+
+    if (TERMINAL_CALL_STATUSES.has(nextStatus)) {
+      const mediaRaw = String(req.body?.callMediaType || req.body?.media || 'audio').toLowerCase();
+      const media = mediaRaw.includes('video') ? 'video' : 'audio';
+      const outcomeMap: Record<string, CallLogOutcome> = {
+        completed: 'completed',
+        missed: 'missed',
+        declined: 'declined',
+        cancelled: 'cancelled',
+        failed: 'cancelled',
+        ended: 'completed',
+      };
+      const outcome = outcomeMap[nextStatus] ?? 'completed';
+      await recordCallLogMessage({
+        callId,
+        callerId: call.caller_id,
+        receiverId: call.receiver_id,
+        media,
+        outcome,
+        durationSec: numericDuration ?? undefined,
+      });
+    }
 
     res.json({ success: true, data: updated });
   } catch (error: any) {

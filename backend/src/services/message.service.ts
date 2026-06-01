@@ -42,6 +42,13 @@ export function emitToManyUserRooms(userIds: string[], event: string, payload: u
   }
 }
 
+/** Salon fil DM 1-1 (`message:join-conversation`). */
+export function emitToConversationRoom(conversationId: string, event: string, payload: unknown) {
+  if (messageIo && conversationId) {
+    messageIo.to(`conversation:${conversationId}`).emit(event, payload);
+  }
+}
+
 export async function broadcastPresence(userId: string, isOnline: boolean) {
   if (!userId) return;
 
