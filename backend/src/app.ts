@@ -197,6 +197,8 @@ const defaultOrigins = [
   /** Expo (Metro / dev server web) — origine navigateur ≠ API (:3000) */
   'http://localhost:8081',
   'http://localhost:8082',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
   'http://localhost:19000',
   'http://localhost:19006',
   'http://127.0.0.1:8081',
@@ -216,8 +218,8 @@ const corsOriginsFromEnv = (process.env.CORS_ORIGIN || '')
   .filter((s) => s && s !== '*'); // * interdit avec credentials
 const allowedOrigins = [...new Set([...corsOriginsFromEnv, ...defaultOrigins])];
 
-function isLocalDevBrowserOrigin(origin: string | undefined): boolean {
-  if (process.env.NODE_ENV === 'production' || !origin) return false;
+function isLocalhostBrowserOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
   try {
     const url = new URL(origin);
     return ['http:', 'https:'].includes(url.protocol)
@@ -225,6 +227,11 @@ function isLocalDevBrowserOrigin(origin: string | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+function isLocalDevBrowserOrigin(origin: string | undefined): boolean {
+  if (process.env.NODE_ENV === 'production' || !origin) return false;
+  return isLocalhostBrowserOrigin(origin);
 }
 
 // CORS_ALLOW_VERCEL_PREVIEW=true doit être explicitement activé (staging uniquement).
@@ -236,7 +243,7 @@ const allowVercelPreview = process.env.CORS_ALLOW_VERCEL_PREVIEW === 'true' &&
 const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
     const isVercelPreview = allowVercelPreview && origin?.endsWith('.vercel.app');
-    const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview || isLocalDevBrowserOrigin(origin);
+    const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview || isLocalDevBrowserOrigin(origin) || isLocalhostBrowserOrigin(origin);
     // Toujours renvoyer une chaîne explicite, jamais true (évite Access-Control-Allow-Origin: *)
     const value = isAllowed ? (origin || allowedOrigins[0] || defaultOrigins[0]) : false;
     cb(null, value);
