@@ -16,6 +16,10 @@ import { validateBody } from '../utils/zodValidation.js';
 import * as r2Multipart from '../services/r2Multipart.service.js';
 import { getSupabaseAdmin, isSupabaseStorageConfigured } from '../config/supabase.js';
 import { fileSignatureMatchesMime } from '../utils/fileSignature.js';
+import {
+  MediaStorageUnavailableError,
+  persistUploadedMediaBuffer,
+} from '../services/mediaUploadStorage.service.js';
 
 const router = Router();
 
@@ -73,6 +77,7 @@ const MAX_DOCUMENT_UPLOAD_MB = parseUploadMaxMb(process.env.UPLOAD_MAX_DOCUMENT_
 const PRESIGN_EXPIRES_SEC = 10 * 60;
 const ALLOWED_MEDIA_MIME = new Set([
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
   'image/gif',
@@ -177,7 +182,23 @@ function isR2AccessDenied(err: unknown): boolean {
   );
 }
 
+function mediaStorageUnavailableResponse(res: Response, missing?: string[]) {
+  logger.warn('Upload refusé: stockage indisponible', { missing });
+  return res.status(503).json({
+    success: false,
+    error: {
+      message:
+        'Upload non disponible : configurez Cloudflare R2 (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL) ou activez ALLOW_LOCAL_DM_UPLOAD=true en développement.',
+      code: 'MEDIA_STORAGE_UNAVAILABLE',
+      missing,
+    },
+  });
+}
+
 function handleUploadStorageError(res: Response, err: unknown, next: NextFunction) {
+  if (err instanceof MediaStorageUnavailableError) {
+    return mediaStorageUnavailableResponse(res, getR2ConfigDiagnostic());
+  }
   if (isR2AccessDenied(err)) {
     logger.error('R2 PutObject AccessDenied — vérifier clés API et permissions bucket', {
       hint: 'R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, politique du token API',
@@ -194,11 +215,52 @@ function handleUploadStorageError(res: Response, err: unknown, next: NextFunctio
   next(err);
 }
 
+function normalizeIncomingUploadMime(
+  rawMime: string,
+  originalName: string,
+  category: 'media' | 'document',
+): string {
+  let mime = String(rawMime || '').toLowerCase().trim();
+  if (mime === 'image/jpg') mime = 'image/jpeg';
+  if (mime === 'audio/m4a' || mime === 'audio/x-m4a') mime = 'audio/mp4';
+
+  const ext = safeExtFromName(originalName).toLowerCase();
+  if (!mime || mime === 'application/octet-stream' || mime === 'binary/octet-stream') {
+    if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.webp') mime = 'image/webp';
+    else if (ext === '.gif') mime = 'image/gif';
+    else if (ext === '.heic' || ext === '.heif') mime = 'image/heic';
+    else if (ext === '.mp4' || ext === '.m4v') mime = 'video/mp4';
+    else if (ext === '.mov') mime = 'video/quicktime';
+    else if (ext === '.webm') mime = category === 'media' ? 'video/webm' : mime;
+    else if (ext === '.3gp') mime = 'video/3gpp';
+    else if (ext === '.m4a' || ext === '.aac') mime = 'audio/mp4';
+    else if (ext === '.mp3') mime = 'audio/mpeg';
+    else if (ext === '.wav') mime = 'audio/wav';
+    else if (ext === '.ogg') mime = 'audio/ogg';
+    else if (ext === '.pdf') mime = 'application/pdf';
+    else if (ext === '.doc') mime = 'application/msword';
+    else if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (ext === '.txt') mime = 'text/plain';
+  }
+  return mime;
+}
+
+function mediaMimeAllowed(mime: string, originalName: string): boolean {
+  const normalized = normalizeIncomingUploadMime(mime, originalName, 'media');
+  return ALLOWED_MEDIA_MIME.has(normalized);
+}
+
+function documentMimeAllowed(mime: string, originalName: string): boolean {
+  const normalized = normalizeIncomingUploadMime(mime, originalName, 'document');
+  return ALLOWED_DOCUMENT_MIME.has(normalized);
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || '').toLowerCase().trim();
-    if (!ALLOWED_MEDIA_MIME.has(mime)) {
+    if (!mediaMimeAllowed(file.mimetype || '', file.originalname || '')) {
       cb(new Error('Type de fichier media non autorise'));
       return;
     }
@@ -212,8 +274,7 @@ const upload = multer({
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || '').toLowerCase().trim();
-    if (!ALLOWED_DOCUMENT_MIME.has(mime)) {
+    if (!documentMimeAllowed(file.mimetype || '', file.originalname || '')) {
       cb(new Error('Type de document non autorise'));
       return;
     }
@@ -422,39 +483,23 @@ async function generateVideoThumbnailToR2(fileBuffer: Buffer, safeName: string):
 
 router.post('/image', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
   try {
-    if (!r2Client || !R2_PUBLIC_URL) {
-      const why = getR2ConfigDiagnostic();
-      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
-      logger.warn('Upload image refusé: R2 non configuré', { missing: why });
-      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
-    }
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ success: false, error: 'Aucun fichier reçu. Réessayez depuis la galerie ou la caméra.' });
     }
+    req.file.mimetype = normalizeIncomingUploadMime(req.file.mimetype, req.file.originalname, 'media');
     const fileValidation = validateUploadedFileSignature(req.file, 'media');
     if (!fileValidation.ok) {
       return res.status(400).json({ success: false, error: fileValidation.message });
     }
 
-    // Créer un nom de fichier ASCII-safe (évite les problèmes d'encodage)
     const originalName = req.file.originalname || 'image.jpg';
     const safeName = createSafeFilename(originalName);
-    const fileName = `${Date.now()}-${safeName}`;
-    
-    // Stocker dans R2 avec le nom propre
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `images/${fileName}`,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-      CacheControl: 'public, max-age=31536000, immutable',
+    const fileUrl = await persistUploadedMediaBuffer({
+      buffer: req.file.buffer,
+      folder: 'images',
+      safeFileName: safeName,
+      contentType: req.file.mimetype,
     });
-
-    await r2Client.send(command);
-
-    // Encoder UNE SEULE FOIS l'URL
-    const encodedFileName = encodeURIComponent(fileName);
-    const fileUrl = `${R2_PUBLIC_URL}/images/${encodedFileName}`;
 
     res.json({
       success: true,
@@ -469,26 +514,17 @@ router.post('/image', authenticate, upload.single('file'), async (req: AuthReque
 
 router.post('/video', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
   try {
-    if (!r2Client || !R2_PUBLIC_URL) {
-      const why = getR2ConfigDiagnostic();
-      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
-      logger.warn('Upload vidéo refusé: R2 non configuré', { missing: why });
-      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
-    }
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ success: false, error: 'Aucun fichier reçu. Réessayez depuis la galerie ou la caméra.' });
     }
+    req.file.mimetype = normalizeIncomingUploadMime(req.file.mimetype, req.file.originalname, 'media');
 
-    // Créer un nom de fichier ASCII-safe (évite les problèmes d'encodage)
-    // ⚠️ IMPORTANT : Ne jamais garder les accents dans les noms de fichiers CDN
-    // Cela cause des erreurs MEDIA_ERR_SRC_NOT_SUPPORTED (errorCode: 4)
     const fileValidation = validateUploadedFileSignature(req.file, 'media');
     if (!fileValidation.ok) {
       return res.status(400).json({ success: false, error: fileValidation.message });
     }
     const originalName = req.file.originalname || 'video.mp4';
     const safeName = createSafeFilename(originalName);
-    const fileName = `${Date.now()}-${safeName}`;
 
     const mime = (req.file.mimetype || '').toLowerCase();
     const ext = path.extname(safeName).toLowerCase();
@@ -508,28 +544,21 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
       }
     }
 
-    // Stocker dans R2 avec le nom ASCII-safe
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `videos/${fileName}`,
-      Body: uploadBody,
-      ContentType: uploadContentType,
-      CacheControl: 'public, max-age=31536000, immutable',
+    const fileUrl = await persistUploadedMediaBuffer({
+      buffer: uploadBody,
+      folder: 'videos',
+      safeFileName: safeName,
+      contentType: uploadContentType,
     });
 
-    await r2Client.send(command);
-
-    // Générer une miniature à partir de la vidéo si possible
     let thumbnailUrl: string | undefined;
-    try {
-      thumbnailUrl = await generateVideoThumbnailToR2(uploadBody, safeName);
-    } catch {
-      thumbnailUrl = undefined;
+    if (r2Client && R2_PUBLIC_URL) {
+      try {
+        thumbnailUrl = await generateVideoThumbnailToR2(uploadBody, safeName);
+      } catch {
+        thumbnailUrl = undefined;
+      }
     }
-
-    // Encoder l'URL (même si le nom est déjà safe, c'est une bonne pratique)
-    const encodedFileName = encodeURIComponent(fileName);
-    const fileUrl = `${R2_PUBLIC_URL}/videos/${encodedFileName}`;
 
     res.json({
       success: true,
@@ -547,15 +576,10 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
 /** Documents (PDF, Office, etc.) — clé R2 `documents/`. */
 router.post('/document', authenticate, uploadDocument.single('file'), async (req: AuthRequest, res, next) => {
   try {
-    if (!r2Client || !R2_PUBLIC_URL) {
-      const why = getR2ConfigDiagnostic();
-      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
-      logger.warn('Upload document refusé: R2 non configuré', { missing: why });
-      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
-    }
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ success: false, error: 'Aucun document reçu.' });
     }
+    req.file.mimetype = normalizeIncomingUploadMime(req.file.mimetype, req.file.originalname, 'document');
 
     const fileValidation = validateUploadedFileSignature(req.file, 'document');
     if (!fileValidation.ok) {
@@ -563,20 +587,13 @@ router.post('/document', authenticate, uploadDocument.single('file'), async (req
     }
     const originalName = req.file.originalname || 'document.bin';
     const safeName = createSafeFilename(originalName);
-    const fileName = `${Date.now()}-${safeName}`;
 
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `documents/${fileName}`,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype || 'application/octet-stream',
-      CacheControl: 'public, max-age=31536000, immutable',
+    const fileUrl = await persistUploadedMediaBuffer({
+      buffer: req.file.buffer,
+      folder: 'documents',
+      safeFileName: safeName,
+      contentType: req.file.mimetype || 'application/octet-stream',
     });
-
-    await r2Client.send(command);
-
-    const encodedFileName = encodeURIComponent(fileName);
-    const fileUrl = `${R2_PUBLIC_URL}/documents/${encodedFileName}`;
 
     res.json({
       success: true,
@@ -592,15 +609,10 @@ router.post('/document', authenticate, uploadDocument.single('file'), async (req
 
 router.post('/audio', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
   try {
-    if (!r2Client || !R2_PUBLIC_URL) {
-      const why = getR2ConfigDiagnostic();
-      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
-      logger.warn('Upload audio refusé: R2 non configuré', { missing: why });
-      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
-    }
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ success: false, error: 'Aucun fichier audio reçu.' });
     }
+    req.file.mimetype = normalizeIncomingUploadMime(req.file.mimetype, req.file.originalname, 'media');
 
     const fileValidation = validateUploadedFileSignature(req.file, 'media');
     if (!fileValidation.ok) {
@@ -608,20 +620,13 @@ router.post('/audio', authenticate, upload.single('file'), async (req: AuthReque
     }
     const originalName = req.file.originalname || 'voice.webm';
     const safeName = createSafeFilename(originalName);
-    const fileName = `${Date.now()}-${safeName}`;
 
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `voice/${fileName}`,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype || 'audio/webm',
-      CacheControl: 'public, max-age=31536000, immutable',
+    const fileUrl = await persistUploadedMediaBuffer({
+      buffer: req.file.buffer,
+      folder: 'voice',
+      safeFileName: safeName,
+      contentType: req.file.mimetype || 'audio/webm',
     });
-
-    await r2Client.send(command);
-
-    const encodedFileName = encodeURIComponent(fileName);
-    const fileUrl = `${R2_PUBLIC_URL}/voice/${encodedFileName}`;
 
     res.json({
       success: true,

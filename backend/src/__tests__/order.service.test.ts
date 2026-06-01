@@ -27,6 +27,20 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 120): 
   throw lastErr;
 }
 
+async function cleanupOrderFixtures(): Promise<void> {
+  await withRetry(async () => {
+    await prisma.inventoryLog.deleteMany();
+    await prisma.orderItem.deleteMany();
+    await prisma.order.deleteMany();
+    await prisma.transaction.deleteMany();
+    await prisma.cart.deleteMany();
+    await prisma.product.deleteMany();
+    await prisma.sellerWallet.deleteMany();
+    await prisma.sellerProfile.deleteMany();
+    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
+  }, 4, 200);
+}
+
 async function ensurePlatformUser() {
   // Certains tests (et/ou suites) peuvent supprimer des users: on re-garantit la fixture.
   const existing = await prisma.user.findUnique({ where: { id: PLATFORM_USER_ID } });
@@ -53,15 +67,7 @@ describe('OrderService', () => {
   beforeEach(async () => {
     const unique = `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // Nettoyer les données de test précédentes (garder l'utilisateur plateforme)
-    await prisma.inventoryLog.deleteMany();
-    await prisma.orderItem.deleteMany();
-    await prisma.order.deleteMany();
-    await prisma.transaction.deleteMany();
-    await prisma.cart.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.sellerWallet.deleteMany();
-    await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
+    await cleanupOrderFixtures();
     await ensurePlatformUser();
 
     // Créer un utilisateur de test
@@ -86,19 +92,19 @@ describe('OrderService', () => {
     }));
     testSellerId = sellerUser.id;
 
-    await prisma.sellerProfile.create({
+    await withRetry(() => prisma.sellerProfile.create({
       data: {
         user_id: testSellerId,
         store_name: 'Test Business',
       },
-    });
+    }));
 
-    await prisma.sellerWallet.create({
+    await withRetry(() => prisma.sellerWallet.create({
       data: {
         user_id: testSellerId,
         balance: 0,
       },
-    });
+    }));
 
     // Créer un produit de test
     const testProduct = await withRetry(() => prisma.product.create({
@@ -145,16 +151,7 @@ describe('OrderService', () => {
   });
 
   afterEach(async () => {
-    // Nettoyer après chaque test (garder l'utilisateur plateforme)
-    await prisma.inventoryLog.deleteMany();
-    await prisma.orderItem.deleteMany();
-    await prisma.order.deleteMany();
-    await prisma.transaction.deleteMany();
-    await prisma.cart.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.sellerWallet.deleteMany();
-    await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
+    await cleanupOrderFixtures();
   });
 
   describe('createFromCart', () => {

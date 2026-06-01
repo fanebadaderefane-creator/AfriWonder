@@ -169,6 +169,7 @@ router.get('/topic/:topic', optionalAuth, async (req: AuthRequest, res, next) =>
     }
     const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
     const skip = (page - 1) * limit;
+    const userId = req.user?.id;
 
     const kwOr = preset.keywords.flatMap((kw) => [
       { title: { contains: kw, mode: 'insensitive' as const } },
@@ -198,7 +199,7 @@ router.get('/topic/:topic', optionalAuth, async (req: AuthRequest, res, next) =>
       prisma.video.count({ where }),
     ]);
 
-    const videos = rows.map((video: any) => {
+    let videos = rows.map((video: any) => {
       const { creator, _count, video_hashtags, ...videoData } = video;
       let hashtags = video.hashtags;
       if (typeof hashtags === 'string') {
@@ -229,6 +230,10 @@ router.get('/topic/:topic', optionalAuth, async (req: AuthRequest, res, next) =>
         media_type: video.media_type || 'video',
       };
     });
+
+    if (userId) {
+      videos = await videoService.enrichVideosWithViewerContext(videos, userId);
+    }
 
     return res.json({
       success: true,
@@ -339,7 +344,7 @@ router.get('/diversified', optionalAuth, async (req: AuthRequest, res, next) => 
       }
     }
 
-    const videos = diversified.map((video: any) => {
+    let videos = diversified.map((video: any) => {
       const { creator, _count, video_hashtags, ...videoData } = video;
       let hashtags = video.hashtags;
       if (typeof hashtags === 'string') {
@@ -370,6 +375,10 @@ router.get('/diversified', optionalAuth, async (req: AuthRequest, res, next) => 
         media_type: video.media_type || 'video',
       };
     });
+
+    if (userId) {
+      videos = await videoService.enrichVideosWithViewerContext(videos, userId);
+    }
 
     return res.json({
       success: true,

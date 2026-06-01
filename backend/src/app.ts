@@ -1,4 +1,5 @@
 // AfriWonder full review PR - CodeRabbit
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -215,6 +216,17 @@ const corsOriginsFromEnv = (process.env.CORS_ORIGIN || '')
   .filter((s) => s && s !== '*'); // * interdit avec credentials
 const allowedOrigins = [...new Set([...corsOriginsFromEnv, ...defaultOrigins])];
 
+function isLocalDevBrowserOrigin(origin: string | undefined): boolean {
+  if (process.env.NODE_ENV === 'production' || !origin) return false;
+  try {
+    const url = new URL(origin);
+    return ['http:', 'https:'].includes(url.protocol)
+      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 // CORS_ALLOW_VERCEL_PREVIEW=true doit être explicitement activé (staging uniquement).
 // En production, cette option DOIT être false : tout subdomain *.vercel.app aurait sinon
 // accès complet à l'API avec credentials, permettant à afriwonder-fake.vercel.app d'attaquer.
@@ -224,7 +236,7 @@ const allowVercelPreview = process.env.CORS_ALLOW_VERCEL_PREVIEW === 'true' &&
 const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
     const isVercelPreview = allowVercelPreview && origin?.endsWith('.vercel.app');
-    const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview;
+    const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview || isLocalDevBrowserOrigin(origin);
     // Toujours renvoyer une chaîne explicite, jamais true (évite Access-Control-Allow-Origin: *)
     const value = isAllowed ? (origin || allowedOrigins[0] || defaultOrigins[0]) : false;
     cb(null, value);
@@ -267,6 +279,15 @@ app.get('/health', (req, res) => {
 
 /** Uptime / load-balancers Vercel — même contrat que le brief (`GET /api/health`). */
 app.get('/api/health', sendExtendedApiHealth);
+
+/** Fichiers médias DM persistés localement en dev (sans R2). */
+app.use(
+  '/api/local-uploads',
+  express.static(path.join(process.cwd(), '.data', 'local-uploads'), {
+    maxAge: process.env.NODE_ENV === 'production' ? 0 : '1h',
+    fallthrough: true,
+  }),
+);
 
 /**
  * Durabilité ch.1 — surface API versionnée (extension progressive).

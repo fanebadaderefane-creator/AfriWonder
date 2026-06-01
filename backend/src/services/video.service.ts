@@ -485,8 +485,12 @@ class VideoService {
       };
     });
 
+    const videosWithViewer = userId
+      ? await this.enrichVideosWithViewerContext(formattedVideos, userId)
+      : formattedVideos;
+
     return {
-      videos: formattedVideos,
+      videos: videosWithViewer,
       pagination: {
         page: shouldGetAll ? 1 : page,
         limit: shouldGetAll ? total : (limit || total),
@@ -1285,6 +1289,47 @@ class VideoService {
       select: { type: true },
     });
     return like?.type ?? null;
+  }
+
+  /**
+   * Enrichit une liste feed (Pour toi, abonnements, thèmes…) avec like/save de l’utilisateur connecté.
+   * Sans ça, le mobile perd le cœur rempli après refresh / retour sur une vidéo.
+   */
+  async enrichVideosWithViewerContext(videos: any[], userId?: string | null): Promise<any[]> {
+    const uid = String(userId || '').trim();
+    if (!uid || !Array.isArray(videos) || videos.length === 0) return videos;
+
+    const ids = [...new Set(videos.map((v) => String(v?.id || '').trim()).filter(Boolean))].slice(0, 100);
+    if (ids.length === 0) return videos;
+
+    const [likes, saves] = await Promise.all([
+      prisma.like.findMany({
+        where: { user_id: uid, video_id: { in: ids } },
+        select: { video_id: true, type: true },
+      }),
+      prisma.save.findMany({
+        where: { user_id: uid, video_id: { in: ids } },
+        select: { video_id: true },
+      }),
+    ]);
+
+    const reactionByVideoId = new Map<string, string>();
+    for (const row of likes) {
+      reactionByVideoId.set(row.video_id, row.type || 'like');
+    }
+    const savedIds = new Set(saves.map((row) => row.video_id));
+
+    return videos.map((video) => {
+      const id = String(video?.id || '').trim();
+      if (!id) return video;
+      const current_user_reaction = reactionByVideoId.get(id) ?? null;
+      return {
+        ...video,
+        current_user_reaction,
+        is_liked: current_user_reaction === 'like',
+        is_saved: savedIds.has(id),
+      };
+    });
   }
 
   async addComment(videoId: string, userId: string, content: string, parentId?: string | null, audioUrl?: string | null) {

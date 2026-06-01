@@ -3440,6 +3440,7 @@ model GroupMessage {
   /// Message modifié par l’expéditeur (délai 15 min, texte uniquement)
   is_edited           Boolean           @default(false)
   read_by             Json?
+  hidden_from_user_ids Json?
   reply_to_id         String?
   reactions           Json?
   transcription_text  String?
@@ -3483,6 +3484,8 @@ model Message {
   is_deleted           Boolean         @default(false)
   deleted_for_all_at   DateTime?       // CPO 4.17 — suppression pour tous (délai limité)
   read_by              Json?
+  /// Utilisateurs ayant masqué ce message « pour moi » (sync multi-appareils).
+  hidden_from_user_ids Json?
   reply_to_message_id  String?
   is_important         Boolean         @default(false)
   is_pinned            Boolean         @default(false)

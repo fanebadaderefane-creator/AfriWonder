@@ -4,6 +4,7 @@ import prisma from '../config/database.js';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import analyticsService from '../services/analytics.service.js';
+import { getMobileAppVersionPolicy } from '../services/mobileAppVersion.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
@@ -167,13 +168,25 @@ async function processSyncAction(userId: string, action: Record<string, any>) {
   return { success: false, error: `type non supporté: ${type}` };
 }
 
+// GET /api/mobile/app-version — politique MAJ Play Store / App Store (sans auth)
+router.get('/app-version', (_req, res) => {
+  res.json({
+    success: true,
+    data: getMobileAppVersionPolicy(),
+  });
+});
+
 // GET /api/mobile/health
 router.get('/health', (_req, res) => {
   const agoraAppId = !!process.env.AGORA_APP_ID?.trim();
   const agoraCert = !!process.env.AGORA_APP_CERTIFICATE?.trim();
   const turn =
+    !!process.env.METERED_TURN_API_KEY?.trim() ||
     !!process.env.TURN_URL?.trim() ||
     !!process.env.TURN_URLS?.trim() ||
+    (!!process.env.TURN_USERNAME?.trim() &&
+      !!process.env.TURN_CREDENTIAL?.trim() &&
+      (!!process.env.TURN_URL?.trim() || !!process.env.TURN_URLS?.trim())) ||
     !!process.env.TURN_SHARED_SECRET?.trim();
   res.json({
     success: true,

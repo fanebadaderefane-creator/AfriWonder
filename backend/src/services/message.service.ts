@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { assertPersistableMediaUrl } from './mediaUploadStorage.service.js';
 import { transcribeBufferWithWhisper } from '../utils/whisperTranscription.js';
 import notificationService from './notification.service.js';
 import {
@@ -10,6 +11,10 @@ import {
   GROUP_POLL_MIN_OPTIONS,
   normalizePollOptions,
 } from '../utils/pollMessage.js';
+import {
+  isHiddenForUser,
+  withUserInHiddenList,
+} from '../utils/messageHiddenForUser.js';
 
 let messageIo: import('socket.io').Server | null = null;
 export function setMessageIo(io: import('socket.io').Server) {
@@ -290,10 +295,22 @@ class MessageService {
         },
         skip,
         take,
-        orderBy: { last_message_at: 'desc' },
+        orderBy: [{ last_message_at: { sort: 'desc', nulls: 'last' } }, { updated_at: 'desc' }],
       }),
       prisma.conversation.count({ where }),
     ]);
+
+    const lastIds = conversations
+      .map((c) => c.last_message_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const lastMessages =
+      lastIds.length > 0
+        ? await prisma.message.findMany({
+            where: { id: { in: lastIds } },
+            select: { id: true, sender_id: true, status: true, type: true },
+          })
+        : [];
+    const lastById = new Map(lastMessages.map((m) => [m.id, m]));
 
     const list = conversations.map((c) => {
       const other = c.user1_id === userId ? c.user2 : c.user1;
@@ -301,11 +318,15 @@ class MessageService {
       const is_archived = c.user1_id === userId ? c.is_archived_user1 : c.is_archived_user2;
       const draft_content = (c.draft_content as Record<string, string> | null)?.[userId] ?? null;
       const muted = c.user1_id === userId ? !!c.muted_user1 : !!c.muted_user2;
+      const lm = c.last_message_id ? lastById.get(c.last_message_id) : undefined;
       return {
         id: c.id,
         last_message_id: c.last_message_id,
         last_message_text: c.last_message_text,
         last_message_at: c.last_message_at,
+        last_message_sender_id: lm?.sender_id ?? null,
+        last_message_status: lm?.status ?? null,
+        last_message_type: lm?.type ?? null,
         unread_count: unread,
         is_group: c.is_group,
         group_name: c.group_name,
@@ -489,7 +510,10 @@ class MessageService {
     const nextCursor = hasMore && list.length ? list[list.length - 1].created_at.toISOString() : null;
 
     const DELETED_PLACEHOLDER = 'Ce message a été supprimé';
-    const normalized = list.reverse().map((m) => {
+    const normalized = list
+      .reverse()
+      .filter((m) => !isHiddenForUser((m as { hidden_from_user_ids?: unknown }).hidden_from_user_ids, userId))
+      .map((m) => {
       if ((m as any).deleted_for_all_at) {
         return {
           ...m,
@@ -594,6 +618,13 @@ class MessageService {
       }
       if (['image', 'video', 'audio', 'voice', 'file'].includes(normalizedType) && !mediaUrl) {
         throw makeHttpError('media_url est requis pour ce type de message', 400);
+      }
+      if (mediaUrl) {
+        try {
+          assertPersistableMediaUrl(mediaUrl);
+        } catch {
+          throw makeHttpError('URL média invalide : une adresse https publique est requise', 400);
+        }
       }
       if (normalizedType === 'sticker' && !stickerUrl) {
         throw makeHttpError('sticker_url est requis pour un sticker', 400);
@@ -1067,7 +1098,9 @@ class MessageService {
       });
 
       if (messageIo) {
-        messageIo.to(`conversation:${conversationId}`).emit('message:read', { conversationId, userId });
+        const payload = { conversationId, userId };
+        messageIo.to(`conversation:${conversationId}`).emit('message:read', payload);
+        messageIo.to(`user:${partnerId}`).emit('message:read', payload);
       }
     }
 
@@ -1159,12 +1192,30 @@ class MessageService {
 
   async deleteMessage(messageId: string, userId: string) {
     const msg = await prisma.message.findFirst({ where: { id: messageId } });
-    if (!msg || msg.sender_id !== userId) throw new Error('Message not found or not yours');
+    if (!msg || msg.sender_id !== userId) throw makeHttpError('Message introuvable', 404);
     await prisma.message.update({
       where: { id: messageId },
       data: { is_deleted: true, content: '', media_url: null },
     });
     if (messageIo) messageIo.to(`conversation:${msg.conversation_id}`).emit('message:deleted', { messageId });
+    return { success: true };
+  }
+
+  /** Masquer un message reçu « pour moi » (participants 1-1, sync multi-appareils). */
+  async hideMessageForViewer(messageId: string, userId: string) {
+    const msg = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversation: { OR: [{ user1_id: userId }, { user2_id: userId }] },
+      },
+      select: { id: true, hidden_from_user_ids: true, conversation_id: true },
+    });
+    if (!msg) throw makeHttpError('Message introuvable', 404);
+    const nextHidden = withUserInHiddenList(msg.hidden_from_user_ids, userId);
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { hidden_from_user_ids: nextHidden },
+    });
     return { success: true };
   }
 

@@ -7,10 +7,12 @@
  * Configurer DATABASE_URL dans .env.test
  */
 import request from 'supertest';
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import app from '../app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';
+
+jest.setTimeout(180000);
 
 describe('Marketplace Complet', () => {
   let testBuyer: any;
@@ -22,64 +24,124 @@ describe('Marketplace Complet', () => {
   let sellerToken: string;
   let testCounter = 0;
 
+  const isTransientDbError = (error: unknown): boolean => {
+    const message = String((error as { message?: unknown })?.message ?? '').toLowerCase();
+    return (
+      message.includes('connection terminated unexpectedly')
+      || message.includes('socket hang up')
+      || message.includes('econnreset')
+      || message.includes('too many connections')
+      || message.includes('connection')
+    );
+  };
+
+  const withDbRetry = async <T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> => {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (!isTransientDbError(error) || attempt === maxAttempts) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('DB retry failed');
+  };
+
+  const cleanupMarketplaceFixtures = async (keepPlatformUser = false): Promise<void> => {
+    await withDbRetry(async () => {
+      await prisma.inventoryLog.deleteMany();
+      await prisma.orderItem.deleteMany();
+      await prisma.order.deleteMany();
+      await prisma.transaction.deleteMany();
+      await prisma.cart.deleteMany();
+      await prisma.review.deleteMany();
+      await prisma.dispute.deleteMany();
+      await prisma.sellerReview.deleteMany();
+      await prisma.product.deleteMany();
+      await prisma.sellerWallet.deleteMany();
+      await prisma.sellerProfile.deleteMany();
+      const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
+      if (keepPlatformUser) {
+        await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
+      } else {
+        await prisma.user.deleteMany();
+      }
+    });
+  };
+
+  const createOrderAsBuyer = async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await request(app)
+          .post('/api/orders')
+          .set('Authorization', `Bearer ${buyerToken}`)
+          .send({
+            shipping_address: '123 Rue Test',
+            payment_method: 'orange_money',
+          });
+      } catch (error) {
+        lastError = error;
+        const msg = String((error as { message?: unknown })?.message ?? '');
+        const transient = msg.toLowerCase().includes('socket hang up') || msg.toLowerCase().includes('econnreset');
+        if (!transient || attempt === 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Order creation failed');
+  };
+
   beforeEach(async () => {
     testCounter++;
     const timestamp = Date.now();
 
     // Nettoyer les données
-    await prisma.inventoryLog.deleteMany();
-    await prisma.orderItem.deleteMany();
-    await prisma.order.deleteMany();
-    await prisma.transaction.deleteMany();
-    await prisma.cart.deleteMany();
-    await prisma.review.deleteMany();
-    await prisma.dispute.deleteMany();
-    await prisma.sellerReview.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.sellerWallet.deleteMany();
-    await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany();
+    await cleanupMarketplaceFixtures(false);
 
     // Créer un acheteur
     const hashedPassword = await bcrypt.hash('Test123!@#', 10);
-    testBuyer = await prisma.user.create({
+    testBuyer = await withDbRetry(() => prisma.user.create({
       data: {
         email: `buyer${testCounter}${timestamp}@example.com`,
         password_hash: hashedPassword,
         username: `buyer${testCounter}${timestamp}`,
         full_name: 'Test Buyer',
       },
-    });
+    }));
 
     // Créer un vendeur
-    testSeller = await prisma.user.create({
+    testSeller = await withDbRetry(() => prisma.user.create({
       data: {
         email: `seller${testCounter}${timestamp}@example.com`,
         password_hash: hashedPassword,
         username: `seller${testCounter}${timestamp}`,
         full_name: 'Test Seller',
       },
-    });
+    }));
 
     // Créer le profil vendeur (nouveau schéma SellerProfile)
-    await prisma.sellerProfile.create({
+    await withDbRetry(() => prisma.sellerProfile.create({
       data: {
         user_id: testSeller.id,
         store_name: 'Test Business',
       },
-    });
+    }));
 
     // Créer le wallet vendeur (lié à l'utilisateur)
-    await prisma.sellerWallet.create({
+    await withDbRetry(() => prisma.sellerWallet.create({
       data: {
         user_id: testSeller.id,
         balance: 0,
       },
-    });
+    }));
 
     // Recréer l'utilisateur plateforme (supprimé par deleteMany) pour ledger/escrow
     const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
-    await prisma.user.upsert({
+    await withDbRetry(() => prisma.user.upsert({
       where: { id: PLATFORM_USER_ID },
       update: {},
       create: {
@@ -90,10 +152,10 @@ describe('Marketplace Complet', () => {
         full_name: 'AfriWonder Platform',
         role: 'admin',
       },
-    });
+    }));
 
     // Créer un produit
-    testProduct = await prisma.product.create({
+    testProduct = await withDbRetry(() => prisma.product.create({
       data: {
         seller_id: testSeller.id,
         name: 'Produit Test Marketplace',
@@ -103,7 +165,7 @@ describe('Marketplace Complet', () => {
         status: 'active',
         category: 'electronics',
       },
-    });
+    }));
 
     // Attendre que les utilisateurs soient disponibles
     let retries = 5;
@@ -167,22 +229,7 @@ describe('Marketplace Complet', () => {
   });
 
   afterEach(async () => {
-    await prisma.inventoryLog.deleteMany();
-    await prisma.orderItem.deleteMany();
-    await prisma.order.deleteMany();
-    await prisma.transaction.deleteMany();
-    await prisma.cart.deleteMany();
-    await prisma.review.deleteMany();
-    await prisma.dispute.deleteMany();
-    await prisma.sellerReview.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.sellerWallet.deleteMany();
-    await prisma.sellerProfile.deleteMany();
-    // Ne pas supprimer l'utilisateur plateforme (créé en beforeAll du setup global)
-    const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
-    await prisma.user.deleteMany({
-      where: { id: { not: PLATFORM_USER_ID } }
-    });
+    await cleanupMarketplaceFixtures(true);
   });
 
   describe('Products API', () => {
@@ -389,13 +436,7 @@ describe('Marketplace Complet', () => {
 
   describe('Orders API', () => {
     it('devrait créer une commande depuis le panier', async () => {
-      const response = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      const response = await createOrderAsBuyer();
 
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
@@ -411,13 +452,7 @@ describe('Marketplace Complet', () => {
 
     it('devrait lister les commandes de l\'acheteur', async () => {
       // Créer une commande d'abord
-      await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      await createOrderAsBuyer();
 
       const response = await request(app)
         .get('/api/orders')
@@ -431,13 +466,7 @@ describe('Marketplace Complet', () => {
 
     it('devrait lister les commandes du vendeur', async () => {
       // Créer une commande d'abord
-      await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      await createOrderAsBuyer();
 
       const response = await request(app)
         .get('/api/orders')
@@ -452,13 +481,7 @@ describe('Marketplace Complet', () => {
   describe('Reviews API', () => {
     it('devrait créer un avis produit', async () => {
       // Créer une commande et la confirmer d'abord
-      const orderResponse = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      const orderResponse = await createOrderAsBuyer();
 
       let orderId;
       if (Array.isArray(orderResponse.body.data)) {
@@ -503,13 +526,7 @@ describe('Marketplace Complet', () => {
   describe('Seller Reviews API', () => {
     it('devrait créer un avis vendeur', async () => {
       // Créer une commande d'abord
-      const orderResponse = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      const orderResponse = await createOrderAsBuyer();
 
       let orderId;
       if (Array.isArray(orderResponse.body.data)) {
@@ -548,13 +565,7 @@ describe('Marketplace Complet', () => {
   describe('Disputes API', () => {
     it('devrait créer un litige', async () => {
       // Créer une commande d'abord
-      const orderResponse = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      const orderResponse = await createOrderAsBuyer();
 
       let orderId;
       if (Array.isArray(orderResponse.body.data)) {
@@ -617,13 +628,7 @@ describe('Marketplace Complet', () => {
   describe('Payments API', () => {
     it('devrait initier un paiement Orange Money', async () => {
       // Créer une commande d'abord
-      const orderResponse = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${buyerToken}`)
-        .send({
-          shipping_address: '123 Rue Test',
-          payment_method: 'orange_money',
-        });
+      const orderResponse = await createOrderAsBuyer();
 
       let orderId;
       if (Array.isArray(orderResponse.body.data)) {

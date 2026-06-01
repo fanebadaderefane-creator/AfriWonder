@@ -20,6 +20,8 @@ export interface GlobalSearchOptions {
   category?: string;
   hashtag?: string;
   userId?: string;
+  /** Utilisateur connecté — enrichit les résultats « users » avec is_following. */
+  viewerId?: string;
   /** Filtre durée vidéo: short (<1min), medium (1-10min), long (>10min) */
   duration?: 'all' | 'short' | 'medium' | 'long';
 }
@@ -113,6 +115,7 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
     category,
     hashtag,
     userId,
+    viewerId,
     duration,
   } = options;
 
@@ -247,6 +250,14 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
     videos = [];
     users = [];
     products = [];
+  }
+
+  if (viewerId && users.length > 0) {
+    try {
+      users = await userService.enrichUsersForViewer(users, viewerId);
+    } catch (err) {
+      logger.warn('search.service enrichUsersForViewer failed', { err: (err as Error)?.message });
+    }
   }
 
   const total = videos.length + users.length + products.length + sounds.length;

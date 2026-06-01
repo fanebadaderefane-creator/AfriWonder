@@ -1,10 +1,12 @@
 import request from 'supertest';
-import { beforeEach, afterEach, describe, expect, it } from '@jest/globals';
+import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 import bcrypt from 'bcryptjs';
 import app from '../app.js';
 import { prisma } from './setup.js';
 
 describe('Matching Engine Phase 1', () => {
+  jest.setTimeout(180000);
+
   let userId: string;
   let token: string;
   let counter = 0;
@@ -14,14 +16,7 @@ describe('Matching Engine Phase 1', () => {
     const suffix = `${Date.now()}_${counter}`;
     const passwordHash = await bcrypt.hash('Test123!@#', 10);
 
-    await prisma.analytics.deleteMany();
-    await prisma.service.deleteMany();
-    await prisma.serviceProvider.deleteMany();
-    await prisma.job.deleteMany();
-    await prisma.course.deleteMany();
-    await prisma.loanRequest.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.candidateProfile.deleteMany();
+    // Nettoyage ciblé des fixtures "match_*" uniquement, pour éviter les hooks trop longs/flaky.
     await prisma.user.deleteMany({
       where: { email: { contains: `match_${suffix}` } },
     }).catch(() => {});

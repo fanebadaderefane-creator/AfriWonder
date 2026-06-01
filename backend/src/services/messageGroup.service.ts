@@ -16,6 +16,10 @@ import {
   GROUP_POLL_MIN_OPTIONS,
   normalizePollOptions,
 } from '../utils/pollMessage.js';
+import {
+  isHiddenForUser,
+  withUserInHiddenList,
+} from '../utils/messageHiddenForUser.js';
 
 const DEFAULT_PAGE_SIZE = 30;
 /** CDC messagerie : aligné sur la cible type WhatsApp (1024). */
@@ -866,11 +870,35 @@ export async function getGroupMessages(groupId: string, userId: string, cursor: 
   const nextCursor = hasMore ? list[list.length - 1]?.id : null;
 
   const tagMap = await buildGroupMemberTagMap(groupId);
+  const visible = list.filter(
+    (m) => !isHiddenForUser((m as { hidden_from_user_ids?: unknown }).hidden_from_user_ids, userId),
+  );
   return {
-    messages: list.map((m) => formatGroupMessagePayload(m as GroupMsgWithSender, tagMap)),
+    messages: visible.map((m) => formatGroupMessagePayload(m as GroupMsgWithSender, tagMap)),
     nextCursor,
     hasMore: !!nextCursor,
   };
+}
+
+/** Masquer un message de groupe « pour moi » (membre du groupe). */
+export async function hideGroupMessageForViewer(groupId: string, messageId: string, userId: string) {
+  const member = await prisma.conversationGroupMember.findFirst({
+    where: { group_id: groupId, user_id: userId },
+  });
+  if (!member) throw makeError('Groupe non trouvé ou accès refusé', 404);
+
+  const msg = await prisma.groupMessage.findFirst({
+    where: { id: messageId, group_id: groupId },
+    select: { id: true, hidden_from_user_ids: true },
+  });
+  if (!msg) throw makeError('Message introuvable', 404);
+
+  const nextHidden = withUserInHiddenList(msg.hidden_from_user_ids, userId);
+  await prisma.groupMessage.update({
+    where: { id: messageId },
+    data: { hidden_from_user_ids: nextHidden },
+  });
+  return { success: true };
 }
 
 export async function sendGroupMessage(

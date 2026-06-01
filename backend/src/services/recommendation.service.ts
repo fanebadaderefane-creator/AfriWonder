@@ -16,6 +16,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
+import { videoService } from './video.service.js';
 
 /** Colonne ou table absente (migrations non appliquées, drift). */
 function isSchemaColumnError(err: unknown): boolean {
@@ -562,7 +563,7 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
     scored.sort((a, b) => b._score - a._score);
     const rotated = rotateListByRefreshNonce(scored, options.refreshNonce, page);
     const paged = rotated.slice(skip, skip + limit);
-    return formatResult(paged, videos.length, page, limit);
+    return finalizeFeedVideosResult(paged, videos.length, page, limit, userId);
   }
 
   const prefs = await loadUserPreferencesCached(userId, options.country);
@@ -672,13 +673,27 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
 
   const diversifiedForPage = rotateListByRefreshNonce(diversified, options.refreshNonce, page);
   const paged = diversifiedForPage.slice(skip, skip + limit);
-  return formatResult(paged, diversified.length, page, limit);
+  return finalizeFeedVideosResult(paged, diversified.length, page, limit, userId);
   } catch (err) {
     logger.error('getPersonalizedFeed: erreur inattendue — feed vide pour éviter HTTP 500', {
       message: String((err as Error)?.message || err),
     });
-    return formatResult([], 0, page, limit);
+    return finalizeFeedVideosResult([], 0, page, limit, userId);
   }
+}
+
+async function finalizeFeedVideosResult(
+  paged: any[],
+  total: number,
+  page: number,
+  limit: number,
+  userId?: string,
+): Promise<{ videos: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  const result = formatResult(paged, total, page, limit);
+  if (userId && result.videos.length > 0) {
+    result.videos = await videoService.enrichVideosWithViewerContext(result.videos, userId);
+  }
+  return result;
 }
 
 function formatResult(

@@ -150,13 +150,20 @@ class UserService {
       throw error;
     }
     let isFollowing = false;
+    let isFollowingMe = false;
     if (requesterId && requesterId !== user.id) {
-      const follow = await prisma.follow.findFirst({
-        where: { follower_id: requesterId, following_id: user.id },
-      });
+      const [follow, followsMe] = await Promise.all([
+        prisma.follow.findFirst({
+          where: { follower_id: requesterId, following_id: user.id },
+        }),
+        prisma.follow.findFirst({
+          where: { follower_id: user.id, following_id: requesterId },
+        }),
+      ]);
       isFollowing = !!follow;
+      isFollowingMe = !!followsMe;
     }
-    return { ...user, isFollowing };
+    return { ...user, isFollowing, isFollowingMe };
   }
 
   async getById(userId: string, requesterId?: string) {
@@ -212,22 +219,33 @@ class UserService {
       throw error;
     }
 
-    // Vérifier si l'utilisateur suit ce profil
+    // Vérifier si l'utilisateur suit ce profil (Wonder) et réciproque
     let isFollowing = false;
+    let isFollowingMe = false;
     if (requesterId && requesterId !== userId) {
-      const follow = await prisma.follow.findFirst({
-        where: {
-          follower_id: requesterId,
-          following_id: userId,
-        },
-      });
+      const [follow, followsMe] = await Promise.all([
+        prisma.follow.findFirst({
+          where: {
+            follower_id: requesterId,
+            following_id: userId,
+          },
+        }),
+        prisma.follow.findFirst({
+          where: {
+            follower_id: userId,
+            following_id: requesterId,
+          },
+        }),
+      ]);
       isFollowing = !!follow;
+      isFollowingMe = !!followsMe;
     }
 
     return {
       ...user,
       total_likes: likesAgg._sum.likes ?? 0,
       isFollowing,
+      isFollowingMe,
     };
   }
 
@@ -338,6 +356,14 @@ class UserService {
       ...u,
       is_following: u.id === viewerId ? false : set.has(u.id),
     }));
+  }
+
+  /** Liste utilisateurs + indicateur « déjà suivi » pour le viewer connecté (recherche, etc.). */
+  async enrichUsersForViewer<T extends { id: string }>(
+    users: T[],
+    viewerId?: string | null
+  ): Promise<(T & { is_following: boolean })[]> {
+    return this.attachViewerFollows(users, viewerId);
   }
 
   async getFollowers(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {

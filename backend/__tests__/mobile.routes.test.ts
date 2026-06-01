@@ -45,6 +45,22 @@ describe('Mobile API', () => {
     expect(res.body.data.status).toBe('ok');
   });
 
+  it('GET /api/mobile/app-version', async () => {
+    const res = await request(app).get('/api/mobile/app-version');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.android).toMatchObject({
+      min_version_code: expect.any(Number),
+      latest_version_code: expect.any(Number),
+      store_url: expect.any(String),
+    });
+    expect(res.body.data.ios).toMatchObject({
+      min_version_code: expect.any(Number),
+      latest_version_code: expect.any(Number),
+      store_url: expect.any(String),
+    });
+  });
+
   it('POST /api/mobile/biometric-session', async () => {
     const res = await request(app)
       .post('/api/mobile/biometric-session')

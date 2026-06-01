@@ -785,6 +785,25 @@ router.post('/group/:groupId/messages/:messageId/transcribe', authenticate, send
   }
 });
 
+// POST /api/messages/group/:groupId/messages/:messageId/hide-for-me
+router.post(
+  '/group/:groupId/messages/:messageId/hide-for-me',
+  authenticate,
+  validateBody(jsonObjectBodySchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const result = await messageGroupService.hideGroupMessageForViewer(
+        param(req, 'groupId'),
+        param(req, 'messageId'),
+        req.user!.id,
+      );
+      res.json({ success: true, data: result });
+    } catch (error: unknown) {
+      next(error);
+    }
+  },
+);
+
 // DELETE /api/messages/group/:groupId/messages/:messageId — soft delete (expéditeur)
 router.delete('/group/:groupId/messages/:messageId', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -910,6 +929,16 @@ router.put('/:conversationId/read', authenticate, validateBody(jsonObjectBodySch
 router.delete('/message/:messageId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.deleteMessage(param(req, 'messageId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/message/:messageId/hide-for-me — masquer pour le lecteur (sync multi-appareils)
+router.post('/message/:messageId/hide-for-me', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.hideMessageForViewer(param(req, 'messageId'), req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);

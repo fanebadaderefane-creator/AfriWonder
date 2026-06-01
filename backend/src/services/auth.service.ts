@@ -209,6 +209,8 @@ class AuthService {
           username: usernameTrimmed,
           password_hash,
           full_name: data.full_name?.trim() || null,
+          /** Forfaits mobiles Afrique : qualité basse + moins de préchargement par défaut. */
+          data_saver_mode: true,
         },
         select: {
           id: true,

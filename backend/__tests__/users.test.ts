@@ -4,6 +4,21 @@ import app from '../src/app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 120): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 describe('Users API', () => {
   let testUser: any;
   let authToken: string;
@@ -15,24 +30,24 @@ describe('Users API', () => {
     const timestamp = Date.now();
     // Créer un utilisateur de test avec email unique
     const hashedPassword = await bcrypt.hash('Test123!@#', 10);
-    testUser = await prisma.user.create({
+    testUser = await withRetry(() => prisma.user.create({
       data: {
         email: `test${testCounter}${timestamp}@example.com`,
         password_hash: hashedPassword,
         username: `testuser${testCounter}${timestamp}`,
         full_name: 'Test User'
       }
-    });
+    }));
 
     // Créer un autre utilisateur
-    otherUser = await prisma.user.create({
+    otherUser = await withRetry(() => prisma.user.create({
       data: {
         email: `other${testCounter}${timestamp}@example.com`,
         password_hash: hashedPassword,
         username: `otheruser${testCounter}${timestamp}`,
         full_name: 'Other User'
       }
-    });
+    }));
 
     // Attendre que l'utilisateur soit disponible dans la base de données
     let retries = 5;
@@ -44,12 +59,18 @@ describe('Users API', () => {
     }
 
     // Se connecter pour obtenir le token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: 'Test123!@#'
-      });
+    let loginResponse: any = null;
+    for (let i = 0; i < 3; i += 1) {
+      // Retry login pour absorber les flaps DB transitoires.
+      loginResponse = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: testUser.email,
+          password: 'Test123!@#'
+        });
+      if (loginResponse.status === 200 && loginResponse.body.data?.accessToken) break;
+      await new Promise((resolve) => setTimeout(resolve, 120 * (i + 1)));
+    }
 
     // Vérifier que le login a réussi
     if (loginResponse.status !== 200 || !loginResponse.body.data?.accessToken) {
@@ -60,8 +81,8 @@ describe('Users API', () => {
   });
 
   afterEach(async () => {
-    await prisma.follow.deleteMany({});
-    await prisma.user.deleteMany({});
+    await withRetry(() => prisma.follow.deleteMany({}));
+    await withRetry(() => prisma.user.deleteMany({}));
   });
 
   describe('GET /api/users/:id', () => {
@@ -161,12 +182,12 @@ describe('Users API', () => {
       }
 
       // Créer un follow d'abord
-      await prisma.follow.create({
+      await withRetry(() => prisma.follow.create({
         data: {
           follower_id: testUser.id,
           following_id: otherUser.id
         }
-      });
+      }));
 
       const response = await request(app)
         .get(`/api/users/${otherUser.id}/followers`)
@@ -192,12 +213,12 @@ describe('Users API', () => {
       }
 
       // Créer un follow d'abord
-      await prisma.follow.create({
+      await withRetry(() => prisma.follow.create({
         data: {
           follower_id: testUser.id,
           following_id: otherUser.id
         }
-      });
+      }));
 
       const response = await request(app)
         .get(`/api/users/${testUser.id}/following`)

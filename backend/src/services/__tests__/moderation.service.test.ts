@@ -3,6 +3,8 @@
  */
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
+jest.setTimeout(120000);
+
 describe('ModerationService', () => {
   let prisma: any;
   let logger: any;

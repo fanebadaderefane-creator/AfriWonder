@@ -7,6 +7,11 @@ import prisma from '../config/database.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  buildStaticIceServers,
+  fetchMeteredTurnCredentials,
+  PUBLIC_STUN_FALLBACKS,
+} from '../services/meteredTurn.service.js';
 
 const router = Router();
 
@@ -22,17 +27,33 @@ function parseTurnUrls(): string[] {
 }
 
 /**
- * STUN publics fournis aux clients en plus du TURN privé.
- * Améliore la résilience NAT en Afrique de l'Ouest (Mali, Sénégal, Côte d'Ivoire).
+ * Identifiants TURN statiques (fournisseurs gérés : Metered.ca, Twilio, Open Relay…).
+ * Variables Render : `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`.
  */
-const PUBLIC_STUN_FALLBACKS = [
-  'stun:stun.l.google.com:19302',
-  'stun:stun1.l.google.com:19302',
-  'stun:stun.cloudflare.com:3478',
-  'stun:global.stun.twilio.com:3478',
-];
+function createStaticTurnCredentials() {
+  const username = String(process.env.TURN_USERNAME || '').trim();
+  const credential = String(process.env.TURN_CREDENTIAL || '').trim();
+  const urls = parseTurnUrls();
+  if (!username || !credential || urls.length === 0) return null;
+  const iceServers = buildStaticIceServers(urls, username, credential);
+  return {
+    urls,
+    username,
+    credential,
+    iceServers,
+    expiresAt: 0,
+    ttlSec: 0,
+    realm: String(process.env.TURN_REALM || 'metered.ca').trim(),
+    publicStun: PUBLIC_STUN_FALLBACKS,
+    turnConfigured: true,
+  };
+}
 
-function createTemporaryTurnCredentials(userId: string) {
+/**
+ * Identifiants TURN temporaires HMAC (coturn auto-hébergé avec `use-auth-secret`
+ * / `static-auth-secret` = `TURN_SHARED_SECRET`).
+ */
+function createHmacTurnCredentials(userId: string) {
   const secret = String(process.env.TURN_SHARED_SECRET || '').trim();
   const realm = String(process.env.TURN_REALM || '').trim();
   const ttlSec = Math.max(60, Number(process.env.TURN_CREDENTIAL_TTL_SEC || 3600));
@@ -41,21 +62,36 @@ function createTemporaryTurnCredentials(userId: string) {
   const exp = Math.floor(Date.now() / 1000) + ttlSec;
   const username = `${exp}:${userId}`;
   const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
+  const iceServers = buildStaticIceServers(urls, username, credential);
   return {
     urls,
     username,
     credential,
+    iceServers,
     expiresAt: exp * 1000,
     ttlSec,
     realm,
     publicStun: PUBLIC_STUN_FALLBACKS,
+    turnConfigured: true,
   };
+}
+
+/**
+ * Priorité :
+ * 1. API REST Metered.ca (`METERED_TURN_API_KEY`) — recommandé
+ * 2. Identifiants statiques (`TURN_URL` + `TURN_USERNAME` + `TURN_CREDENTIAL`)
+ * 3. HMAC coturn auto-hébergé
+ */
+async function resolveTurnCredentials(userId: string) {
+  const metered = await fetchMeteredTurnCredentials();
+  if (metered) return metered;
+  return createStaticTurnCredentials() ?? createHmacTurnCredentials(userId);
 }
 
 // GET /api/calls/turn-credentials - Credentials TURN temporaires (ne pas exposer VITE_TURN_CREDENTIAL côté client)
 router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
   const userId = String(req.user?.id || '').trim();
-  const creds = createTemporaryTurnCredentials(userId || 'anonymous');
+  const creds = await resolveTurnCredentials(userId || 'anonymous');
   if (!creds) {
     /**
      * TURN non configuré : on renvoie quand même les STUN publics pour que l'appel
@@ -73,11 +109,12 @@ router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
         ttlSec: 0,
         realm: '',
         publicStun: PUBLIC_STUN_FALLBACKS,
+        iceServers: PUBLIC_STUN_FALLBACKS.map((u) => ({ urls: u })),
         turnConfigured: false,
       },
     });
   }
-  return res.json({ success: true, data: { ...creds, turnConfigured: true } });
+  return res.json({ success: true, data: creds });
 });
 
 // POST /api/calls/initiate - Initier un appel payant

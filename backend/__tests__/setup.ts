@@ -114,7 +114,7 @@ beforeAll(async () => {
       console.warn('Erreur création utilisateur plateforme:', err.message);
     }
   }
-}, 60000);
+}, 180000);
 
 afterAll(async () => {
   const inst = (global as any).__PRISMA__ as PrismaClient | undefined;

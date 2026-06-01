@@ -33,6 +33,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       category: category?.trim() || undefined,
       hashtag: hashtag?.trim() || undefined,
       userId: req.user?.id,
+      viewerId: req.user?.id,
       duration,
     });
 
