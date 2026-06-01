@@ -26,8 +26,52 @@ const LOW_Q_PRESET = (() => {
 })();
 const LOW_Q_CRF = String(Math.min(51, Math.max(18, Number(process.env.VIDEO_LOW_Q_CRF || '32') || 32)));
 const LOW_Q_DELAY_MS = Math.max(5000, Number(process.env.VIDEO_LOW_QUALITY_DELAY_MS || '120000') || 120000);
+/** Render Starter : 1 ffmpeg à la fois évite les 502 ; montée possible via env en prod+. */
+const MAX_CONCURRENT_FFMPEG = Math.max(
+  1,
+  Math.min(3, Number(process.env.VIDEO_LOW_Q_MAX_CONCURRENT || '1') || 1),
+);
 
 const inFlight = new Set<string>();
+const queuedIds = new Set<string>();
+const pendingQueue: string[] = [];
+let activeFfmpegJobs = 0;
+
+function pumpLowQualityQueue(): void {
+  while (activeFfmpegJobs < MAX_CONCURRENT_FFMPEG && pendingQueue.length > 0) {
+    const videoId = pendingQueue.shift()!;
+    queuedIds.delete(videoId);
+    if (inFlight.has(videoId)) continue;
+    activeFfmpegJobs += 1;
+    void runLowQualityRenditionForPublishedVideo(videoId).finally(() => {
+      activeFfmpegJobs -= 1;
+      pumpLowQualityQueue();
+    });
+  }
+}
+
+/** File d'attente sérialisée — utilisée publish, backfill admin et job auto prod. */
+export function enqueueLowQualityRendition(videoId: string): boolean {
+  const id = String(videoId || '').trim();
+  if (!id || process.env.VIDEO_LOW_QUALITY_RENDITION === '0') return false;
+  if (inFlight.has(id) || queuedIds.has(id)) return false;
+  queuedIds.add(id);
+  pendingQueue.push(id);
+  pumpLowQualityQueue();
+  return true;
+}
+
+export function getLowQualityRenditionQueueStats(): {
+  pending: number;
+  active: number;
+  max_concurrent: number;
+} {
+  return {
+    pending: pendingQueue.length,
+    active: activeFfmpegJobs,
+    max_concurrent: MAX_CONCURRENT_FFMPEG,
+  };
+}
 
 function buildLowBandwidthFilter(): string {
   const baseW = 360;
@@ -168,9 +212,9 @@ export async function runLowQualityRenditionForPublishedVideo(videoId: string): 
 export function scheduleLowQualityRenditionAfterPublish(videoId: string): void {
   if (process.env.VIDEO_LOW_QUALITY_RENDITION === '0') return;
   const retryDelayMs = Math.max(60_000, Number(process.env.VIDEO_LOW_QUALITY_RETRY_MS || '300000') || 300000);
+  setTimeout(() => enqueueLowQualityRendition(videoId), LOW_Q_DELAY_MS);
   setTimeout(() => {
     void (async () => {
-      await runLowQualityRenditionForPublishedVideo(videoId);
       const row = await prisma.video.findUnique({
         where: { id: videoId },
         select: { low_quality_url: true },
@@ -178,12 +222,8 @@ export function scheduleLowQualityRenditionAfterPublish(videoId: string): void {
       const hasLow = Boolean(String(row?.low_quality_url || '').trim());
       if (!hasLow) {
         logger.warn('lowQuality rendition missing after 1st pass — retry', { videoId });
-        setTimeout(() => {
-          runLowQualityRenditionForPublishedVideo(videoId).catch((e) =>
-            logger.warn('scheduleLowQualityRenditionAfterPublish retry', { videoId, err: String(e) })
-          );
-        }, retryDelayMs);
+        enqueueLowQualityRendition(videoId);
       }
     })().catch((e) => logger.warn('scheduleLowQualityRenditionAfterPublish', { videoId, err: String(e) }));
-  }, LOW_Q_DELAY_MS);
+  }, LOW_Q_DELAY_MS + retryDelayMs);
 }

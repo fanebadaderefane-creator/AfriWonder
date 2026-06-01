@@ -1007,7 +1007,7 @@ router.post(
   validateBody(jsonObjectBodySchema),
   async (req: AuthRequest, res, next) => {
     try {
-      const limit = Math.min(50, Math.max(1, Number(req.body?.limit) || 25));
+      const limit = Math.min(10, Math.max(1, Number(req.body?.limit) || 3));
       const data = await backfillLowQualityRenditions(limit);
       await auditLog(req, 'video_low_quality_backfill', 'video', 'batch', { scheduled: data.scheduled });
       res.json({ success: true, data });

@@ -3,7 +3,7 @@
  */
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
-import { runLowQualityRenditionForPublishedVideo } from './videoLowQualityRendition.service.js';
+import { enqueueLowQualityRendition } from './videoLowQualityRendition.service.js';
 
 export type VideoLowQualityAlertLevel = 'ok' | 'warn' | 'critical';
 
@@ -144,12 +144,12 @@ export async function getVideoLowQualityCoverageCached(): Promise<VideoLowQualit
   return data;
 }
 
-/** Planifie la génération flux léger pour les vidéos HD-only (admin / cron). */
-export async function backfillLowQualityRenditions(limit = 25): Promise<{
+/** Planifie la génération flux léger pour les vidéos HD-only (file sérialisée, admin / job auto). */
+export async function backfillLowQualityRenditions(limit = 3): Promise<{
   scheduled: number;
   video_ids: string[];
 }> {
-  const cap = Math.min(50, Math.max(1, limit));
+  const cap = Math.min(10, Math.max(1, limit));
   const rows = await prisma.video.findMany({
     where: {
       ...eligibleWhere(),
@@ -159,12 +159,17 @@ export async function backfillLowQualityRenditions(limit = 25): Promise<{
     orderBy: { created_at: 'desc' },
     take: cap,
   });
+  let scheduled = 0;
+  const video_ids: string[] = [];
   for (const row of rows) {
-    void runLowQualityRenditionForPublishedVideo(row.id);
+    if (enqueueLowQualityRendition(row.id)) {
+      scheduled += 1;
+      video_ids.push(row.id);
+    }
   }
-  if (rows.length > 0) {
-    logger.info('lowQuality backfill scheduled', { count: rows.length });
+  if (scheduled > 0) {
+    logger.info('lowQuality backfill enqueued', { count: scheduled });
   }
   cache = { data: null, at: 0 };
-  return { scheduled: rows.length, video_ids: rows.map((r) => r.id) };
+  return { scheduled, video_ids };
 }

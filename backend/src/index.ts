@@ -20,6 +20,7 @@ import { startScheduledMessagesJob } from './jobs/scheduledMessages.job.js';
 import { startCrowdfundingFailedRefundsJob } from './jobs/crowdfundingRefunds.job.js';
 import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { startE2eeMonitoringAlertJob } from './jobs/e2eeMonitoringAlert.job.js';
+import { startVideoLowQualityBackfillJob } from './jobs/videoLowQualityBackfill.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
@@ -904,6 +905,7 @@ async function startServer() {
         startCrowdfundingFailedRefundsJob();
         startModerationTimeoutJob();
         startE2eeMonitoringAlertJob();
+        startVideoLowQualityBackfillJob();
 
         logger.info('✅ Jobs automatiques démarrés');
         logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
