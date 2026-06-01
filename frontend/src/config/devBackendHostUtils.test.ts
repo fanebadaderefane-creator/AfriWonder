@@ -5,6 +5,7 @@ import {
   parseHostFromDevConnectionString,
   orderedPrivateLanHostsFromStrings,
   preferLocalhostBackendWhenWebDevOnLocalhost,
+  webUseRemoteBackendFromEnv,
 } from './devBackendHostUtils';
 
 describe('devBackendHostUtils (régression Android / MEmu → API :3000)', () => {
@@ -65,6 +66,37 @@ describe('devBackendHostUtils (régression Android / MEmu → API :3000)', () =>
         'http://localhost:3000',
       ),
     ).toBe('http://192.168.1.11:3000');
+  });
+
+  it('preferLocalhostBackendWhenWebDevOnLocalhost : page localhost + Render → localhost:3000', () => {
+    expect(
+      preferLocalhostBackendWhenWebDevOnLocalhost(
+        'https://afriwonder.onrender.com',
+        'localhost',
+        'http://localhost:3000',
+      ),
+    ).toBe('http://localhost:3000');
+  });
+
+  it('preferLocalhostBackendWhenWebDevOnLocalhost : useRemoteBackend garde Render', () => {
+    expect(
+      preferLocalhostBackendWhenWebDevOnLocalhost(
+        'https://afriwonder.onrender.com',
+        'localhost',
+        'http://localhost:3000',
+        { useRemoteBackend: true },
+      ),
+    ).toBe('https://afriwonder.onrender.com');
+  });
+
+  it('webUseRemoteBackendFromEnv : lit EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND', () => {
+    const prev = process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND;
+    process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND = 'true';
+    expect(webUseRemoteBackendFromEnv()).toBe(true);
+    process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND = '0';
+    expect(webUseRemoteBackendFromEnv()).toBe(false);
+    if (prev === undefined) delete process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND;
+    else process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND = prev;
   });
 
   it('isLikelyEphemeralDevBackendOrigin : LAN / localhost = éphémère ; HTTPS public = stable', () => {

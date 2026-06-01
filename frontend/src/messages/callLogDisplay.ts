@@ -59,6 +59,21 @@ export function callLogIsMissedForViewer(meta: CallLogMeta, viewerUserId: string
   return meta.outcome === 'missed' || meta.outcome === 'cancelled';
 }
 
+/** Titre rouge (appel manqué côté destinataire). */
+export function callLogTitleIsAlert(meta: CallLogMeta, viewerUserId: string): boolean {
+  return callLogIsMissedForViewer(meta, viewerUserId);
+}
+
+/** Direction de la petite flèche sur l’icône (style WhatsApp). */
+export function callLogIconDirection(
+  meta: CallLogMeta,
+  viewerUserId: string,
+): 'outgoing' | 'incoming' | 'missed' {
+  if (callLogIsMissedForViewer(meta, viewerUserId)) return 'missed';
+  if (callLogBubbleIsMine(meta, viewerUserId)) return 'outgoing';
+  return 'incoming';
+}
+
 /** Touche pour relancer un appel (appels manqués / annulés côté destinataire). */
 export function callLogCanCallBack(meta: CallLogMeta, viewerUserId: string): boolean {
   return callLogIsMissedForViewer(meta, viewerUserId);
@@ -78,7 +93,7 @@ export function formatCallLogTitle(meta: CallLogMeta, viewerUserId: string): str
 
 /** Sous-titre (durée, « Cliquez pour rappeler », etc.). */
 export function formatCallLogSubtitle(meta: CallLogMeta, viewerUserId: string): string {
-  if (callLogCanCallBack(meta, viewerUserId)) {
+  if (callLogIsMissedForViewer(meta, viewerUserId)) {
     return 'Cliquez pour rappeler';
   }
   if (meta.outcome === 'completed' && meta.durationSec > 0) {
@@ -100,6 +115,11 @@ export function formatCallLogSubtitle(meta: CallLogMeta, viewerUserId: string): 
     return 'Sonnerie…';
   }
   return '';
+}
+
+/** Touche sur la bulle → relancer le même type d’appel (comme WhatsApp). */
+export function callLogTapToRedial(_meta: CallLogMeta, _viewerUserId: string): boolean {
+  return true;
 }
 
 export function callLogIconName(

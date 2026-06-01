@@ -56,29 +56,64 @@ export function orderedPrivateLanHostsFromStrings(strings: string[]): string[] {
   return hosts;
 }
 
+/** `EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND=true` — garder Render/staging depuis le navigateur (appels WebRTC / TURN). */
+export function webUseRemoteBackendFromEnv(): boolean {
+  const v = (process.env.EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function normalizeOriginUrl(raw: string): URL | null {
+  const c = raw.trim();
+  if (!c) return null;
+  try {
+    return new URL(/^[a-z][a-z+.-]*:\/\//i.test(c) ? c : `http://${c}`);
+  } catch {
+    return null;
+  }
+}
+
+function isSameBackendOrigin(configured: URL, localBackend: URL): boolean {
+  const ch = configured.hostname.toLowerCase();
+  const lh = localBackend.hostname.toLowerCase();
+  const sameHost =
+    ch === lh
+    || (ch === 'localhost' && lh === '127.0.0.1')
+    || (ch === '127.0.0.1' && lh === 'localhost');
+  if (!sameHost) return false;
+  const cp = configured.port || (configured.protocol === 'https:' ? '443' : '80');
+  const lp = localBackend.port || (localBackend.protocol === 'https:' ? '443' : '80');
+  return cp === lp;
+}
+
 /**
- * Expo web en dev : la page est souvent `http://localhost:8081` alors que `.env` pointe vers l’IP LAN
- * (`http://192.168.x.x:3000`) pour le téléphone. Firefox / Chrome appellent alors une autre origine :
- * CORS ou connexion peuvent échouer (`Code d’état : (null)`). Sur navigateur « localhost », on préfère l’API locale.
+ * Expo web en dev : la page est souvent `http://localhost:3001` alors que `.env` pointe vers l’IP LAN
+ * (`http://192.168.x.x:3000`) ou Render (`https://afriwonder.onrender.com`) pour le téléphone.
+ * Firefox / Chrome appellent alors une autre origine : CORS ou connexion peuvent échouer.
+ * Sur navigateur « localhost », on préfère l’API locale sauf `EXPO_PUBLIC_WEB_USE_REMOTE_BACKEND`.
  */
 export function preferLocalhostBackendWhenWebDevOnLocalhost(
   configuredOrigin: string,
   pageHostname: string | undefined,
   localhostBackendOrigin: string,
+  options?: { useRemoteBackend?: boolean },
 ): string {
   const c = configuredOrigin.trim();
   if (!c) return '';
   const ph = (pageHostname || '').toLowerCase();
   if (ph !== 'localhost' && ph !== '127.0.0.1') return c;
-  try {
-    const u = new URL(/^[a-z][a-z+.-]*:\/\//i.test(c) ? c : `http://${c}`);
-    if (isPrivateUseIpv4(u.hostname)) {
-      return stripTrailingSlash(localhostBackendOrigin);
-    }
-  } catch {
-    return c;
+  if (options?.useRemoteBackend ?? webUseRemoteBackendFromEnv()) return c;
+
+  const configuredUrl = normalizeOriginUrl(c);
+  const localUrl = normalizeOriginUrl(localhostBackendOrigin);
+  if (!configuredUrl || !localUrl) return c;
+  if (isSameBackendOrigin(configuredUrl, localUrl)) return c;
+
+  if (isPrivateUseIpv4(configuredUrl.hostname)) {
+    return stripTrailingSlash(localhostBackendOrigin);
   }
-  return c;
+
+  // Render / staging HTTPS depuis localhost web → API locale (pas de CORS, feed instantané).
+  return stripTrailingSlash(localhostBackendOrigin);
 }
 
 /**

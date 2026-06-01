@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   callLogBubbleIsMine,
   callLogCanCallBack,
+  callLogIconDirection,
+  callLogTitleIsAlert,
   formatCallDurationFr,
   formatCallLogSubtitle,
   formatCallLogTitle,
@@ -57,5 +59,19 @@ describe('callLogDisplay', () => {
 
     const m = parseCallLogContent(SAMPLE)!;
     expect(formatCallLogSubtitle(m, 'user-b')).toBe('2 min 5 s');
+  });
+
+  it('icône direction et titre alerte', () => {
+    const missed = parseCallLogContent(
+      JSON.stringify({ ...JSON.parse(SAMPLE), outcome: 'missed', durationSec: 0 }),
+    )!;
+    expect(callLogIconDirection(missed, 'user-a')).toBe('outgoing');
+    expect(callLogIconDirection(missed, 'user-b')).toBe('missed');
+    expect(callLogTitleIsAlert(missed, 'user-b')).toBe(true);
+    expect(callLogTitleIsAlert(missed, 'user-a')).toBe(false);
+
+    const m = parseCallLogContent(SAMPLE)!;
+    expect(callLogIconDirection(m, 'user-a')).toBe('outgoing');
+    expect(callLogIconDirection(m, 'user-b')).toBe('incoming');
   });
 });
