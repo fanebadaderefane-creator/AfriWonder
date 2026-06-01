@@ -12,6 +12,10 @@ import crowdfundingService from '../services/crowdfunding.service.js';
 import adminAuditService from '../services/adminAudit.service.js';
 import platformControlService from '../services/platformControl.service.js';
 import { getPlatformHealth } from '../services/platformHealth.service.js';
+import {
+  backfillLowQualityRenditions,
+  getVideoLowQualityCoverage,
+} from '../services/videoLowQualityCoverage.service.js';
 import prisma from '../config/database.js';
 import { addToBlacklist } from '../services/blacklist.service.js';
 import * as amlService from '../services/aml.service.js';
@@ -984,6 +988,34 @@ router.get('/health', authenticate, requireAnyAdmin, async (req, res, next) => {
     next(error);
   }
 });
+
+// GET /api/admin/videos/low-quality-coverage — audit forfait (flux léger vs HD)
+router.get('/videos/low-quality-coverage', authenticate, requireAnyAdmin, async (_req, res, next) => {
+  try {
+    const data = await getVideoLowQualityCoverage();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/videos/low-quality-coverage/backfill — regénère les rendus manquants (batch)
+router.post(
+  '/videos/low-quality-coverage/backfill',
+  authenticate,
+  requireAnyAdmin,
+  validateBody(jsonObjectBodySchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const limit = Math.min(50, Math.max(1, Number(req.body?.limit) || 25));
+      const data = await backfillLowQualityRenditions(limit);
+      await auditLog(req, 'video_low_quality_backfill', 'video', 'batch', { scheduled: data.scheduled });
+      res.json({ success: true, data });
+    } catch (error: any) {
+      next(error);
+    }
+  },
+);
 
 // GET /api/admin/lives/active
 router.get('/lives/active', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {

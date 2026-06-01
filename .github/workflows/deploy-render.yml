@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "Dockerfile.backend"
       - ".github/workflows/deploy-render.yml"
 
 permissions:

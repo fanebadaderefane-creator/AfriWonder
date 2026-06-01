@@ -19,6 +19,9 @@ RUN npx prisma generate && npm run build
 # Image de production
 FROM node:20-alpine
 
+# ffmpeg : miniatures, transcodage compat navigateur, rendus flux léger (~480p forfait mobile)
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules

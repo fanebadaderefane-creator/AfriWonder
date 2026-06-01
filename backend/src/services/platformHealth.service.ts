@@ -7,6 +7,7 @@ import prisma from '../config/database.js';
 import { getErrorsSummary } from './errorMonitoring.service.js';
 import { getHttpMetricsSummary } from './httpMetrics.service.js';
 import e2eeService from './e2ee.service.js';
+import { getVideoLowQualityCoverageCached } from './videoLowQualityCoverage.service.js';
 
 // Cache court pour éviter de surcharger la DB
 let cache: {
@@ -30,13 +31,20 @@ async function getHealthUncached(): Promise<{
     healthy: boolean;
     alerts: string[];
   };
+  video_delivery: {
+    coverage_pct: number;
+    alert_level: string;
+    hd_only: number;
+    alerts: string[];
+  } | null;
   timestamp: string;
 }> {
   const now = new Date();
   const oneMinAgo = new Date(now.getTime() - 60 * 1000);
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-  const [usersOnlineCount, txLastMin, failedPaymentsLastHour, errorsSummary, e2ee] = await Promise.all([
+  const [usersOnlineCount, txLastMin, failedPaymentsLastHour, errorsSummary, e2ee, videoCoverage] =
+    await Promise.all([
     prisma.userPresence.count({ where: { is_online: true } }).catch(() => 0),
     prisma.transaction.count({
       where: { created_at: { gte: oneMinAgo } },
@@ -57,6 +65,7 @@ async function getHealthUncached(): Promise<{
       alerts: ['e2ee_snapshot_unavailable'],
       timestamp: new Date().toISOString(),
     })),
+    getVideoLowQualityCoverageCached().catch(() => null),
   ]);
 
   const errorRate5m = errorsSummary?.countLast24h ? Math.min(1, errorsSummary.countLast24h / 100) : 0;
@@ -67,6 +76,9 @@ async function getHealthUncached(): Promise<{
   if (errorRate5m > 0.3 || failedPaymentsLastHour > 200) status = 'critical';
   if (status === 'stable' && !e2ee.healthy) status = 'degraded';
   if (e2ee.alerts.includes('no_devices_registered') || e2ee.alerts.includes('prekeys_low')) {
+    status = status === 'critical' ? 'critical' : 'degraded';
+  }
+  if (videoCoverage && videoCoverage.alert_level === 'critical') {
     status = status === 'critical' ? 'critical' : 'degraded';
   }
 
@@ -85,6 +97,14 @@ async function getHealthUncached(): Promise<{
       healthy: e2ee.healthy,
       alerts: e2ee.alerts,
     },
+    video_delivery: videoCoverage
+      ? {
+          coverage_pct: videoCoverage.coverage_pct,
+          alert_level: videoCoverage.alert_level,
+          hd_only: videoCoverage.hd_only,
+          alerts: videoCoverage.alerts,
+        }
+      : null,
     timestamp: now.toISOString(),
   };
 }

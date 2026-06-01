@@ -167,9 +167,23 @@ export async function runLowQualityRenditionForPublishedVideo(videoId: string): 
 
 export function scheduleLowQualityRenditionAfterPublish(videoId: string): void {
   if (process.env.VIDEO_LOW_QUALITY_RENDITION === '0') return;
+  const retryDelayMs = Math.max(60_000, Number(process.env.VIDEO_LOW_QUALITY_RETRY_MS || '300000') || 300000);
   setTimeout(() => {
-    runLowQualityRenditionForPublishedVideo(videoId).catch((e) =>
-      logger.warn('scheduleLowQualityRenditionAfterPublish', { videoId, err: String(e) })
-    );
+    void (async () => {
+      await runLowQualityRenditionForPublishedVideo(videoId);
+      const row = await prisma.video.findUnique({
+        where: { id: videoId },
+        select: { low_quality_url: true },
+      });
+      const hasLow = Boolean(String(row?.low_quality_url || '').trim());
+      if (!hasLow) {
+        logger.warn('lowQuality rendition missing after 1st pass — retry', { videoId });
+        setTimeout(() => {
+          runLowQualityRenditionForPublishedVideo(videoId).catch((e) =>
+            logger.warn('scheduleLowQualityRenditionAfterPublish retry', { videoId, err: String(e) })
+          );
+        }, retryDelayMs);
+      }
+    })().catch((e) => logger.warn('scheduleLowQualityRenditionAfterPublish', { videoId, err: String(e) }));
   }, LOW_Q_DELAY_MS);
 }

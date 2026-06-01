@@ -5,6 +5,7 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import analyticsService from '../services/analytics.service.js';
 import { getMobileAppVersionPolicy } from '../services/mobileAppVersion.service.js';
+import { getVideoLowQualityCoverageCached } from '../services/videoLowQualityCoverage.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
@@ -177,7 +178,7 @@ router.get('/app-version', (_req, res) => {
 });
 
 // GET /api/mobile/health
-router.get('/health', (_req, res) => {
+router.get('/health', async (_req, res) => {
   const agoraAppId = !!process.env.AGORA_APP_ID?.trim();
   const agoraCert = !!process.env.AGORA_APP_CERTIFICATE?.trim();
   const turn =
@@ -188,6 +189,25 @@ router.get('/health', (_req, res) => {
       !!process.env.TURN_CREDENTIAL?.trim() &&
       (!!process.env.TURN_URL?.trim() || !!process.env.TURN_URLS?.trim())) ||
     !!process.env.TURN_SHARED_SECRET?.trim();
+
+  let videoDelivery: {
+    coverage_pct: number;
+    alert_level: string;
+    hd_only: number;
+    alerts: string[];
+  } | null = null;
+  try {
+    const cov = await getVideoLowQualityCoverageCached();
+    videoDelivery = {
+      coverage_pct: cov.coverage_pct,
+      alert_level: cov.alert_level,
+      hd_only: cov.hd_only,
+      alerts: cov.alerts.slice(0, 3),
+    };
+  } catch {
+    /* DB indisponible — health partiel */
+  }
+
   res.json({
     success: true,
     data: {
@@ -204,7 +224,11 @@ router.get('/health', (_req, res) => {
         ),
         /** Crédit serveur : POST /api/coins/iap/credit — reçus Play/App Store à valider en prod. */
         coins_iap_credit: true,
+        /** % vidéos publiques avec flux léger (~480p) — sous 70% = risque forfait. */
+        video_low_quality_coverage_pct: videoDelivery?.coverage_pct ?? null,
+        video_data_saver_ok: videoDelivery ? videoDelivery.alert_level === 'ok' : null,
       },
+      video_delivery: videoDelivery,
     },
   });
 });
