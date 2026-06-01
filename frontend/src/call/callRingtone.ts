@@ -2,9 +2,9 @@ import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import { Platform } from 'react-native';
 import { RING_PULSE_MS, type CallRingPreset } from './callRingtoneTiming';
 
-/** Sonnerie entrante (style WhatsApp : tiiiii — pause — tiiiii). */
+/** Sonnerie entrante WhatsApp : double chime (B5 → F#5), ~2 s. */
 const INCOMING_WAV = require('../../assets/sounds/incoming_call.wav');
-/** Tonalité d’attente appelant — fichier distinct (ringback plus court). */
+/** Ringback appelant : dual-tone 425+475 Hz, ~1,15 s — distinct de l’entrant. */
 const OUTGOING_WAV = require('../../assets/sounds/outgoing_ringback.wav');
 
 export type { CallRingPreset } from './callRingtoneTiming';

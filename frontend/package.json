@@ -22,6 +22,8 @@
     "verify:expo-fs": "node ./scripts/verify-expo-filesystem-imports.cjs",
     "verify:call-stack": "node ./scripts/verify-call-stack-prod.cjs",
     "verify:pre-apk": "node ./scripts/verify-pre-apk.cjs",
+    "generate:call-sounds": "node ./scripts/generate-call-sounds.cjs",
+    "verify:call-media": "node ./scripts/verify-call-media-readiness.cjs",
     "verify": "expo lint && npm run typecheck && npm run verify:android-boot && npm run verify:expo-fs && npm run test:coverage",
     "quality": "npm run verify",
     "standards:mobile": "npm run verify",

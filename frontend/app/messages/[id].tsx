@@ -121,7 +121,7 @@ const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; f
 ];
 
 function toStoredPendingMessage(msg: Message): StoredPendingMessage | null {
-  if (!msg.retryMeta?.localUri) return null;
+  if (msg.type === 'call' || !msg.retryMeta?.localUri) return null;
   return {
     id: msg.id,
     text: msg.text,
@@ -137,7 +137,7 @@ function toStoredPendingMessage(msg: Message): StoredPendingMessage | null {
 }
 
 function toStoredFailedMessage(msg: Message): StoredFailedMessage | null {
-  if (msg.status !== 'failed' || !msg.retryMeta?.localUri) return null;
+  if (msg.type === 'call' || msg.status !== 'failed' || !msg.retryMeta?.localUri) return null;
   return {
     id: msg.id,
     text: msg.text,
