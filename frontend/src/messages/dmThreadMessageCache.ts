@@ -24,6 +24,10 @@ export type CachedThreadMessage = {
   locationLabel?: string;
   contactShareLine?: string;
   senderLabel?: string;
+  callLogTitle?: string;
+  callLogSubtitle?: string;
+  callLogIcon?: 'call' | 'videocam' | 'call-outline' | 'arrow-redo';
+  callLogTint?: string;
 };
 
 function storageKey(conversationId: string): string {

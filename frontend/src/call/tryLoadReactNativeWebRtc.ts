@@ -12,6 +12,18 @@ export function isNativeWebRtcAvailable(): boolean {
   return nm.WebRTCModule != null;
 }
 
+/** WebRTC utilisable sur la plateforme courante (navigateur ou module natif). */
+export function isWebRtcRuntimeAvailable(): boolean {
+  if (Platform.OS === 'web') {
+    return (
+      typeof RTCPeerConnection !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.mediaDevices?.getUserMedia === 'function'
+    );
+  }
+  return isNativeWebRtcAvailable();
+}
+
 export function tryLoadReactNativeWebRtc(): Record<string, unknown> | null {
   if (Platform.OS === 'web') return null;
   if (!isNativeWebRtcAvailable()) return null;

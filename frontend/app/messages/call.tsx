@@ -32,6 +32,7 @@ import {
   resolveWebRtcMediaDevices,
   startNativeCallAudioSession,
   stopNativeCallAudioSession,
+  stopNativeOutgoingRingback,
 } from '../../src/call/callNativeMedia';
 import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
 import {
@@ -61,6 +62,33 @@ async function detectVideoProfile(): Promise<NetVideoQualityProfile> {
     });
   } catch {
     return pickVideoProfileForNetwork(null);
+  }
+}
+
+/** Web : attache un MediaStream via `srcObject` uniquement — pas de `src` ni `autoPlay` au montage (Firefox : « URI invalide »). */
+function bindWebRtcMediaElement(
+  el: HTMLVideoElement | HTMLAudioElement | null,
+  stream: MediaStream | null | undefined,
+): void {
+  if (!el) return;
+  try {
+    const next = stream ?? null;
+    if (el.src) el.removeAttribute('src');
+    if (el.srcObject !== next) el.srcObject = next;
+    if (next) void el.play().catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearWebRtcMediaElement(el: HTMLVideoElement | HTMLAudioElement | null | undefined): void {
+  if (!el) return;
+  try {
+    el.pause();
+    if (el.src) el.removeAttribute('src');
+    el.srcObject = null;
+  } catch {
+    /* ignore */
   }
 }
 
@@ -248,6 +276,7 @@ export default function CallScreen() {
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const startedAtRef = useRef<number | null>(null);
   const callStateRef = useRef(callState);
+  const finishingRef = useRef(false);
   const [remoteStreamUrl, setRemoteStreamUrl] = useState<string>('');
   const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
   const [localStreamKey, setLocalStreamKey] = useState(0);
@@ -298,7 +327,11 @@ export default function CallScreen() {
     void stopNativeCallAudioSession();
     void stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
-    if (!isWebRuntime) {
+    if (isWebRuntime) {
+      clearWebRtcMediaElement(localVideoElRef.current);
+      clearWebRtcMediaElement(remoteVideoElRef.current);
+      clearWebRtcMediaElement(remoteAudioElRef.current);
+    } else {
       setLocalStreamUrl('');
       setRemoteStreamUrl('');
     }
@@ -306,7 +339,8 @@ export default function CallScreen() {
 
   const finishCall = useCallback(
     (reason: 'ended' | 'failed' | 'declined' | 'cancelled' | 'missed' = 'ended') => {
-      if (callState === 'ended') return;
+      if (finishingRef.current || callStateRef.current === 'ended') return;
+      finishingRef.current = true;
       setPeerRaisedHand(false);
       setMyRaisedHand(false);
       setPeerScreenSharing(false);
@@ -346,6 +380,8 @@ export default function CallScreen() {
         .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, {
           status: sessionStatus,
           duration: elapsed,
+          callMediaType: isVideo ? 'video' : 'audio',
+          callerName: user?.full_name || user?.username || '',
         })
         .catch(() => {
           /* best effort */
@@ -358,7 +394,7 @@ export default function CallScreen() {
         }
       }, 600);
     },
-    [callState, otherUserId, myUserId, stopAllMedia, role],
+    [otherUserId, myUserId, stopAllMedia, role, isVideo, user?.full_name, user?.username],
   );
 
   /** Animation de pulse pendant le ringing. */
@@ -449,14 +485,12 @@ export default function CallScreen() {
       } catch {
         /* ignore */
       }
-      if (isWebRuntime && isVideo && remoteVideoElRef.current) {
-        remoteVideoElRef.current.srcObject = stream;
-        remoteVideoElRef.current.play().catch(() => {});
+      if (isWebRuntime && isVideo) {
+        bindWebRtcMediaElement(remoteVideoElRef.current, stream);
       }
       /** Appel vidéo : l’audio sort du `<video>` distant — ne pas dupliquer sur `<audio>` (double lecture). */
-      if (isWebRuntime && !isVideo && remoteAudioElRef.current) {
-        remoteAudioElRef.current.srcObject = stream;
-        remoteAudioElRef.current.play().catch(() => {});
+      if (isWebRuntime && !isVideo) {
+        bindWebRtcMediaElement(remoteAudioElRef.current, stream);
       }
       if (!isWebRuntime) {
         const url = (stream as { toURL?: () => string })?.toURL?.();
@@ -531,9 +565,8 @@ export default function CallScreen() {
     };
 
     const setupLocalEl = (stream: MediaStream) => {
-      if (isWebRuntime && isVideo && localVideoElRef.current) {
-        localVideoElRef.current.srcObject = stream;
-        localVideoElRef.current.play().catch(() => {});
+      if (isWebRuntime && isVideo) {
+        bindWebRtcMediaElement(localVideoElRef.current, stream);
       }
       if (!isWebRuntime) {
         const url = (stream as { toURL?: () => string })?.toURL?.();
@@ -875,15 +908,20 @@ export default function CallScreen() {
         }
         localStreamRef.current = local;
         webrtcMediaActiveRef.current = true;
-        void stopOutgoingRingRef.current?.();
-        stopOutgoingRingRef.current = null;
+        /** Natif : couper expo-av avant WebRTC ; web : ringback HTML5 continue jusqu’à `connecting`. */
+        if (!isWebRuntime) {
+          void stopOutgoingRingRef.current?.();
+          stopOutgoingRingRef.current = null;
+        }
         const localTrackCounts = countLocalTracks(local);
         logCallPhase(callId, 'local_media', {
           ...localTrackCounts,
           isVideo,
         });
         if (!isWebRuntime) {
-          await startNativeCallAudioSession(isVideo, speakerOnRef.current);
+          await startNativeCallAudioSession(isVideo, speakerOnRef.current, {
+            outgoingRingback: role === 'caller',
+          });
         }
         local.getTracks().forEach((t: any) => pc.addTrack(t, local));
         setupLocalEl(local);
@@ -998,18 +1036,39 @@ export default function CallScreen() {
     speakerOnRef.current = speakerOn;
   }, [speakerOn]);
 
+  /** Journal d’appel côté serveur si l’écran est quitté sans bouton rouge (retour navigateur, etc.). */
+  const finishCallRef = useRef(finishCall);
+  finishCallRef.current = finishCall;
+  useEffect(() => {
+    return () => {
+      if (finishingRef.current || callStateRef.current === 'ended') return;
+      if (callStateRef.current === 'ringing' && role === 'caller') {
+        finishCallRef.current('cancelled');
+        return;
+      }
+      if (callStateRef.current !== 'connected') {
+        finishCallRef.current('cancelled');
+        return;
+      }
+      finishCallRef.current('ended');
+    };
+  }, [role]);
+
   /**
    * Tonalité d’attente — uniquement avant capture micro WebRTC.
    * Après getUserMedia, expo-av volerait la session audio native (silence des deux côtés).
    */
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    if (!nativeWebRTC) return;
     if (role !== 'caller' || callState !== 'ringing') return;
-    if (webrtcMediaActiveRef.current) return;
+    if (!isWebRuntime && webrtcMediaActiveRef.current) return;
+    if (!isWebRuntime && !nativeWebRTC) return;
     let cancelled = false;
     void startOutgoingRingbackPattern(0.58).then((fn) => {
-      if (cancelled || webrtcMediaActiveRef.current) {
+      if (cancelled) {
+        void fn();
+        return;
+      }
+      if (!isWebRuntime && webrtcMediaActiveRef.current) {
         void fn();
         return;
       }
@@ -1022,12 +1081,13 @@ export default function CallScreen() {
     };
   }, [role, callState]);
 
-  /** Libère expo-av dès la négociation WebRTC (appelant + receveur). */
+  /** Arrête la tonalité d’attente dès connexion WebRTC (web + natif). */
   useEffect(() => {
-    if (isWebRuntime) return;
     if (callState !== 'connecting' && callState !== 'connected') return;
     void stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
+    if (isWebRuntime) return;
+    void stopNativeOutgoingRingback();
     void releaseExpoAvForWebRtcCall();
   }, [callState]);
 
@@ -1205,9 +1265,8 @@ export default function CallScreen() {
       oldVt.stop();
     }
     local.addTrack(newVt);
-    if (isWebRuntime && localVideoElRef.current) {
-      localVideoElRef.current.srcObject = local;
-      void localVideoElRef.current.play();
+    if (isWebRuntime) {
+      bindWebRtcMediaElement(localVideoElRef.current, local);
     }
     if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
       setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
@@ -1240,9 +1299,8 @@ export default function CallScreen() {
           oldVt.stop();
         }
         local.addTrack(newVt);
-        if (isWebRuntime && localVideoElRef.current) {
-          localVideoElRef.current.srcObject = local;
-          void localVideoElRef.current.play();
+        if (isWebRuntime) {
+          bindWebRtcMediaElement(localVideoElRef.current, local);
         }
         if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
           setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
@@ -1312,9 +1370,8 @@ export default function CallScreen() {
         oldVt.stop();
       }
       local.addTrack(v);
-      if (localVideoElRef.current) {
-        localVideoElRef.current.srcObject = local;
-        void localVideoElRef.current.play();
+      if (isWebRuntime) {
+        bindWebRtcMediaElement(localVideoElRef.current, local);
       }
       setLocalScreenSharing(true);
       emitCallRelay('call:screen_share', { active: true });
@@ -1386,9 +1443,10 @@ export default function CallScreen() {
         ? createElement('audio', {
             ref: (el: HTMLAudioElement | null) => {
               remoteAudioElRef.current = el;
+              bindWebRtcMediaElement(el, remoteStreamRef.current as MediaStream | null);
             },
-            autoPlay: true,
             playsInline: true,
+            preload: 'none',
             style: { display: 'none' },
           })
         : null}
@@ -1453,10 +1511,11 @@ export default function CallScreen() {
                 {createElement('video', {
                   ref: (el: HTMLVideoElement | null) => {
                     remoteVideoElRef.current = el;
+                    bindWebRtcMediaElement(el, remoteStreamRef.current as MediaStream | null);
                   },
-                  autoPlay: true,
                   playsInline: true,
                   muted: false,
+                  preload: 'none',
                   style: {
                     width: '100%',
                     height: '100%',
@@ -1542,10 +1601,11 @@ export default function CallScreen() {
                   createElement('video', {
                     ref: (el: HTMLVideoElement | null) => {
                       localVideoElRef.current = el;
+                      bindWebRtcMediaElement(el, localStreamRef.current as MediaStream | null);
                     },
-                    autoPlay: true,
                     playsInline: true,
                     muted: true,
+                    preload: 'none',
                     style: { width: '100%', height: '100%', objectFit: 'cover' },
                   })
                 ) : localStreamUrl && RTCViewNative ? (

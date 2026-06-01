@@ -71,6 +71,7 @@
     },
     "plugins": [
       "./plugins/withAndroidAdiRegistration.js",
+      "./plugins/withAndroidDeferFirebaseInit.js",
       "./plugins/withAndroidLargeHeap.js",
       [
         "expo-build-properties",

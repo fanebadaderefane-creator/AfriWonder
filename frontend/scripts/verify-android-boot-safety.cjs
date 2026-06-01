@@ -79,6 +79,42 @@ if (!incomingText.includes("from './callKeepIos'")) {
   ok('incomingCallService.ts isolé via callKeepIos');
 }
 
+// 5) Firebase/FCM différé + garde GMS avant token push (évite crash prod sans Play Services)
+const appJsonPath = path.join(frontendRoot, 'app.json');
+const deferPluginPath = path.join(frontendRoot, 'plugins', 'withAndroidDeferFirebaseInit.js');
+const gmsLibPath = path.join(frontendRoot, 'src', 'lib', 'googlePlayServices.android.ts');
+const notifPath = path.join(frontendRoot, 'src', 'services', 'notificationService.ts');
+
+if (!fs.existsSync(deferPluginPath)) {
+  fail('plugins/withAndroidDeferFirebaseInit.js manquant');
+} else {
+  ok('Plugin withAndroidDeferFirebaseInit présent');
+}
+
+const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+const plugins = appJson.expo?.plugins ?? [];
+const hasDeferPlugin = plugins.some(
+  (p) => p === './plugins/withAndroidDeferFirebaseInit.js' || p?.[0] === './plugins/withAndroidDeferFirebaseInit.js',
+);
+if (!hasDeferPlugin) {
+  fail('app.json doit référencer ./plugins/withAndroidDeferFirebaseInit.js');
+} else {
+  ok('Plugin Firebase différé enregistré dans app.json');
+}
+
+if (!fs.existsSync(gmsLibPath)) {
+  fail('src/lib/googlePlayServices.android.ts manquant');
+} else {
+  ok('Module googlePlayServices.android présent');
+}
+
+const notifText = fs.readFileSync(notifPath, 'utf8');
+if (!notifText.includes('isGoogleMobileServicesReady')) {
+  fail('notificationService.ts doit vérifier isGoogleMobileServicesReady avant FCM');
+} else {
+  ok('notificationService.ts protégé contre GMS absent');
+}
+
 if (failed) {
   process.exit(1);
 }

@@ -42,6 +42,7 @@ import {
   parseThreadKind,
 } from '../../src/messages/dmThreadApi';
 import { buildThreadMessageList, mapApiMessageToChatUi } from '../../src/messages/dmChatMessageMapper';
+import { callLogCanCallBack, type CallLogMeta } from '../../src/messages/callLogDisplay';
 import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
 import { formatPeerPresenceLabel } from '../../src/messages/dmPeerPresence';
 import { markThreadOpened } from '../../src/messages/dmThreadRuntime';
@@ -104,9 +105,10 @@ interface Message {
   translating?: boolean;
   /** Fil groupe : nom de l’expéditeur au-dessus de la bulle. */
   senderLabel?: string;
+  callLog?: CallLogMeta;
   callLogTitle?: string;
   callLogSubtitle?: string;
-  callLogIcon?: 'call' | 'videocam' | 'call-outline';
+  callLogIcon?: 'call' | 'videocam' | 'call-outline' | 'arrow-redo';
   callLogTint?: string;
 }
 
@@ -521,7 +523,15 @@ export default function ChatScreen() {
       const isCallLog = String(raw.type || '').toLowerCase() === 'call';
       if (senderId === currentUserId && !isCallLog) return;
       const ui = mapApiMessageToChatUi(raw, currentUserId, peerName, { isGroup: isGroupThread });
-      setMessages((prev) => (prev.some((m) => m.id === ui.id) ? prev : [...prev, ui as Message]));
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === ui.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = ui as Message;
+          return next;
+        }
+        return [...prev, ui as Message];
+      });
       markThreadOpened(threadApi, apiClient).catch(() => {});
     };
 
@@ -719,22 +729,42 @@ export default function ChatScreen() {
       if (p?.toUserId !== currentUserId || p?.fromUserId !== recipientUserId) return;
       if (!p?.callId) return;
       setPeerIncomingCall({ callId: String(p.callId), media: p.type === 'video' ? 'video' : 'audio' });
+      void loadMessages();
     };
     const clearSame = (p: { callId?: string }) => {
       if (!p?.callId) return;
       setPeerIncomingCall((cur) => (cur?.callId === p.callId ? null : cur));
     };
+    const refreshCallLog = (p: { callId?: string; fromUserId?: string; toUserId?: string }) => {
+      if (!p?.callId) return;
+      const involvesPeer =
+        p.fromUserId === recipientUserId ||
+        p.toUserId === recipientUserId ||
+        p.fromUserId === currentUserId ||
+        p.toUserId === currentUserId;
+      if (!involvesPeer) return;
+      void loadMessages();
+    };
     const offInvite = socketService.on('call:invite', onInvite);
-    const offEnd = socketService.on('call:end', clearSame);
-    const offDecline = socketService.on('call:decline', clearSame);
-    const offMissed = socketService.on('call:missed', clearSame);
+    const offEnd = socketService.on('call:end', (p) => {
+      clearSame(p);
+      refreshCallLog(p);
+    });
+    const offDecline = socketService.on('call:decline', (p) => {
+      clearSame(p);
+      refreshCallLog(p);
+    });
+    const offMissed = socketService.on('call:missed', (p) => {
+      clearSame(p);
+      refreshCallLog(p);
+    });
     return () => {
       offInvite();
       offEnd();
       offDecline();
       offMissed();
     };
-  }, [currentUserId, recipientUserId, isGroupThread]);
+  }, [currentUserId, recipientUserId, isGroupThread, loadMessages]);
 
   useEffect(() => {
     const p = typeof paramOtherUserId === 'string' ? paramOtherUserId : '';
@@ -1479,6 +1509,15 @@ export default function ChatScreen() {
     [contact.avatar, contact.name, contact.otherUserId],
   );
 
+  const onCallLogPress = useCallback(
+    (item: Message) => {
+      if (!item.callLog || !contact.otherUserId) return;
+      if (!callLogCanCallBack(item.callLog, currentUserId)) return;
+      openCallScreen(item.callLog.media === 'video' ? 'video' : 'audio');
+    },
+    [contact.otherUserId, currentUserId, openCallScreen],
+  );
+
   // ===== CONTEXT MENU ACTIONS =====
 
   const onLongPress = (msg: Message) => {
@@ -1799,25 +1838,63 @@ export default function ChatScreen() {
       );
     }
 
-    if (item.type === 'call' && item.callLogTitle) {
+    if (item.type === 'call') {
+      const title = item.callLogTitle || 'Appel';
+      const subtitle = item.callLogSubtitle || '';
+      const canCallBack = item.callLog ? callLogCanCallBack(item.callLog, currentUserId) : false;
+      const prevMsg = index > 0 ? messages[index - 1] : null;
+      const showTail = !prevMsg || prevMsg.isMine !== item.isMine || prevMsg.date || prevMsg.type === 'call';
+
       return (
-        <View style={styles.callLogRow}>
-          <View style={styles.callLogChip}>
-            <Ionicons
-              name={item.callLogIcon || 'call'}
-              size={16}
-              color={item.callLogTint || '#94A3B8'}
-            />
-            <View style={styles.callLogTextWrap}>
-              <Text style={[styles.callLogTitle, { color: item.callLogTint || '#E2E8F0' }]}>
-                {item.callLogTitle}
+        <Pressable
+          onPress={canCallBack ? () => onCallLogPress(item) : undefined}
+          style={[styles.messageRow, item.isMine && styles.messageRowMine]}
+          accessibilityRole={canCallBack ? 'button' : 'text'}
+          accessibilityLabel={canCallBack ? `${title}. ${subtitle}` : title}
+        >
+          <View
+            style={[
+              styles.messageBubble,
+              styles.callLogBubble,
+              item.isMine ? styles.bubbleMine : styles.bubbleTheirs,
+              showTail && (item.isMine ? styles.tailMine : styles.tailTheirs),
+            ]}
+          >
+            <View style={styles.callLogBubbleInner}>
+              <Ionicons
+                name={item.callLogIcon || 'call'}
+                size={22}
+                color={item.callLogTint || 'rgba(255,255,255,0.85)'}
+                style={styles.callLogIcon}
+              />
+              <View style={styles.callLogTextWrap}>
+                <Text
+                  style={[
+                    styles.callLogTitle,
+                    item.isMine ? styles.callLogTitleMine : styles.callLogTitleTheirs,
+                  ]}
+                >
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text
+                    style={[
+                      styles.callLogSubtitle,
+                      canCallBack && styles.callLogSubtitleAction,
+                    ]}
+                  >
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.msgTimeRow}>
+              <Text style={[styles.msgTimeText, item.isMine && styles.msgTimeTextMine]}>
+                {item.time}
               </Text>
-              {item.callLogSubtitle ? (
-                <Text style={styles.callLogSubtitle}>{item.callLogSubtitle}</Text>
-              ) : null}
             </View>
           </View>
-        </View>
+        </Pressable>
       );
     }
 
@@ -2574,20 +2651,15 @@ const styles = StyleSheet.create({
   dateSeparator: { alignItems: 'center', marginVertical: Spacing.md },
   dateBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.sm },
   dateText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.xs },
-  callLogRow: { alignItems: 'center', marginVertical: Spacing.sm },
-  callLogChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.lg,
-    maxWidth: '92%',
-  },
-  callLogTextWrap: { flexShrink: 1 },
-  callLogTitle: { fontSize: FontSizes.sm, fontWeight: '600' },
-  callLogSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: FontSizes.xs, marginTop: 2 },
+  callLogBubble: { minWidth: 168, paddingBottom: 6 },
+  callLogBubbleInner: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  callLogIcon: { marginTop: 2 },
+  callLogTextWrap: { flexShrink: 1, flex: 1 },
+  callLogTitle: { fontSize: FontSizes.md, fontWeight: '500' },
+  callLogTitleMine: { color: '#E9EDEF' },
+  callLogTitleTheirs: { color: '#E9EDEF' },
+  callLogSubtitle: { color: 'rgba(255,255,255,0.55)', fontSize: FontSizes.sm, marginTop: 2 },
+  callLogSubtitleAction: { color: 'rgba(255,255,255,0.65)' },
   // Message bubble
   messageRow: { flexDirection: 'row', marginBottom: 2 },
   messageRowMine: { justifyContent: 'flex-end' },

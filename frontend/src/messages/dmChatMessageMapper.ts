@@ -2,6 +2,7 @@
 
 import { mapApiMessageStatus } from './dmReadReceipt';
 import {
+  callLogBubbleIsMine,
   callLogIconName,
   callLogTint,
   formatCallLogSubtitle,
@@ -31,7 +32,7 @@ export type ChatUiMessage = {
   callLog?: CallLogMeta;
   callLogTitle?: string;
   callLogSubtitle?: string;
-  callLogIcon?: 'call' | 'videocam' | 'call-outline';
+  callLogIcon?: 'call' | 'videocam' | 'call-outline' | 'arrow-redo';
   callLogTint?: string;
 };
 
@@ -110,18 +111,19 @@ export function mapApiMessageToChatUi(
   if (msgType === 'call' && !isDeleted) {
     const callLog = parseCallLogContent(String(m.content || ''));
     if (callLog) {
+      const isMine = callLogBubbleIsMine(callLog, currentUserId);
       return {
         id: String(m.id),
         text: formatCallLogTitle(callLog, currentUserId),
-        isMine: false,
+        isMine,
         time: formatMsgTime(createdAt),
         status: 'read',
         type: 'call',
         callLog,
         callLogTitle: formatCallLogTitle(callLog, currentUserId),
-        callLogSubtitle: formatCallLogSubtitle(callLog, createdAt),
-        callLogIcon: callLogIconName(callLog),
-        callLogTint: callLogTint(callLog),
+        callLogSubtitle: formatCallLogSubtitle(callLog, currentUserId),
+        callLogIcon: callLogIconName(callLog, currentUserId),
+        callLogTint: callLogTint(callLog, currentUserId),
       };
     }
   }

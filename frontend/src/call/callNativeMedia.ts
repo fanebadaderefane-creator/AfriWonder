@@ -5,7 +5,8 @@ import { tryLoadReactNativeWebRtc } from './tryLoadReactNativeWebRtc';
 
 type InCallManagerLike = {
   start: (opts: { media: string; auto?: boolean; ringback?: string }) => void;
-  stop: () => void;
+  stop: (opts?: { busytone?: string }) => void;
+  stopRingback: () => void;
   setSpeakerphoneOn: (on: boolean) => void;
   setForceSpeakerphoneOn: (on: boolean) => void;
 };
@@ -85,16 +86,21 @@ export async function releaseExpoAvForWebRtcCall(): Promise<void> {
  * `react-native-incall-manager` est recommandé sur Android — sinon fallback expo-av.
  */
 /** Démarre la session audio native une seule fois par appel (InCallManager / expo-av). */
-export async function startNativeCallAudioSession(isVideo: boolean, speakerOn: boolean): Promise<void> {
+export async function startNativeCallAudioSession(
+  isVideo: boolean,
+  speakerOn: boolean,
+  options?: { outgoingRingback?: boolean },
+): Promise<void> {
   if (Platform.OS === 'web') return;
   if (incallSessionActive) {
     await applyNativeCallSpeakerRoute(speakerOn);
     return;
   }
   const incall = loadInCallManager();
+  const ringback = options?.outgoingRingback ? '_DEFAULT_' : '';
   if (incall) {
     try {
-      incall.start({ media: isVideo ? 'video' : 'audio', auto: true, ringback: '' });
+      incall.start({ media: isVideo ? 'video' : 'audio', auto: true, ringback });
       incall.setSpeakerphoneOn(speakerOn);
       incall.setForceSpeakerphoneOn(speakerOn);
       incallSessionActive = true;
@@ -105,6 +111,18 @@ export async function startNativeCallAudioSession(isVideo: boolean, speakerOn: b
   }
   await applyNativeCallSpeakerRoute(speakerOn);
   incallSessionActive = true;
+}
+
+/** Coupe la tonalité d’attente appelant (InCallManager) quand le correspondant décroche. */
+export async function stopNativeOutgoingRingback(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  const incall = loadInCallManager();
+  if (!incall) return;
+  try {
+    incall.stopRingback();
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function stopNativeCallAudioSession(): Promise<void> {

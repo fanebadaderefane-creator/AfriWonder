@@ -5,20 +5,31 @@ import {
 } from './openNativeCallScreenLogic';
 
 describe('openNativeCallScreen', () => {
-  it('blocks web and Expo Go (no WebRTC module)', () => {
+  it('allows web when browser WebRTC is available', () => {
     expect(
       getNativeCallLaunchBlockReason({
         platformOs: 'web',
         callsOnNative: true,
-        hasWebRtcModule: true,
+        hasWebRtcRuntime: true,
         peerUserId: 'u1',
       }),
-    ).toBe('web');
+    ).toBeNull();
+  });
+
+  it('blocks web without WebRTC and Expo Go (no native module)', () => {
+    expect(
+      getNativeCallLaunchBlockReason({
+        platformOs: 'web',
+        callsOnNative: true,
+        hasWebRtcRuntime: false,
+        peerUserId: 'u1',
+      }),
+    ).toBe('web_no_webrtc');
     expect(
       getNativeCallLaunchBlockReason({
         platformOs: 'android',
         callsOnNative: true,
-        hasWebRtcModule: false,
+        hasWebRtcRuntime: false,
         peerUserId: 'u1',
       }),
     ).toBe('no_webrtc_module');
@@ -29,7 +40,7 @@ describe('openNativeCallScreen', () => {
       getNativeCallLaunchBlockReason({
         platformOs: 'ios',
         callsOnNative: true,
-        hasWebRtcModule: true,
+        hasWebRtcRuntime: true,
         peerUserId: 'peer-42',
       }),
     ).toBeNull();

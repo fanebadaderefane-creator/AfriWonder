@@ -38,7 +38,8 @@ import NetInfo from '@react-native-community/netinfo';
 import uploadRecoveryService from '../src/services/uploadRecoveryService';
 import { RouteErrorFallback } from '../src/components/common/RouteErrorFallback';
 import { AppUpdatePrompt } from '../src/components/common/AppUpdatePrompt';
-import { DataSaverProvider } from '../src/dataSaver/DataSaverContext';
+import { DataSaverProvider, useDataSaver } from '../src/dataSaver/DataSaverContext';
+import { shouldBootstrapOfflineCacheOnLaunch } from '../src/config/mobileDataPolicy';
 import { navigateFromStarBookingNotification } from '../src/utils/starBookingPushNavigation';
 import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavigation';
 import { isExpoGoApp } from '../src/config/expoRuntime';
@@ -95,6 +96,7 @@ function RootLayoutContent() {
   const { loadStoredAuth } = useAuthStore();
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { effectiveDataSaver } = useDataSaver();
 
   /** Évite un double `router.push` si cold start + listener reçoivent la même notif d’appel. */
   const lastHandledIncomingCallIdRef = useRef<string | null>(null);
@@ -329,23 +331,25 @@ function RootLayoutContent() {
     void notificationService.syncPushTokenWithBackend();
   }, [isAuthenticated]);
 
-  /** Pré-cache vidéo hors ligne automatique au démarrage + à chaque reconnexion (style TikTok). */
+  /** Pré-cache hors ligne au boot / reconnexion — Wi‑Fi uniquement (forfait : scroll feed gère le warm minimal). */
   useEffect(() => {
     if (Platform.OS === 'web' || !isAuthenticated) return undefined;
     const runBootstrap = () => {
       void NetInfo.fetch().then((state) => {
         const cellular = state.type === 'cellular';
-        void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(false, cellular);
+        if (!shouldBootstrapOfflineCacheOnLaunch(cellular)) return;
+        void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(effectiveDataSaver, cellular);
       });
     };
     runBootstrap();
     const sub = NetInfo.addEventListener((state) => {
       if (state.isConnected !== true && state.isInternetReachable !== true) return;
       const cellular = state.type === 'cellular';
-      void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(false, cellular);
+      if (!shouldBootstrapOfflineCacheOnLaunch(cellular)) return;
+      void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(effectiveDataSaver, cellular);
     });
     return () => sub();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, effectiveDataSaver]);
 
   /**
    * Connecte le socket Socket.IO dès qu'on a un access token, pour recevoir

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { isExpoGoApp } from '../config/expoRuntime';
+import { isGoogleMobileServicesReady } from '../lib/googlePlayServices';
 import { registerMobilePushToken } from './mobileApiService';
 import { secureStorage } from '../utils/secureStorage';
 import { devLog } from '../utils/devLog';
@@ -90,7 +91,10 @@ class NotificationService {
       }
 
       const projectId = resolveExpoProjectId();
-      if (!projectId) {
+      const gmsReady = Platform.OS !== 'android' || (await isGoogleMobileServicesReady());
+      if (!gmsReady) {
+        devLog('[Notifications] GMS absent — canaux locaux uniquement, pas de token FCM.');
+      } else if (!projectId) {
         devLog('[Notifications] Pas de projectId EAS valide (extra.eas.projectId) — skip token Expo Push.');
       } else {
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
@@ -172,6 +176,7 @@ class NotificationService {
 
     const projectId = resolveExpoProjectId();
     if (!projectId) return;
+    if (Platform.OS === 'android' && !(await isGoogleMobileServicesReady())) return;
 
     try {
       const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });

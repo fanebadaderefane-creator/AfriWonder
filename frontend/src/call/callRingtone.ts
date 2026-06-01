@@ -1,6 +1,7 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import { Platform } from 'react-native';
 import { RING_PULSE_MS, type CallRingPreset } from './callRingtoneTiming';
+import { startPulsedCallRingWeb } from './callRingtoneWeb';
 
 /** Sonnerie entrante WhatsApp : double chime (B5 → F#5), ~2 s. */
 const INCOMING_WAV = require('../../assets/sounds/incoming_call.wav');
@@ -37,7 +38,7 @@ async function startPulsedCallRing(
   preset: CallRingPreset,
 ): Promise<() => Promise<void>> {
   if (Platform.OS === 'web') {
-    return async () => {};
+    return startPulsedCallRingWeb(volume, preset);
   }
   if (preset === 'incoming') {
     await applyIncomingRingAudioMode();

@@ -84,16 +84,41 @@ export function getInboxPollIntervalMs(effectiveDataSaver: boolean, isOnCellular
   return 120_000;
 }
 
-/** Pré-cache hors ligne auto (style TikTok) — fenêtre autour de la vidéo active. */
+/**
+ * Pré-cache MP4 hors ligne — fenêtre **devant** la vidéo active.
+ * Sur forfait : 1 seule (fluidité swipe sans télécharger half-feed).
+ */
 export function getOfflineAutoWarmAhead(effectiveDataSaver: boolean, isOnCellular: boolean): number {
-  if (effectiveDataSaver || isOnCellular) return 5;
-  return 8;
+  if (Platform.OS === 'web') return 0;
+  if (isOnCellular || effectiveDataSaver) return 1;
+  return 3;
 }
 
-/** Nombre max de vidéos de la page courante mises en cache sans action utilisateur. */
+/** Vidéos **derrière** l’index actif à mettre en cache (0 sur cellulaire). */
+export function getOfflineAutoWarmBehind(isOnCellular: boolean): number {
+  if (Platform.OS === 'web') return 0;
+  return isOnCellular ? 0 : 1;
+}
+
+/**
+ * Plafond de MP4 entiers en cache auto (stream ≠ cache ; chaque entrée = Mo entiers).
+ * Wi‑Fi modéré — plus 16–24 au boot.
+ */
 export function getOfflineAutoWarmPageCap(effectiveDataSaver: boolean, isOnCellular: boolean): number {
-  if (effectiveDataSaver || isOnCellular) return 16;
-  return 24;
+  if (Platform.OS === 'web') return 0;
+  if (isOnCellular) return effectiveDataSaver ? 1 : 2;
+  if (effectiveDataSaver) return 4;
+  return 6;
+}
+
+/** Boot / reconnexion : pas de rafale de téléchargements sur données mobiles. */
+export function shouldBootstrapOfflineCacheOnLaunch(isOnCellular: boolean): boolean {
+  return Platform.OS !== 'web' && !isOnCellular;
+}
+
+/** Après N secondes de lecture réelle → cache disque (modèle Instagram : ce qu’on a regardé). */
+export function getWatchedOfflineCacheMinPlaybackSec(): number {
+  return 5;
 }
 
 /** Évite le cache-bust `?_=timestamp` sur le 1er feed (inutile sur mobile, coûteux en Mo). */

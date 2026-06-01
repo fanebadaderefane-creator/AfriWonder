@@ -10,7 +10,9 @@ import {
   getFeedScrollTuning,
   getInboxPollIntervalMs,
   getOfflineAutoWarmAhead,
+  getOfflineAutoWarmBehind,
   getOfflineAutoWarmPageCap,
+  shouldBootstrapOfflineCacheOnLaunch,
   shouldPreferLowQualityPlayback,
   shouldSkipDiscoverVideoPrefetch,
   shouldBustFeedCacheOnFirstPage,
@@ -47,8 +49,17 @@ describe('mobileDataPolicy', () => {
     expect(getInboxPollIntervalMs(false, true)).toBeGreaterThan(getInboxPollIntervalMs(false, false));
   });
 
-  it('pré-cache auto hors ligne sans intervention utilisateur', () => {
-    expect(getOfflineAutoWarmPageCap(false, false)).toBeGreaterThanOrEqual(16);
-    expect(getOfflineAutoWarmAhead(false, true)).toBeGreaterThan(0);
+  it('limite le cache MP4 auto sur forfait (fluidité = 1 vidéo devant)', () => {
+    expect(getOfflineAutoWarmAhead(true, true)).toBe(1);
+    expect(getOfflineAutoWarmPageCap(true, true)).toBe(1);
+    expect(getOfflineAutoWarmBehind(true)).toBe(0);
+    expect(getOfflineAutoWarmPageCap(false, true)).toBeLessThanOrEqual(2);
+  });
+
+  it('cache modéré sur Wi‑Fi, pas de boot sur cellulaire', () => {
+    expect(getOfflineAutoWarmPageCap(false, false)).toBe(6);
+    expect(getOfflineAutoWarmAhead(false, false)).toBe(3);
+    expect(shouldBootstrapOfflineCacheOnLaunch(true)).toBe(false);
+    expect(shouldBootstrapOfflineCacheOnLaunch(false)).toBe(true);
   });
 });

@@ -6,8 +6,10 @@ import { isProgressiveVideoUrl, pickProgressivePlaybackUrl } from '../utils/pick
 import { devLog } from '../utils/devLog';
 import {
   getOfflineAutoWarmAhead,
+  getOfflineAutoWarmBehind,
   getOfflineAutoWarmPageCap,
 } from '../config/mobileDataPolicy';
+import { pickCacheEntriesForEviction } from './feedOfflineCacheEviction';
 
 const CACHE_DIR = `${FileSystem.documentDirectory ?? ''}afriwonder_feed_cache/`;
 const INDEX_KEY = 'afriwonder_feed_cache_index_v1';
@@ -73,6 +75,14 @@ type CacheIndexEntry = {
   remoteUrl: string;
   fileSize: number;
   cachedAt: number;
+  /** Lecture ≥ seuil — conservé en priorité hors ligne (style Instagram). */
+  watched?: boolean;
+};
+
+type DownloadQueueItem = {
+  videoId: string;
+  url: string;
+  watched?: boolean;
 };
 
 type CacheIndex = Record<string, CacheIndexEntry>;
@@ -83,7 +93,7 @@ class FeedVideoOfflineCacheService {
   private index: CacheIndex | null = null;
   private indexLoadPromise: Promise<CacheIndex> | null = null;
   private inFlight = new Set<string>();
-  private downloadQueue: { videoId: string; url: string }[] = [];
+  private downloadQueue: DownloadQueueItem[] = [];
   private processingQueue = false;
 
   async isDeviceOffline(): Promise<boolean> {
@@ -180,7 +190,28 @@ class FeedVideoOfflineCacheService {
   }
 
   /**
-   * Pré-cache silencieux (style TikTok) : slide active + voisines.
+   * Cache une vidéo **après lecture** (modèle Instagram) — MP4 bas débit.
+   * Prioritaire dans la file : relecture hors ligne sans retélécharger tout le feed.
+   */
+  cacheWatchedVideo(videoId: string, progressiveUrl: string): void {
+    if (Platform.OS === 'web') return;
+    const url = progressiveUrl.trim();
+    if (!videoId || !url || !isProgressiveVideoUrl(url)) return;
+    void this.loadIndex().then(async (index) => {
+      const existing = index[videoId];
+      if (existing) {
+        if (!existing.watched) {
+          existing.watched = true;
+          await this.persistIndex(index);
+        }
+        return;
+      }
+      this.enqueueDownload(videoId, url, { watched: true, priority: true });
+    });
+  }
+
+  /**
+   * Pré-cache silencieux : slide active + voisines (fluidité swipe).
    * N’utilise que des MP4 progressifs — pas de segments HLS.
    */
   warmVideos(
@@ -217,7 +248,7 @@ class FeedVideoOfflineCacheService {
     const effectiveDataSaver = opts?.effectiveDataSaver ?? false;
     const isOnCellular = opts?.isOnCellular ?? false;
     const ahead = opts?.ahead ?? getOfflineAutoWarmAhead(effectiveDataSaver, isOnCellular);
-    const behind = opts?.behind ?? 1;
+    const behind = opts?.behind ?? getOfflineAutoWarmBehind(isOnCellular);
     const maxItems = Math.min(
       items.length,
       opts?.maxItems ?? getOfflineAutoWarmPageCap(effectiveDataSaver, isOnCellular),
@@ -321,12 +352,21 @@ class FeedVideoOfflineCacheService {
     await OfflineStorage.set(INDEX_KEY, index, FEED_SNAPSHOT_TTL_MS);
   }
 
-  private enqueueDownload(videoId: string, url: string): void {
+  private enqueueDownload(
+    videoId: string,
+    url: string,
+    opts?: { watched?: boolean; priority?: boolean },
+  ): void {
     if (this.inFlight.has(videoId)) return;
     if (this.downloadQueue.some((q) => q.videoId === videoId)) return;
     void this.loadIndex().then((index) => {
       if (index[videoId]) return;
-      this.downloadQueue.push({ videoId, url });
+      const item: DownloadQueueItem = { videoId, url, watched: opts?.watched };
+      if (opts?.priority) {
+        this.downloadQueue.unshift(item);
+      } else {
+        this.downloadQueue.push(item);
+      }
       void this.processQueue();
     });
   }
@@ -342,7 +382,7 @@ class FeedVideoOfflineCacheService {
       if (index[item.videoId]) continue;
       this.inFlight.add(item.videoId);
       try {
-        await this.downloadOne(item.videoId, item.url);
+        await this.downloadOne(item.videoId, item.url, item.watched);
       } catch (e) {
         devLog('[FeedOfflineCache] download failed', item.videoId, e);
       } finally {
@@ -359,7 +399,7 @@ class FeedVideoOfflineCacheService {
     return `${CACHE_DIR}${safeId}${ext}`;
   }
 
-  private async downloadOne(videoId: string, url: string): Promise<void> {
+  private async downloadOne(videoId: string, url: string, watched = false): Promise<void> {
     const localPath = this.localPathFor(videoId, url);
     const result = await FileSystem.downloadAsync(url, localPath);
     if (result.status !== 200) {
@@ -380,6 +420,7 @@ class FeedVideoOfflineCacheService {
       remoteUrl: url,
       fileSize,
       cachedAt: Date.now(),
+      watched: watched || undefined,
     };
     await this.persistIndex(index);
     await this.enforceBudget();
@@ -387,22 +428,7 @@ class FeedVideoOfflineCacheService {
 
   private async enforceBudget(): Promise<void> {
     const index = await this.loadIndex();
-    const entries = Object.values(index).sort((a, b) => a.cachedAt - b.cachedAt);
-    let total = entries.reduce((t, e) => t + (e.fileSize || 0), 0);
-    const toRemove: CacheIndexEntry[] = [];
-    for (const entry of entries) {
-      if (entries.length - toRemove.length <= MAX_ENTRIES && total <= MAX_CACHE_BYTES) break;
-      toRemove.push(entry);
-      total -= entry.fileSize || 0;
-    }
-    if (total > MAX_CACHE_BYTES) {
-      for (const entry of entries) {
-        if (toRemove.includes(entry)) continue;
-        if (total <= MAX_CACHE_BYTES && entries.length - toRemove.length <= MAX_ENTRIES) break;
-        toRemove.push(entry);
-        total -= entry.fileSize || 0;
-      }
-    }
+    const toRemove = pickCacheEntriesForEviction(Object.values(index), MAX_ENTRIES, MAX_CACHE_BYTES);
     if (toRemove.length === 0) return;
     const next: CacheIndex = { ...index };
     for (const entry of toRemove) {
@@ -429,6 +455,9 @@ class FeedVideoOfflineCacheService {
     }
   }
 }
+
+/** Purge d’abord le pré-cache non regardé ; garde les vidéos vues (Instagram-like). */
+export { pickCacheEntriesForEviction } from './feedOfflineCacheEviction';
 
 export const feedVideoOfflineCache = new FeedVideoOfflineCacheService();
 export default feedVideoOfflineCache;

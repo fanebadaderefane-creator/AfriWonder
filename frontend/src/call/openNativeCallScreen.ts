@@ -1,7 +1,7 @@
 import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { featureFlags } from '../config/featureFlags';
-import { isNativeWebRtcAvailable } from './tryLoadReactNativeWebRtc';
+import { isWebRtcRuntimeAvailable } from './tryLoadReactNativeWebRtc';
 import {
   getNativeCallLaunchBlockReason,
   nativeCallLaunchBlockedMessage,
@@ -22,7 +22,7 @@ export function openNativeCallScreen(params: OpenNativeCallScreenParams): boolea
   const block = getNativeCallLaunchBlockReason({
     platformOs: Platform.OS,
     callsOnNative: featureFlags.callsOnNative,
-    hasWebRtcModule: isNativeWebRtcAvailable(),
+    hasWebRtcRuntime: isWebRtcRuntimeAvailable(),
     peerUserId: params.peerUserId,
   });
   if (block) {

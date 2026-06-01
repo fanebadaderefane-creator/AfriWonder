@@ -1,6 +1,6 @@
-/** Affichage fil DM — messages type `call` (JSON v1 dans content). */
+/** Affichage fil DM — messages type `call` (JSON v1 dans content), style WhatsApp. */
 
-export type CallLogOutcome = 'completed' | 'missed' | 'declined' | 'cancelled';
+export type CallLogOutcome = 'incoming' | 'completed' | 'missed' | 'declined' | 'cancelled';
 
 export type CallLogMeta = {
   callId: string;
@@ -33,56 +33,88 @@ export function parseCallLogContent(raw: string): CallLogMeta | null {
   }
 }
 
+function callKindLabel(media: 'audio' | 'video'): string {
+  return media === 'video' ? 'Appel vidéo' : 'Appel vocal';
+}
+
+/** Durée affichée sous le titre (ex. « 20 secondes », « 1 minute »). */
 export function formatCallDurationFr(sec: number): string {
   if (!sec || sec < 1) return '';
   const m = Math.floor(sec / 60);
   const s = sec % 60;
-  if (m <= 0) return `${s} s`;
-  if (s === 0) return `${m} min`;
-  return `${m} min ${s} s`;
+  if (m <= 0) return s === 1 ? '1 seconde' : `${s} secondes`;
+  if (s === 0) return m === 1 ? '1 minute' : `${m} minutes`;
+  return m === 1 ? `1 min ${s} s` : `${m} min ${s} s`;
 }
 
-/** Libellé principal centré dans le fil (perspective utilisateur courant). */
-export function formatCallLogTitle(meta: CallLogMeta, viewerUserId: string): string {
-  const isCaller = viewerUserId === meta.callerId;
-  const kind = meta.media === 'video' ? 'Appel vidéo' : 'Appel audio';
+/** Bulle à droite (sortant) ou à gauche (reçu / manqué) — comme WhatsApp. */
+export function callLogBubbleIsMine(meta: CallLogMeta, viewerUserId: string): boolean {
+  return viewerUserId === meta.callerId;
+}
 
-  if (meta.outcome === 'completed') {
-    return isCaller ? 'Appel sortant' : 'Appel entrant';
-  }
-  if (meta.outcome === 'missed') {
-    return isCaller ? 'Appel manqué' : 'Appel manqué';
+/** Appel manqué côté destinataire (bulle gauche + icône rouge). */
+export function callLogIsMissedForViewer(meta: CallLogMeta, viewerUserId: string): boolean {
+  const isReceiver = viewerUserId === meta.receiverId;
+  if (!isReceiver) return false;
+  return meta.outcome === 'missed' || meta.outcome === 'cancelled';
+}
+
+/** Touche pour relancer un appel (appels manqués / annulés côté destinataire). */
+export function callLogCanCallBack(meta: CallLogMeta, viewerUserId: string): boolean {
+  return callLogIsMissedForViewer(meta, viewerUserId);
+}
+
+/** Titre principal dans la bulle (ex. « Appel vocal », « Appel vocal manqué »). */
+export function formatCallLogTitle(meta: CallLogMeta, viewerUserId: string): string {
+  const kind = callKindLabel(meta.media);
+  if (callLogIsMissedForViewer(meta, viewerUserId)) {
+    return meta.media === 'video' ? 'Appel vidéo manqué' : 'Appel vocal manqué';
   }
   if (meta.outcome === 'declined') {
-    return isCaller ? 'Appel refusé' : 'Appel refusé';
-  }
-  if (meta.outcome === 'cancelled') {
-    return isCaller ? 'Appel annulé' : 'Appel manqué';
+    return viewerUserId === meta.callerId ? `${kind} refusé` : kind;
   }
   return kind;
 }
 
-export function formatCallLogSubtitle(meta: CallLogMeta, createdAtIso: string): string {
-  const when = new Date(createdAtIso);
-  const date = when.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-  const time = when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const dur =
-    meta.outcome === 'completed' && meta.durationSec > 0
-      ? formatCallDurationFr(meta.durationSec)
-      : '';
-  return dur ? `${date} · ${time} · ${dur}` : `${date} · ${time}`;
+/** Sous-titre (durée, « Cliquez pour rappeler », etc.). */
+export function formatCallLogSubtitle(meta: CallLogMeta, viewerUserId: string): string {
+  if (callLogCanCallBack(meta, viewerUserId)) {
+    return 'Cliquez pour rappeler';
+  }
+  if (meta.outcome === 'completed' && meta.durationSec > 0) {
+    return formatCallDurationFr(meta.durationSec);
+  }
+  if (meta.outcome === 'missed' && viewerUserId === meta.callerId) {
+    return 'Sans réponse';
+  }
+  if (meta.outcome === 'cancelled' && viewerUserId === meta.callerId) {
+    return 'Annulé';
+  }
+  if (meta.outcome === 'declined' && viewerUserId === meta.callerId) {
+    return 'Refusé';
+  }
+  if (meta.outcome === 'incoming' && viewerUserId === meta.receiverId) {
+    return 'Appel entrant…';
+  }
+  if (meta.outcome === 'incoming' && viewerUserId === meta.callerId) {
+    return 'Sonnerie…';
+  }
+  return '';
 }
 
-export function callLogIconName(meta: CallLogMeta): 'call' | 'videocam' | 'call-outline' {
+export function callLogIconName(
+  meta: CallLogMeta,
+  viewerUserId: string,
+): 'call' | 'videocam' | 'call-outline' | 'arrow-redo' {
   if (meta.media === 'video') return 'videocam';
-  if (meta.outcome === 'missed' || meta.outcome === 'cancelled') return 'call-outline';
+  if (callLogIsMissedForViewer(meta, viewerUserId)) return 'call-outline';
+  if (callLogBubbleIsMine(meta, viewerUserId)) return 'arrow-redo';
   return 'call';
 }
 
-export function callLogTint(meta: CallLogMeta): string {
-  if (meta.outcome === 'missed' || meta.outcome === 'declined' || meta.outcome === 'cancelled') {
-    return '#EF4444';
-  }
-  if (meta.outcome === 'completed') return '#10B981';
-  return '#94A3B8';
+/** Couleur de l’icône téléphone dans la bulle. */
+export function callLogTint(meta: CallLogMeta, viewerUserId: string): string {
+  if (callLogIsMissedForViewer(meta, viewerUserId)) return '#F15C6D';
+  if (meta.outcome === 'declined') return '#F15C6D';
+  return 'rgba(255,255,255,0.85)';
 }

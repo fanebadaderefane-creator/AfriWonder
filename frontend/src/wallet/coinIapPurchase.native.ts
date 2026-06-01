@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import type { Purchase, PurchaseError } from 'react-native-iap';
 import apiClient from '../api/client';
+import { isGoogleMobileServicesReady } from '../lib/googlePlayServices';
 
 /**
  * IMPORTANT:
@@ -56,6 +57,12 @@ export async function purchaseCoinPackageViaIap(packageId: string): Promise<{ co
   if (!sku) {
     throw new Error(
       'SKU Store non mappé pour ce pack. Ajoutez EXPO_PUBLIC_COIN_IAP_SKU_MAP (JSON : { "com.votre.sku": "uuid-pack" }).',
+    );
+  }
+
+  if (Platform.OS === 'android' && !(await isGoogleMobileServicesReady())) {
+    throw new Error(
+      'Google Play Services est requis pour acheter des coins. Mettez à jour le Play Store sur votre appareil.',
     );
   }
 

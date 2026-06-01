@@ -39,6 +39,7 @@ import {
   getLiveHubHintRefreshMs,
   shouldBustFeedCacheOnFirstPage,
   shouldPreferLowQualityPlayback,
+  getWatchedOfflineCacheMinPlaybackSec,
 } from '../../src/config/mobileDataPolicy';
 import feedVideoOfflineCache, {
   type FeedSnapshotVideo,
@@ -681,6 +682,28 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
     const id = setInterval(() => addPlaybackEstimate(1, low), 1000);
     return () => clearInterval(id);
   }, [isActive, isPaused, video.id, video.dataSaverLowQuality, addPlaybackEstimate]);
+
+  /** Cache disque après lecture (Instagram : revoir hors ligne sans retélécharger tout le feed). */
+  const watchedDiskCacheScheduledRef = useRef(false);
+  useEffect(() => {
+    watchedDiskCacheScheduledRef.current = false;
+  }, [video.id]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !isActive || isPaused) return;
+    if (watchedDiskCacheScheduledRef.current) return;
+    const progressive =
+      (video.progressiveCacheUrl || '').trim() ||
+      (isProgressiveVideoUrl(String(video.videoUrl || '')) ? String(video.videoUrl).trim() : '');
+    if (!progressive) return;
+    const delayMs = getWatchedOfflineCacheMinPlaybackSec() * 1000;
+    const timer = setTimeout(() => {
+      if (!isActiveRef.current || isPausedRef.current) return;
+      watchedDiskCacheScheduledRef.current = true;
+      feedVideoOfflineCache.cacheWatchedVideo(video.id, progressive);
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [isActive, isPaused, video.id, video.progressiveCacheUrl, video.videoUrl]);
 
   // CRITICAL: Cleanup on unmount — libérer le décodeur natif (sinon RAM monte jusqu'au kill Android).
   useEffect(() => {
@@ -3626,8 +3649,8 @@ export default function FeedScreen(props?: {
           <Ionicons name="cloud-offline" size={16} color="#FFF" />
           <Text style={styles.feedOfflineBannerText}>
             {feedOfflinePlayableCount > 0
-              ? `Hors ligne — ${feedOfflinePlayableCount} vidéo${feedOfflinePlayableCount > 1 ? 's' : ''} prêtes`
-              : 'Hors ligne — préparation automatique en cours'}
+              ? `Hors ligne — ${feedOfflinePlayableCount} vidéo${feedOfflinePlayableCount > 1 ? 's' : ''} déjà regardée${feedOfflinePlayableCount > 1 ? 's' : ''}`
+              : 'Hors ligne — regardez des vidéos en ligne pour les revoir ici'}
           </Text>
         </View>
       ) : null}

@@ -119,7 +119,7 @@ export function IncomingCallOverlay() {
   }, [incoming?.callId]);
 
   useEffect(() => {
-    if (!incoming || Platform.OS === 'web') return;
+    if (!incoming?.callId) return;
     let stopRing: (() => Promise<void>) | null = null;
     const stopVibration = startIncomingCallVibration();
     void (async () => {
@@ -129,7 +129,7 @@ export function IncomingCallOverlay() {
       void stopRing?.();
       stopVibration();
     };
-  }, [incoming]);
+  }, [incoming?.callId]);
 
   const accept = useCallback(async () => {
     if (acceptingRef.current) return;

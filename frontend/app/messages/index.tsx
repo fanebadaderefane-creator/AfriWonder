@@ -35,6 +35,7 @@ import { alertDmAccessDenied, isDmAccessDeniedError } from '../../src/messages/d
 import { mapApiGroupToInboxRow, mergeInboxDmAndGroups } from '../../src/messages/mergeInboxGroups';
 import { isGroupSocketEnvelope } from '../../src/messages/dmThreadApi';
 import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
+import { fetchPeerPresenceOnlineMap } from '../../src/messages/fetchPeerPresenceBatch';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
@@ -293,20 +294,12 @@ export default function MessagesListScreen() {
         sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows)),
       );
 
-      /** Récupère la présence en parallèle pour tous les peers 1-1 (best effort). */
+      /** Présence peers 1-1 en une requête batch (évite N× GET → 429). */
       const peerIds = transformed
         .filter((t) => !t.isGroup && t.otherUserId)
         .map((t) => t.otherUserId as string);
       if (peerIds.length > 0) {
-        const presenceResults = await Promise.all(
-          peerIds.map((uid) =>
-            apiClient
-              .get(`/messages/presence/${encodeURIComponent(uid)}`)
-              .then((r) => ({ uid, online: Boolean(r.data?.data?.is_online) }))
-              .catch(() => ({ uid, online: false })),
-          ),
-        );
-        const onlineByUid = new Map(presenceResults.map((p) => [p.uid, p.online]));
+        const onlineByUid = await fetchPeerPresenceOnlineMap(apiClient, peerIds);
         setConversations((prev) =>
           prev.map((c) => (c.otherUserId ? { ...c, online: onlineByUid.get(c.otherUserId) ?? c.online } : c)),
         );
