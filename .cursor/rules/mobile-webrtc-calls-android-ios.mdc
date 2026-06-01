@@ -1,0 +1,33 @@
+# Appels vocaux / vidéo — Mobile Android & iOS (WebRTC)
+
+## Signalisation (critique)
+
+- **`call:accept` uniquement depuis `frontend/app/messages/call.tsx`**, après montage de la `RTCPeerConnection` et `getUserMedia` (rôle `receiver`).
+- **Ne jamais** émettre `call:accept` depuis `IncomingCallOverlay`, Notifee ou CallKeep **avant** la navigation vers `/messages/call` — sinon l’appelant envoie l’offre SDP avant que le receveur écoute `call:signal` → **silence audio / pas de média**.
+- L’appelant (`caller`) n’envoie l’offre SDP **qu’après** réception de `call:accept` (`handlePeerAccepted`).
+
+## Audio natif
+
+- Avant `getUserMedia` : `releaseExpoAvForWebRtcCall()` — pas de sonnerie expo-av après capture micro.
+- Après `getUserMedia` : `startNativeCallAudioSession` une seule fois + `react-native-incall-manager` (build EAS, pas Expo Go).
+- Sur piste audio distante (`ontrack`) : `applyNativeCallSpeakerRoute` — ne pas rappeler `startNativeCallAudioSession`.
+- Appel **audio seul** : `RTCView` caché avec `streamURL` distant obligatoire (`react-native-webrtc`).
+- Appel **vidéo** : `RTCView` distant toujours monté dès que `remoteStreamUrl` existe (placeholder en overlay) ; `remoteStreamKey` remonté à chaque piste.
+- Chronomètre (`connected`) : uniquement quand l’audio distant est présent (`shouldMarkCallConnected`).
+- Pas de `setAudioModeAsync` agressif juste avant `getUserMedia`.
+
+## Réseau Afrique
+
+- TURN prod requis sur 4G (`TURN_URL`, `TURN_SHARED_SECRET`, `TURN_REALM` sur Render).
+- `iceTransportPolicy: 'relay'` seulement sur **cellular** quand TURN est configuré (Wi‑Fi peut utiliser host/STUN).
+
+## Appel entrant (receveur) — pas agressif
+
+- Sonnerie **pulsée** (`callRingtone` + `callIncomingAlerts`), jamais `isLooping: true` ni vibration Android en `repeat`.
+- **App ouverte** : overlay `IncomingCallOverlay` uniquement (pas de notif Notifee en double — `wireIncomingCallSocket` si `AppState === 'active'`).
+- **App en arrière-plan Android** : Notifee `loopSound: false`, vibration courte ; pas `bypassDnd` par défaut.
+- **iOS** : écran système CallKit (comportement téléphone standard).
+
+## Livraison
+
+- Correctifs natifs = **nouveau build EAS** (APK/IPA). Expo Go n’a pas `WebRTCModule`.

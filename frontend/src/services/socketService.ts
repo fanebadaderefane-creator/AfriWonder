@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
+import { preferWebsocketOnlyTransport } from '../config/mobileDataPolicy';
 import { devLog } from '../utils/devLog';
 
 /**
@@ -83,6 +84,8 @@ function resolveSocketUrl(): string {
  * `POST /messages/send`, et le backend rebroadcast `message:new` depuis le service REST.
  */
 class SocketService {
+  private effectiveDataSaver = false;
+  private isOnCellular = false;
   private socket: Socket | null = null;
   /** Évite le spam : handshake peut renvoyer `unauthorized` avant une reconnexion réussie. */
   private loggedUnauthorizedOnce = false;
@@ -137,6 +140,19 @@ class SocketService {
     this.userContext = { id: userId, name };
   }
 
+  /** Aligné sur `DataSaverContext` — évite le fallback long-polling en forfait. */
+  setNetworkPolicy(effectiveDataSaver: boolean, isOnCellular: boolean) {
+    this.effectiveDataSaver = effectiveDataSaver;
+    this.isOnCellular = isOnCellular;
+  }
+
+  private resolveSocketTransports(): ('websocket' | 'polling')[] {
+    if (preferWebsocketOnlyTransport(this.effectiveDataSaver, this.isOnCellular)) {
+      return ['websocket'];
+    }
+    return ['websocket', 'polling'];
+  }
+
   /**
    * Connexion au serveur Socket.io avec JWT obligatoire.
    * Le backend (`backend/src/index.ts` `io.use()`) vérifie le token et remplit
@@ -151,7 +167,7 @@ class SocketService {
 
     const url = resolveSocketUrl();
     this.socket = io(url, {
-      transports: ['websocket', 'polling'],
+      transports: this.resolveSocketTransports(),
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 10,
@@ -241,6 +257,16 @@ class SocketService {
   leaveConversation(conversationId: string) {
     if (!conversationId) return;
     this.socket?.emit('message:leave-conversation', conversationId);
+  }
+
+  joinGroup(groupId: string) {
+    if (!groupId) return;
+    this.socket?.emit('message:join-group', groupId);
+  }
+
+  leaveGroup(groupId: string) {
+    if (!groupId) return;
+    this.socket?.emit('message:leave-group', groupId);
   }
 
   joinUserRoom(userId: string, name?: string) {

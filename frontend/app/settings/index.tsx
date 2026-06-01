@@ -8,7 +8,6 @@ import {
   Switch,
   ActivityIndicator,
   Share,
-  Linking,
   Platform,
 } from 'react-native';
 import { FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, type Href, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { openAppStore } from '../../src/utils/openAppStore';
 import { getMobileDeviceSettings, updateMobileDeviceSettings } from '../../src/services/mobileApiService';
 import { useAuthStore } from '../../src/store/authStore';
 import type { AppPalette } from '../../src/theme/themePalettes';
@@ -62,23 +62,8 @@ function SettingTrailing({ item, colors }: { item: SettingsRow; colors: AppPalet
   return <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />;
 }
 
-function openAppStore() {
-  const android = 'com.afriwonder.app';
-  const playHttps = `https://play.google.com/store/apps/details?id=${android}`;
-  if (Platform.OS === 'android') {
-    void Linking.openURL(`market://details?id=${android}`).catch(() => Linking.openURL(playHttps));
-    return;
-  }
-  if (Platform.OS === 'ios') {
-    const id = (Constants.expoConfig?.extra as { appStoreId?: string } | undefined)?.appStoreId;
-    if (id) {
-      void Linking.openURL(`https://apps.apple.com/app/id${id}`);
-    } else {
-      void Linking.openURL('https://apps.apple.com/search?term=AfriWonder');
-    }
-    return;
-  }
-  void Linking.openURL(playHttps);
+function openAppStoreFromSettings() {
+  openAppStore();
 }
 
 export default function SettingsScreen() {
@@ -218,7 +203,7 @@ export default function SettingsScreen() {
   const onRowAction = useCallback(
     (item: SettingsRow) => {
       if (item.action === 'rate') {
-        openAppStore();
+        openAppStoreFromSettings();
         return;
       }
       if (item.action === 'share') {

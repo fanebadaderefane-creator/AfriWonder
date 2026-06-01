@@ -60,8 +60,8 @@ export default function DataSaverScreen() {
               <Text style={styles.heroTitle}>{effectiveDataSaver ? 'Mode économie actif' : 'Mode standard'}</Text>
               <Text style={styles.heroText}>
                 {autoSlowNetwork && !manualDataSaver
-                  ? 'Activation automatique : réseau cellulaire 2G/3G détecté.'
-                  : 'Réduit la qualité vidéo et le préchargement — adapté aux forfaits limités.'}
+                  ? 'Activation automatique : données mobiles (forfait) ou réseau lent.'
+                  : 'Vidéos plus légères, moins de chargements en arrière-plan — recommandé au Mali et en Afrique.'}
               </Text>
             </View>
           </View>
@@ -112,6 +112,9 @@ export default function DataSaverScreen() {
           <Text style={styles.cardText}>• Autoplay du fil conservé ; moins de données grâce au flux léger</Text>
           <Text style={styles.cardText}>• Moins de cellules vidéo pré-rendues (liste)</Text>
           <Text style={styles.cardText}>• Chargement des pages suivantes plus tard au scroll</Text>
+          <Text style={styles.cardText}>
+            • Pré-cache automatique du fil pour lecture sans Internet (comme TikTok, aucun bouton à toucher)
+          </Text>
         </View>
       </ScrollView>
     </View>

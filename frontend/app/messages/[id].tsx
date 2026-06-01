@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated, Linking } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated, Linking, AppState } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
@@ -19,8 +20,52 @@ import { featureFlags } from '../../src/config/featureFlags';
 import { devLog } from '../../src/utils/devLog';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
-import { appendBlobOrFileField, formatContactShareLine, openMaps } from '../../src/screens/messages/messageAttachmentUtils';
-import { safeRouterPush } from '../../src/utils/safeRouter';
+import { showMessageSendError } from '../../src/messages/dmAccess';
+import { patchInboxConversation, type InboxConversationPatch } from '../../src/messages/inboxSync';
+import { formatContactShareLine, openMaps } from '../../src/screens/messages/messageAttachmentUtils';
+import NetInfo from '@react-native-community/netinfo';
+import {
+  ensureCameraPermissionForDm,
+  ensureMediaLibraryPermissionForDm,
+} from '../../src/messages/dmNativePermissions';
+import { sendDmOutboundMedia } from '../../src/messages/sendDmOutboundMedia';
+import { startDmVoiceRecording, stopDmVoiceRecording } from '../../src/messages/dmVoiceRecording';
+import { isLocalOnlyMessageId } from '../../src/messages/dmMessageLocalId';
+import {
+  filterOutHiddenDmMessages,
+  hideDmMessageForMe,
+  loadHiddenDmMessageIds,
+} from '../../src/messages/dmHiddenMessages';
+import {
+  createDmThreadApi,
+  isGroupSocketEnvelope,
+  parseThreadKind,
+} from '../../src/messages/dmThreadApi';
+import { buildThreadMessageList, mapApiMessageToChatUi } from '../../src/messages/dmChatMessageMapper';
+import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
+import { formatPeerPresenceLabel } from '../../src/messages/dmPeerPresence';
+import { markThreadOpened } from '../../src/messages/dmThreadRuntime';
+import {
+  loadFailedOutbound,
+  removeFailedOutbound,
+  upsertFailedOutbound,
+  type StoredFailedMessage,
+} from '../../src/messages/outboundFailedStore';
+import {
+  loadPendingOutbound,
+  removePendingOutbound,
+  upsertPendingOutbound,
+  type StoredPendingMessage,
+} from '../../src/messages/outboundPendingStore';
+import {
+  loadThreadMessageCache,
+  mergeThreadWithLocalOutbound,
+  saveThreadMessageCache,
+} from '../../src/messages/dmThreadMessageCache';
+import { openNativeCallScreen } from '../../src/call/openNativeCallScreen';
+import { safeRouterBack, safeRouterPush } from '../../src/utils/safeRouter';
+import { MediaViewerModal, type MediaViewerItem } from '../../src/components/messages/MediaViewerModal';
+import { MediaCaptionComposer, type MediaComposerDraft } from '../../src/components/messages/MediaCaptionComposer';
 
 const { width } = Dimensions.get('window');
 
@@ -29,7 +74,7 @@ interface Message {
   text: string;
   isMine: boolean;
   time: string;
-  status: 'sent' | 'delivered' | 'read' | 'failed';
+  status: 'sent' | 'delivered' | 'read' | 'failed' | 'sending';
   type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'file';
   imageUri?: string;
   thumbnailUri?: string;
@@ -57,10 +102,11 @@ interface Message {
   transcribing?: boolean;
   translation?: { targetLang: string; text: string };
   translating?: boolean;
+  /** Fil groupe : nom de l’expéditeur au-dessus de la bulle. */
+  senderLabel?: string;
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-const FAILED_MESSAGE_SILENT_RETRY_DELAY_MS = 900;
 
 /** Langues supportées par GPT-5.2 pour la traduction des transcriptions vocales. */
 const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; flag: string }[] = [
@@ -70,60 +116,77 @@ const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; f
   { code: 'wo', label: 'WO', flag: '🇸🇳' },
 ];
 
-async function runWithSingleSilentRetry<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (_firstError) {
-    await new Promise((resolve) => setTimeout(resolve, FAILED_MESSAGE_SILENT_RETRY_DELAY_MS));
-    return await operation();
-  }
+function toStoredPendingMessage(msg: Message): StoredPendingMessage | null {
+  if (!msg.retryMeta?.localUri) return null;
+  return {
+    id: msg.id,
+    text: msg.text,
+    isMine: msg.isMine,
+    time: msg.time,
+    status: 'pending',
+    type: msg.type,
+    imageUri: msg.imageUri,
+    thumbnailUri: msg.thumbnailUri,
+    voiceDuration: msg.voiceDuration,
+    retryMeta: msg.retryMeta,
+  };
 }
 
-async function appendUploadFile(
-  formData: globalThis.FormData,
-  uri: string,
-  index: number,
-  kind: 'image' | 'video' | 'audio',
-  opts?: { mimeType?: string | null; fileName?: string | null },
+function toStoredFailedMessage(msg: Message): StoredFailedMessage | null {
+  if (msg.status !== 'failed' || !msg.retryMeta?.localUri) return null;
+  return {
+    id: msg.id,
+    text: msg.text,
+    isMine: msg.isMine,
+    time: msg.time,
+    status: 'failed',
+    type: msg.type,
+    imageUri: msg.imageUri,
+    thumbnailUri: msg.thumbnailUri,
+    voiceDuration: msg.voiceDuration,
+    retryMeta: msg.retryMeta,
+  };
+}
+
+function outboundKindFromMessage(msg: Message): 'voice' | 'audio' | 'image' | 'video' | 'document' {
+  const k = msg.retryMeta?.kind;
+  if (k) return k;
+  if (msg.type === 'file') return 'document';
+  if (msg.type === 'video') return 'video';
+  if (msg.type === 'image') return 'image';
+  return 'audio';
+}
+
+function inboxPreviewForSend(
+  type: string,
+  content?: string,
+): { text: string; lastMsgType: NonNullable<InboxConversationPatch['lastMsgType']> } {
+  const t = String(type || 'text').toLowerCase();
+  if (t === 'image') return { text: 'Photo', lastMsgType: 'image' };
+  if (t === 'video') return { text: 'Video', lastMsgType: 'video' };
+  if (t === 'audio' || t === 'voice') return { text: 'Audio', lastMsgType: 'voice' };
+  if (t === 'file') return { text: (content || 'Fichier').slice(0, 200), lastMsgType: 'file' };
+  if (t === 'location') return { text: 'Position', lastMsgType: 'text' };
+  if (t === 'contact') return { text: 'Contact', lastMsgType: 'text' };
+  return { text: (content || '').slice(0, 200) || 'Message', lastMsgType: 'text' };
+}
+
+function notifyInboxAfterSend(
+  convId: string,
+  type: string,
+  content?: string,
+  lastOutgoingStatus: 'sent' | 'delivered' | 'read' = 'sent',
 ) {
-  if (Platform.OS === 'web') {
-    const res = await fetch(uri);
-    const blob = await res.blob();
-    let mime = String(blob.type || '').toLowerCase().trim();
-    if (!mime || mime === 'application/octet-stream') {
-      mime = kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/mp4' : 'image/jpeg';
-    }
-    const ext = mime.includes('png') ? 'png' : mime.includes('webm') ? 'webm' : mime.includes('m4a') ? 'm4a' : kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg';
-    formData.append('file', new File([blob], `upload_${index}.${ext}`, { type: mime }));
-    return;
-  }
-  const providedMime = String(opts?.mimeType || '').toLowerCase().trim();
-  const providedName = String(opts?.fileName || '').trim();
-  const rawExtFromUri = (uri.split('.').pop() || '').split('?')[0] || '';
-  const rawExtFromName = (providedName.split('.').pop() || '').split('?')[0] || '';
-  const rawExt = (rawExtFromName || rawExtFromUri).toLowerCase();
-
-  let ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8);
-  let mimeType = providedMime;
-
-  if (!mimeType) {
-    if (kind === 'video') mimeType = ext === 'webm' ? 'video/webm' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
-    else if (kind === 'audio') mimeType = ext === 'wav' ? 'audio/wav' : ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
-    else mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
-  }
-
-  if (!ext) {
-    if (mimeType.includes('png')) ext = 'png';
-    else if (mimeType.includes('webp')) ext = 'webp';
-    else if (mimeType.includes('gif')) ext = 'gif';
-    else if (mimeType.includes('webm')) ext = 'webm';
-    else if (mimeType.includes('quicktime')) ext = 'mov';
-    else if (mimeType.includes('mpeg')) ext = 'mp3';
-    else if (mimeType.includes('wav')) ext = 'wav';
-    else ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg';
-  }
-
-  formData.append('file', { uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
+  if (!convId) return;
+  const preview = inboxPreviewForSend(type, content);
+  patchInboxConversation({
+    conversationId: convId,
+    lastMessage: preview.text,
+    lastMessageAt: new Date().toISOString(),
+    lastMsgType: preview.lastMsgType,
+    isMine: true,
+    lastOutgoingStatus,
+  });
 }
 
 function resolvePickerMediaTypes(): any {
@@ -140,9 +203,16 @@ function resolvePickerMediaTypes(): any {
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { id, name: paramName, avatar: paramAvatar, otherUserId: paramOtherUserId } = useLocalSearchParams();
+  const searchParams = useLocalSearchParams();
+  const { id, name: paramName, avatar: paramAvatar, otherUserId: paramOtherUserId } = searchParams;
   const conversationId = Array.isArray(id) ? String(id[0] || '') : String(id || '');
-  const { user, accessToken, isAuthenticated } = useAuthStore();
+  const threadKind = parseThreadKind(searchParams as Record<string, string | string[] | undefined>);
+  const isGroupThread = threadKind === 'group';
+  const threadApi = useMemo(
+    () => createDmThreadApi(conversationId, threadKind),
+    [conversationId, threadKind],
+  );
+  const { user, accessToken, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const currentUserId = user?.id || '';
   const ensureAuthenticated = useCallback((action: string): boolean => {
     if (isAuthenticated) return true;
@@ -177,8 +247,16 @@ export default function ChatScreen() {
   const [dmActionLoading, setDmActionLoading] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [viewerItem, setViewerItem] = useState<MediaViewerItem | null>(null);
+  const [composerDraft, setComposerDraft] = useState<MediaComposerDraft | null>(null);
+  /** Évite une boucle infinie : les callbacks lisent les messages via ref, pas via dépendance. */
+  const messagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<'session' | 'network' | null>(null);
   const [sending, setSending] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -214,6 +292,60 @@ export default function ChatScreen() {
   // Typing indicator
   const [isContactTyping, setIsContactTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [peerPresence, setPeerPresence] = useState<{ online: boolean; lastSeen: string | null }>({
+    online: false,
+    lastSeen: null,
+  });
+
+  const autoRetryInFlightRef = useRef(false);
+
+  const markOutboundFailed = useCallback(
+    (tempId: string) => {
+      void removePendingOutbound(conversationId, tempId);
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' as const } : m));
+        const failed = next.find((m) => m.id === tempId);
+        const stored = failed ? toStoredFailedMessage(failed) : null;
+        if (stored) void upsertFailedOutbound(conversationId, stored);
+        return next;
+      });
+    },
+    [conversationId],
+  );
+
+  const applyOutboundSuccess = useCallback(
+    (
+      tempId: string,
+      result: Awaited<ReturnType<typeof sendDmOutboundMedia>>,
+      patch?: Partial<Message>,
+    ) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? {
+                ...m,
+                id: result.serverMessageId,
+                status: 'sent',
+                imageUri: result.mediaUrl,
+                thumbnailUri: result.thumbnailUrl ?? m.thumbnailUri,
+                ...patch,
+              }
+            : m,
+        ),
+      );
+      void removeFailedOutbound(conversationId, tempId);
+      void removePendingOutbound(conversationId, tempId);
+    },
+    [conversationId],
+  );
+
+  const trackPendingOutbound = useCallback(
+    (msg: Message) => {
+      const stored = toStoredPendingMessage(msg);
+      if (stored) void upsertPendingOutbound(conversationId, stored);
+    },
+    [conversationId],
+  );
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -225,77 +357,66 @@ export default function ChatScreen() {
     return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   };
 
+  const mergeThreadWithOutboundLocal = useCallback(async (base: Message[]): Promise<Message[]> => {
+    const hiddenIds = await loadHiddenDmMessageIds(conversationId);
+    const failedLocal = await loadFailedOutbound(conversationId);
+    const pendingLocal = await loadPendingOutbound(conversationId);
+    const filtered = filterOutHiddenDmMessages(base, hiddenIds);
+    return mergeThreadWithLocalOutbound(filtered, pendingLocal, failedLocal) as Message[];
+  }, [conversationId]);
+
   const loadMessages = useCallback(async () => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setLoadError('session');
+      setLoading(false);
+      return;
+    }
     try {
-      const response = await apiClient.get(`/messages/${encodeURIComponent(conversationId)}`, { params: { limit: 40 } });
+      setLoadError(null);
+      const cached = await loadThreadMessageCache(conversationId);
+      if (cached.length > 0 && messagesRef.current.length === 0) {
+        setMessages(await mergeThreadWithOutboundLocal(cached as Message[]));
+      }
+      const response = await apiClient.get(threadApi.messagesPath, { params: { limit: 40 } });
       const data = response.data?.data || response.data;
-      const backendMsgs = data?.messages || [];
+      const backendMsgs = (data?.messages || []) as Record<string, unknown>[];
+      const peerName = String(contact.name || 'Contact');
       if (backendMsgs.length > 0) {
-        const transformed: Message[] = [];
-        let lastDate = '';
-        backendMsgs.forEach((m: any) => {
-          const msgDate = new Date(m.created_at);
-          const dateStr = formatDateLabel(msgDate);
-          if (dateStr !== lastDate) {
-            transformed.push({ id: `date-${m.id}`, text: '', isMine: false, time: '', status: 'read', type: 'text', date: dateStr });
-            lastDate = dateStr;
-          }
-          const rt = m.reply_to;
-          const replyName = rt?.sender?.full_name || rt?.sender?.username || '';
-          const isDeleted = !!m.is_deleted || !!m.deleted_for_all_at;
-          const msgType = String(m.type || 'text').toLowerCase();
-          const latRaw = m.location_lat;
-          const lngRaw = m.location_lng;
-          const lat =
-            latRaw == null || latRaw === ''
-              ? undefined
-              : typeof latRaw === 'number'
-                ? latRaw
-                : Number(latRaw);
-          const lng =
-            lngRaw == null || lngRaw === ''
-              ? undefined
-              : typeof lngRaw === 'number'
-                ? lngRaw
-                : Number(lngRaw);
-          transformed.push({
-            id: m.id,
-            text: isDeleted ? 'Ce message a ete supprime' : (m.content || ''),
-            isMine: m.sender_id === currentUserId,
-            time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-            status: String(m.status || '').toLowerCase() === 'read' ? 'read' : 'delivered',
-            type: (m.type || 'text') as Message['type'],
-            imageUri: m.media_url || undefined,
-            thumbnailUri: m.thumbnail_url || undefined,
-            replyTo: rt ? { id: rt.id, name: replyName, text: rt.content || '' } : undefined,
-            forwarded: !!m.forwarded_from_message_id,
-            edited: !!m.is_edited,
-            deleted: isDeleted,
-            ...(msgType === 'location' &&
-            lat != null &&
-            lng != null &&
-            !Number.isNaN(lat) &&
-            !Number.isNaN(lng)
-              ? {
-                  locationLat: lat,
-                  locationLng: lng,
-                  locationLabel: typeof m.location_label === 'string' ? m.location_label : undefined,
-                }
-              : {}),
-            ...(msgType === 'contact'
-              ? { contactShareLine: typeof m.contact_name === 'string' ? m.contact_name : undefined }
-              : {}),
-          });
-        });
-        setMessages(transformed);
+        const transformed = buildThreadMessageList(
+          backendMsgs,
+          currentUserId,
+          peerName,
+          formatDateLabel,
+          { isGroup: isGroupThread },
+        ) as Message[];
+        const merged = await mergeThreadWithOutboundLocal(transformed);
+        setMessages(merged);
+        void saveThreadMessageCache(conversationId, merged);
       } else {
-        setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+        const localOnly = await mergeThreadWithOutboundLocal([]);
+        setMessages(localOnly);
+        if (localOnly.length > 0) {
+          void saveThreadMessageCache(conversationId, localOnly);
+        }
       }
     } catch (err) {
       devLog('Error loading messages:', err);
-      setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || !isAuthenticated) {
+        setLoadError('session');
+      } else {
+        const cached = await loadThreadMessageCache(conversationId);
+        const merged = await mergeThreadWithOutboundLocal(cached as Message[]);
+        if (merged.length > 0) {
+          setMessages(merged);
+          setLoadError('network');
+        } else {
+          setLoadError('network');
+        }
+      }
     } finally { setLoading(false); }
-  }, [conversationId, currentUserId]);
+  }, [authLoading, isAuthenticated, conversationId, currentUserId, threadApi.messagesPath, contact.name, isGroupThread, mergeThreadWithOutboundLocal]);
 
   const ensureRecipientUserId = useCallback(async (): Promise<string | null> => {
     if (recipientUserId) return recipientUserId;
@@ -313,109 +434,282 @@ export default function ChatScreen() {
     }
   }, [recipientUserId, conversationId, currentUserId]);
 
+  const resolveOutboundRecipient = useCallback(async (): Promise<string | null> => {
+    if (isGroupThread) return '';
+    const rid = (await ensureRecipientUserId()) || '';
+    if (!rid) {
+      Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+      return null;
+    }
+    return rid;
+  }, [isGroupThread, ensureRecipientUserId]);
+
+  const flushFailedOutboundQueue = useCallback(async () => {
+    if (autoRetryInFlightRef.current) return;
+    const pending = messagesRef.current.filter(
+      (m) => (m.status === 'failed' || m.status === 'sending') && m.retryMeta?.localUri,
+    );
+    if (pending.length === 0) return;
+    autoRetryInFlightRef.current = true;
+    try {
+      let rid = '';
+      if (!isGroupThread) {
+        rid = (await ensureRecipientUserId()) || '';
+        if (!rid) return;
+      }
+      for (const msg of pending) {
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'sending' as const } : m)));
+        try {
+          const result = await sendDmOutboundMedia({
+            kind: outboundKindFromMessage(msg),
+            localUri: msg.retryMeta!.localUri,
+            messageId: msg.id,
+            recipientId: rid,
+            conversationId,
+            ...(isGroupThread ? { groupId: conversationId } : {}),
+            content: msg.text || (msg.type === 'video' ? 'Video' : msg.type === 'image' ? 'Photo' : 'Audio'),
+            fileName: msg.retryMeta?.fileName,
+            mimeType: msg.retryMeta?.mimeType,
+          });
+          applyOutboundSuccess(msg.id, result);
+        } catch {
+          markOutboundFailed(msg.id);
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    } finally {
+      autoRetryInFlightRef.current = false;
+    }
+  }, [ensureRecipientUserId, conversationId, isGroupThread, applyOutboundSuccess, markOutboundFailed]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const unsubNet = NetInfo.addEventListener((state) => {
+      if (state.isConnected) void flushFailedOutboundQueue();
+    });
+    const unsubApp = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void flushFailedOutboundQueue();
+    });
+    return () => {
+      unsubNet();
+      unsubApp.remove();
+    };
+  }, [flushFailedOutboundQueue]);
+
   // Socket.IO real-time connection
   useEffect(() => {
     const token = accessToken || '';
+    const peerName = String(contact.name || 'Contact');
     if (token) {
       socketService.connect(token);
-      socketService.joinConversation(conversationId);
-      socketService.markRead(conversationId);
-      /** HTTP : seul endpoint qui persiste vraiment `unread_count = 0` côté DB. */
-      apiClient
-        .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
-        .catch(() => {
-          /* best effort — ne bloque pas l'ouverture de la conversation */
-        });
+      if (isGroupThread) {
+        socketService.joinGroup(conversationId);
+      } else {
+        socketService.joinConversation(conversationId);
+      }
+      markThreadOpened(threadApi, apiClient).catch(() => {
+        /* best effort */
+      });
     }
 
-    // Listen for new messages
-    const unsubMsg = socketService.on('new_message', (msg: any) => {
-      if (msg.conversation_id === conversationId && msg.sender_id !== currentUserId) {
-        const msgType = String(msg.type || 'text').toLowerCase();
-        const latRaw = msg.location_lat;
-        const lngRaw = msg.location_lng;
-        const lat =
-          latRaw == null || latRaw === ''
-            ? undefined
-            : typeof latRaw === 'number'
-              ? latRaw
-              : Number(latRaw);
-        const lng =
-          lngRaw == null || lngRaw === ''
-            ? undefined
-            : typeof lngRaw === 'number'
-              ? lngRaw
-              : Number(lngRaw);
-        const newMsg: Message = {
-          id: msg.id,
-          text: msg.content || '',
-          isMine: false,
-          time: new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          status: 'read',
-          type: (msg.type || 'text') as Message['type'],
-          imageUri: msg.media_url || undefined,
-          thumbnailUri: msg.thumbnail_url || undefined,
-          replyTo: msg.reply_to,
-          forwarded: !!msg.forwarded_from,
-          ...(msgType === 'location' &&
-          lat != null &&
-          lng != null &&
-          !Number.isNaN(lat) &&
-          !Number.isNaN(lng)
+    const appendIncoming = (raw: Record<string, unknown>) => {
+      const senderId = String(raw.sender_id || '');
+      if (senderId === currentUserId) return;
+      const ui = mapApiMessageToChatUi(raw, currentUserId, peerName, { isGroup: isGroupThread });
+      setMessages((prev) => (prev.some((m) => m.id === ui.id) ? prev : [...prev, ui as Message]));
+      markThreadOpened(threadApi, apiClient).catch(() => {});
+    };
+
+    const unsubMsg = socketService.on('new_message', (payload: unknown) => {
+      if (isGroupThread) {
+        if (!isGroupSocketEnvelope(payload) || payload.groupId !== conversationId) return;
+        appendIncoming(payload.message as Record<string, unknown>);
+        return;
+      }
+      const msg = payload as Record<string, unknown>;
+      if (String(msg.conversation_id || '') !== conversationId) return;
+      appendIncoming(msg);
+    });
+
+    const unsubTyping = !isGroupThread
+      ? socketService.on('user_typing', () => {
+          setIsContactTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setIsContactTyping(false), 3000);
+        })
+      : () => {};
+
+    const unsubStopTyping = !isGroupThread
+      ? socketService.on('user_stop_typing', () => {
+          setIsContactTyping(false);
+        })
+      : () => {};
+
+    const unsubDelivered = socketService.on('message:delivered', (data: unknown) => {
+      const row = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+      const convId = String(row.conversationId || row.conversation_id || '').trim();
+      if (convId !== conversationId) return;
+      const actorId = extractMessageReadReaderId(data);
+      if (!shouldApplyPeerReceiptEvent(actorId, currentUserId)) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.isMine && (m.status === 'sent' || m.status === 'sending')
+            ? { ...m, status: 'delivered' as const }
+            : m,
+        ),
+      );
+      patchInboxConversation({
+        conversationId: convId,
+        isMine: true,
+        lastOutgoingStatus: 'delivered',
+      });
+    });
+
+    const unsubRead = socketService.on('messages_read', (data: unknown) => {
+      const row = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+      const convId = String(
+        row.conversationId || row.conversation_id || row.groupId || row.group_id || '',
+      ).trim();
+      if (convId !== conversationId) return;
+      const readerId = extractMessageReadReaderId(data);
+      if (!shouldApplyPeerReceiptEvent(readerId, currentUserId)) return;
+      setMessages((prev) => prev.map((m) => (m.isMine ? { ...m, status: 'read' } : m)));
+      patchInboxConversation({
+        conversationId: convId,
+        isMine: true,
+        lastOutgoingStatus: 'read',
+      });
+    });
+
+    const applyDeletedForAll = (messageId: string) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
             ? {
-                locationLat: lat,
-                locationLng: lng,
-                locationLabel: typeof msg.location_label === 'string' ? msg.location_label : undefined,
+                ...m,
+                text: 'Ce message a été supprimé',
+                deleted: true,
+                imageUri: undefined,
+                thumbnailUri: undefined,
               }
-            : {}),
-          ...(msgType === 'contact'
-            ? { contactShareLine: typeof msg.contact_name === 'string' ? msg.contact_name : undefined }
-            : {}),
-        };
-        setMessages(prev => [...prev, newMsg]);
-        socketService.markRead(conversationId);
-        /** Persiste également côté API pour que le badge Inbox redescende à 0 immédiatement. */
-        apiClient
-          .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
-          .catch(() => {});
-      }
+            : m,
+        ),
+      );
+    };
+
+    const unsubDeleted = socketService.on('message:deleted', (data: { messageId?: string }) => {
+      const messageId = String(data?.messageId || '').trim();
+      if (!messageId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
     });
 
-    // Listen for typing
-    const unsubTyping = socketService.on('user_typing', (data: any) => {
-      if (data.conversation_id === conversationId) {
-        setIsContactTyping(true);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => setIsContactTyping(false), 3000);
-      }
+    const unsubDeletedAll = socketService.on('message:deleted_for_all', (data: { messageId?: string }) => {
+      const messageId = String(data?.messageId || '').trim();
+      if (!messageId) return;
+      applyDeletedForAll(messageId);
     });
 
-    const unsubStopTyping = socketService.on('user_stop_typing', (data: any) => {
-      if (data.conversation_id === conversationId) setIsContactTyping(false);
-    });
-
-    // Listen for read receipts
-    const unsubRead = socketService.on('messages_read', (data: any) => {
-      if (data.conversation_id === conversationId) {
-        setMessages(prev => prev.map(m => m.isMine ? { ...m, status: 'read' } : m));
-      }
-    });
+    const unsubUpdated = socketService.on(
+      'message:updated',
+      (data: { messageId?: string; content?: string; is_edited?: boolean }) => {
+        const messageId = String(data?.messageId || '').trim();
+        if (!messageId) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  text: String(data.content ?? m.text),
+                  edited: data.is_edited !== false,
+                }
+              : m,
+          ),
+        );
+      },
+    );
 
     return () => {
+      if (isGroupThread) {
+        socketService.leaveGroup(conversationId);
+      } else {
+        socketService.leaveConversation(conversationId);
+      }
       unsubMsg();
       unsubTyping();
       unsubStopTyping();
+      unsubDelivered();
       unsubRead();
+      unsubDeleted();
+      unsubDeletedAll();
+      unsubUpdated();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [conversationId, currentUserId, accessToken]);
+  }, [conversationId, currentUserId, accessToken, isGroupThread, threadApi, contact.name]);
 
   useEffect(() => {
-    void loadMessages();
-  }, [loadMessages]);
+    if (isGroupThread || recipientUserId) return;
+    void ensureRecipientUserId();
+  }, [isGroupThread, recipientUserId, ensureRecipientUserId]);
 
   useEffect(() => {
-    if (!currentUserId || !recipientUserId) return;
+    if (isGroupThread || !recipientUserId) return undefined;
+    let cancelled = false;
+    void apiClient
+      .get(`/messages/presence/${encodeURIComponent(recipientUserId)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const p = res.data?.data;
+        setPeerPresence({
+          online: Boolean(p?.is_online),
+          lastSeen: typeof p?.last_seen === 'string' ? p.last_seen : null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPeerPresence({ online: false, lastSeen: null });
+      });
+    const offPresence = socketService.on(
+      'presence:update',
+      (payload: { userId?: string; isOnline?: boolean; lastSeen?: string }) => {
+        if (payload?.userId !== recipientUserId) return;
+        setPeerPresence({
+          online: Boolean(payload.isOnline),
+          lastSeen:
+            typeof payload.lastSeen === 'string'
+              ? payload.lastSeen
+              : payload.isOnline
+                ? null
+                : new Date().toISOString(),
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+      offPresence();
+    };
+  }, [isGroupThread, recipientUserId]);
+
+  useEffect(() => {
+    void loadMessages().then(() => flushFailedOutboundQueue());
+  }, [loadMessages, flushFailedOutboundQueue]);
+
+  /** Persiste les messages confirmés (URLs https) pour réouverture hors ligne. */
+  useEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    void saveThreadMessageCache(conversationId, messages);
+  }, [conversationId, messages]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadMessages().then(() => flushFailedOutboundQueue());
+      if (conversationId) {
+        markThreadOpened(threadApi, apiClient).catch(() => {});
+      }
+      void flushFailedOutboundQueue();
+    }, [conversationId, loadMessages, flushFailedOutboundQueue, isGroupThread, threadApi]),
+  );
+
+  useEffect(() => {
+    if (isGroupThread || !currentUserId || !recipientUserId) return;
     const onInvite = (p: { callId?: string; fromUserId?: string; toUserId?: string; type?: string }) => {
       if (p?.toUserId !== currentUserId || p?.fromUserId !== recipientUserId) return;
       if (!p?.callId) return;
@@ -435,7 +729,7 @@ export default function ChatScreen() {
       offDecline();
       offMissed();
     };
-  }, [currentUserId, recipientUserId]);
+  }, [currentUserId, recipientUserId, isGroupThread]);
 
   useEffect(() => {
     const p = typeof paramOtherUserId === 'string' ? paramOtherUserId : '';
@@ -443,9 +737,34 @@ export default function ChatScreen() {
   }, [paramOtherUserId]);
 
   useEffect(() => {
+    if (!isGroupThread || !conversationId) return;
+    let cancelled = false;
+    const loadGroup = async () => {
+      try {
+        const res = await apiClient.get(`/messages/group/${encodeURIComponent(conversationId)}`);
+        const g = res.data?.data ?? res.data;
+        if (!g || cancelled) return;
+        const displayName = String(g.name || '').trim() || 'Groupe';
+        setContact((c) => ({
+          ...c,
+          name: displayName,
+          username: g.members_count ? `${g.members_count} membres` : '',
+          avatar: profileAvatarUri(g.avatar_url, displayName),
+        }));
+      } catch {
+        /* ignore */
+      }
+    };
+    void loadGroup();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isGroupThread]);
+
+  useEffect(() => {
     let cancelled = false;
     const resolveRecipient = async () => {
-      if (recipientUserId || !conversationId || !currentUserId) return;
+      if (isGroupThread || recipientUserId || !conversationId || !currentUserId) return;
       try {
         const res = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
         const conv = res.data?.data;
@@ -481,7 +800,7 @@ export default function ChatScreen() {
     };
     void resolveRecipient();
     return () => { cancelled = true; };
-  }, [conversationId, currentUserId, recipientUserId]);
+  }, [conversationId, currentUserId, recipientUserId, isGroupThread]);
 
   const handleAcceptDm = async () => {
     if (!conversationId || dmActionLoading) return;
@@ -516,7 +835,7 @@ export default function ChatScreen() {
     setDmActionLoading(true);
     try {
       await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/dm-request/decline`, {});
-      router.back();
+      safeRouterBack('/messages');
     } catch (e: unknown) {
       Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
@@ -527,12 +846,17 @@ export default function ChatScreen() {
   const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || sending) return;
     if (!ensureAuthenticated('envoyer un message')) return;
-    if (!recipientUserId) {
-      Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-      return;
+    let rid = recipientUserId;
+    if (!isGroupThread) {
+      rid = rid || (await ensureRecipientUserId()) || '';
+      if (!rid) {
+        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+        return;
+      }
     }
     const tempId = Date.now().toString();
     const msgText = newMessage.trim();
+    const replyTarget = replyingTo;
     const msg: Message = {
       id: tempId,
       text: msgText,
@@ -540,7 +864,9 @@ export default function ChatScreen() {
       time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       status: 'sent',
       type: 'text',
-      replyTo: replyingTo ? { id: replyingTo.id, name: replyingTo.isMine ? 'Vous' : contact.name, text: replyingTo.text } : undefined,
+      replyTo: replyTarget
+        ? { id: replyTarget.id, name: replyTarget.isMine ? 'Vous' : contact.name, text: replyTarget.text }
+        : undefined,
     };
     setMessages(prev => [...prev, msg]);
     setNewMessage('');
@@ -548,41 +874,58 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
-      const body: Record<string, unknown> = {
-        recipientId: recipientUserId,
-        content: msgText,
-        type: 'text',
-        ...(conversationId ? { conversationId } : {}),
-      };
-      if (replyingTo && replyingTo.id && !String(replyingTo.id).startsWith('date-')) {
-        body.reply_to_message_id = replyingTo.id;
+      const body: Record<string, unknown> = isGroupThread
+        ? { content: msgText, type: 'text' }
+        : {
+            recipientId: rid,
+            content: msgText,
+            type: 'text',
+            ...(conversationId ? { conversationId } : {}),
+          };
+      if (replyTarget && replyTarget.id && !String(replyTarget.id).startsWith('date-')) {
+        body.reply_to_id = replyTarget.id;
+        if (!isGroupThread) body.reply_to_message_id = replyTarget.id;
       }
-      const response = await apiClient.post('/messages/send', body);
+      const response = await apiClient.post(isGroupThread ? threadApi.sendPath : '/messages/send', body);
       const sentMsg = response.data?.data;
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m));
-      try {
-        const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
-        const conv = resConv.data?.data;
-        const dr = conv?.dm_request;
-        if (dr && typeof dr === 'object') {
-          setDmRequest({
-            pending_for_viewer: !!dr.pending_for_viewer,
-            pending_for_user_id: dr.pending_for_user_id ?? null,
-            initiator_user_id: dr.initiator_user_id ?? null,
-            initiator_messages_remaining:
-              typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
-            max_messages_before_accept:
-              typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
-          });
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'sent' } : m));
+      notifyInboxAfterSend(conversationId, 'text', msgText, 'sent');
+      if (!isGroupThread) {
+        try {
+          const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
+          const conv = resConv.data?.data;
+          const dr = conv?.dm_request;
+          if (dr && typeof dr === 'object') {
+            setDmRequest({
+              pending_for_viewer: !!dr.pending_for_viewer,
+              pending_for_user_id: dr.pending_for_user_id ?? null,
+              initiator_user_id: dr.initiator_user_id ?? null,
+              initiator_messages_remaining:
+                typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
+              max_messages_before_accept:
+                typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
+            });
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
     } catch (err: unknown) {
-      Alert.alert('Message', getAlertMessageForCaughtError(err));
+      showMessageSendError(err, { peerName: contact.name });
       setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally { setSending(false); }
-  }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId, ensureAuthenticated]);
+  }, [
+    newMessage,
+    conversationId,
+    sending,
+    replyingTo,
+    contact.name,
+    recipientUserId,
+    ensureAuthenticated,
+    ensureRecipientUserId,
+    isGroupThread,
+    threadApi.sendPath,
+  ]);
 
   // ===== VOICE RECORDING =====
 
@@ -595,13 +938,7 @@ export default function ChatScreen() {
   const startRecording = async () => {
     if (!ensureAuthenticated('envoyer un vocal')) return;
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission', 'Autorisez le microphone pour envoyer des vocaux');
-        return;
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      const recording = await startDmVoiceRecording();
       recordingRef.current = recording;
       setIsRecording(true);
       setRecordingDuration(0);
@@ -620,7 +957,12 @@ export default function ChatScreen() {
       }, 1000);
     } catch (err) {
       devLog('Recording error:', err);
-      Alert.alert('Erreur', 'Impossible de demarrer l\'enregistrement');
+      const code = String((err as Error)?.message || '');
+      if (code.includes('DM_MIC_PERMISSION')) {
+        Alert.alert('Permission', 'Autorisez le microphone pour envoyer des vocaux');
+      } else {
+        Alert.alert('Erreur', 'Impossible de demarrer l\'enregistrement');
+      }
     }
   };
 
@@ -635,11 +977,10 @@ export default function ChatScreen() {
         recordingTimerRef.current = null;
       }
 
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      const duration = recordingDuration;
+      const active = recordingRef.current;
       recordingRef.current = null;
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = active ? await stopDmVoiceRecording(active) : null;
+      const duration = recordingDuration;
 
       if (uri && duration >= 1) {
         const tempId = Date.now().toString();
@@ -648,7 +989,7 @@ export default function ChatScreen() {
           text: `Vocal ${formatDuration(duration)}`,
           isMine: true,
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          status: 'sent',
+          status: 'sending',
           type: 'audio',
           voiceDuration: formatDuration(duration),
           imageUri: uri,
@@ -660,46 +1001,30 @@ export default function ChatScreen() {
           },
         };
         setMessages(prev => [...prev, voiceMsg]);
+        trackPendingOutbound(voiceMsg);
 
         try {
-          const rid = await ensureRecipientUserId();
-          if (!rid) {
-            Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+          const rid = await resolveOutboundRecipient();
+          if (rid === null) {
             setMessages(prev => prev.filter(m => m.id !== tempId));
             return;
           }
-          const sentVoice = await runWithSingleSilentRetry(async () => {
-            const formData = new FormData();
-            await appendUploadFile(formData, uri, 0, 'audio');
-            const uploadRes = await apiClient.post('/upload/audio', formData, { timeout: 120000, maxBodyLength: Infinity, maxContentLength: Infinity });
-            const ud = uploadRes.data?.data;
-            const mediaUrl = ud?.file_url || ud?.url || '';
-            if (!mediaUrl) throw new Error('VOICE_UPLOAD_EMPTY_URL');
-            const sendVoiceRes = await apiClient.post('/messages/send', {
-              recipientId: rid,
-              content: `Vocal ${formatDuration(duration)}`,
-              type: 'audio',
-              media_url: mediaUrl,
-              ...(conversationId ? { conversationId } : {}),
-            });
-            return { payload: sendVoiceRes.data?.data, mediaUrl };
+          const result = await sendDmOutboundMedia({
+            kind: 'voice',
+            localUri: uri,
+            messageId: tempId,
+            recipientId: rid,
+            conversationId,
+            ...(isGroupThread ? { groupId: conversationId } : {}),
+            content: `Vocal ${formatDuration(duration)}`,
+            fileName: `voice_${tempId}.m4a`,
+            mimeType: 'audio/mp4',
           });
-          setMessages(prev =>
-            prev.map((m) =>
-              m.id === tempId
-                ? {
-                    ...m,
-                    id: sentVoice?.payload?.id || tempId,
-                    status: 'delivered',
-                    type: 'audio',
-                    imageUri: sentVoice.mediaUrl,
-                  }
-                : m,
-            ),
-          );
+          applyOutboundSuccess(tempId, result, { type: 'audio' });
+          notifyInboxAfterSend(conversationId, 'audio', `Vocal ${formatDuration(duration)}`);
         } catch (err) {
-          setMessages(prev => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
-          Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le vocal.");
+          markOutboundFailed(tempId);
+          showMessageSendError(err, { peerName: contact.name });
         }
       }
     } catch (err) {
@@ -763,16 +1088,16 @@ export default function ChatScreen() {
     try {
       let result;
       if (useCamera) {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) { Alert.alert('Permission', 'Autorisez la camera'); return; }
+        const granted = await ensureCameraPermissionForDm();
+        if (!granted) { Alert.alert('Permission', 'Autorisez la camera'); return; }
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: resolvePickerMediaTypes(),
           quality: 0.7,
           allowsEditing: false,
         });
       } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) { Alert.alert('Permission', 'Autorisez la galerie'); return; }
+        const granted = await ensureMediaLibraryPermissionForDm();
+        if (!granted) { Alert.alert('Permission', 'Autorisez la galerie'); return; }
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: resolvePickerMediaTypes(),
           quality: 0.7,
@@ -802,72 +1127,13 @@ export default function ChatScreen() {
           }
         }
 
-        const rid = await ensureRecipientUserId();
-        if (!rid) {
-          Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-          return;
-        }
-        const tempId = Date.now().toString();
-        const mediaMsg: Message = {
-          id: tempId,
-          text: isVideo ? 'Video' : 'Photo',
-          isMine: true,
-          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          status: 'sent',
-          type: isVideo ? 'video' : 'image',
-          imageUri: mediaUri,
-          retryMeta: {
-            kind: isVideo ? 'video' : 'image',
-            localUri: mediaUri,
-            fileName: mediaFileName || undefined,
-            mimeType: mediaMimeType || undefined,
-          },
-        };
-        setMessages(prev => [...prev, mediaMsg]);
-
-        try {
-          const sentMedia = await runWithSingleSilentRetry(async () => {
-            const formData = new FormData();
-            await appendUploadFile(formData, mediaUri, 0, isVideo ? 'video' : 'image', {
-              mimeType: mediaMimeType,
-              fileName: mediaFileName,
-            });
-            const path = isVideo ? '/upload/video' : '/upload/image';
-            const uploadRes = await apiClient.post(path, formData, { timeout: 300000, maxBodyLength: Infinity, maxContentLength: Infinity });
-            const ud = uploadRes.data?.data;
-            const mediaUrl = ud?.file_url || ud?.url || '';
-            if (!mediaUrl) throw new Error('MEDIA_UPLOAD_EMPTY_URL');
-            const sendMediaRes = await apiClient.post('/messages/send', {
-              recipientId: rid,
-              content: isVideo ? 'Video' : 'Photo',
-              type: isVideo ? 'video' : 'image',
-              media_url: mediaUrl,
-              thumbnail_url: ud?.thumbnail_url,
-              ...(conversationId ? { conversationId } : {}),
-            });
-            return { payload: sendMediaRes.data?.data, mediaUrl, thumbnailUrl: ud?.thumbnail_url };
-          });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === tempId
-                ? {
-                    ...m,
-                    id: sentMedia?.payload?.id || tempId,
-                    status: 'delivered',
-                    imageUri: sentMedia.mediaUrl,
-                    thumbnailUri: sentMedia.thumbnailUrl || m.thumbnailUri,
-                    type: isVideo ? 'video' : 'image',
-                  }
-                : m,
-            ),
-          );
-        } catch (err: unknown) {
-          setMessages(prev => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
-          Alert.alert(
-            'Erreur',
-            getAlertMessageForCaughtError(err) || `Impossible d'envoyer ${isVideo ? 'la vidéo' : "l'image"}.`,
-          );
-        }
+        // Aperçu + légende avant l'envoi (façon WhatsApp) — l'envoi réel se fait dans sendComposedMedia.
+        setComposerDraft({
+          uri: mediaUri,
+          isVideo,
+          fileName: mediaFileName || undefined,
+          mimeType: mediaMimeType || undefined,
+        });
       }
     } catch (err: any) {
       devLog('Picker error:', err);
@@ -876,7 +1142,55 @@ export default function ChatScreen() {
         "Impossible d'ouvrir la caméra/galerie sur cet appareil.";
       Alert.alert('Erreur', String(msg));
     }
-  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
+  }, [ensureAuthenticated]);
+
+  const sendComposedMedia = useCallback(
+    async (draft: MediaComposerDraft, caption: string) => {
+      setComposerDraft(null);
+      const isVideo = draft.isVideo;
+      const rid = await resolveOutboundRecipient();
+      if (rid === null) return;
+      const tempId = Date.now().toString();
+      const fallbackLabel = isVideo ? 'Video' : 'Photo';
+      const content = caption || fallbackLabel;
+      const mediaMsg: Message = {
+        id: tempId,
+        text: content,
+        isMine: true,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'sending',
+        type: isVideo ? 'video' : 'image',
+        imageUri: draft.uri,
+        retryMeta: {
+          kind: isVideo ? 'video' : 'image',
+          localUri: draft.uri,
+          fileName: draft.fileName,
+          mimeType: draft.mimeType,
+        },
+      };
+      setMessages((prev) => [...prev, mediaMsg]);
+      trackPendingOutbound(mediaMsg);
+      try {
+        const resultSend = await sendDmOutboundMedia({
+          kind: isVideo ? 'video' : 'image',
+          localUri: draft.uri,
+          messageId: tempId,
+          recipientId: rid,
+          conversationId,
+          ...(isGroupThread ? { groupId: conversationId } : {}),
+          content,
+          fileName: draft.fileName,
+          mimeType: draft.mimeType,
+        });
+        applyOutboundSuccess(tempId, resultSend, { type: isVideo ? 'video' : 'image', text: content });
+        notifyInboxAfterSend(conversationId, isVideo ? 'video' : 'image', content);
+      } catch (err: unknown) {
+        markOutboundFailed(tempId);
+        showMessageSendError(err, { peerName: contact.name });
+      }
+    },
+    [resolveOutboundRecipient, conversationId, isGroupThread, applyOutboundSuccess, markOutboundFailed, contact.name],
+  );
 
   const pickDocumentAttachment = useCallback(async () => {
     if (!ensureAuthenticated('envoyer un document')) return;
@@ -888,11 +1202,8 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const rid = await ensureRecipientUserId();
-      if (!rid) {
-        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-        return;
-      }
+      const rid = await resolveOutboundRecipient();
+      if (rid === null) return;
       const tempId = Date.now().toString();
       const label = asset.name || 'Document';
       const optimistic: Message = {
@@ -900,7 +1211,7 @@ export default function ChatScreen() {
         text: label,
         isMine: true,
         time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        status: 'sent',
+        status: 'sending',
         type: 'file',
         imageUri: asset.uri,
         retryMeta: {
@@ -911,42 +1222,29 @@ export default function ChatScreen() {
         },
       };
       setMessages((prev) => [...prev, optimistic]);
+      trackPendingOutbound(optimistic);
       try {
-        const sentFile = await runWithSingleSilentRetry(async () => {
-          const formData = new FormData();
-          await appendBlobOrFileField(formData, asset.uri, asset.name, asset.mimeType || 'application/pdf', 'document');
-          const uploadRes = await apiClient.post('/upload/document', formData, {
-            timeout: 300000,
-            maxBodyLength: Infinity,
-            maxContentLength: Infinity,
-          });
-          const ud = uploadRes.data?.data;
-          const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) throw new Error('DOCUMENT_UPLOAD_EMPTY_URL');
-          const sendFileRes = await apiClient.post('/messages/send', {
-            recipientId: rid,
-            content: label.slice(0, 500),
-            type: 'file',
-            media_url: mediaUrl,
-            ...(conversationId ? { conversationId } : {}),
-          });
-          return { payload: sendFileRes.data?.data, mediaUrl };
+        const resultSend = await sendDmOutboundMedia({
+          kind: 'document',
+          localUri: asset.uri,
+          messageId: tempId,
+          recipientId: rid,
+          conversationId,
+          ...(isGroupThread ? { groupId: conversationId } : {}),
+          content: label.slice(0, 500),
+          fileName: asset.name || 'document.pdf',
+          mimeType: asset.mimeType || 'application/pdf',
         });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempId
-              ? { ...m, id: sentFile?.payload?.id || tempId, status: 'delivered', imageUri: sentFile.mediaUrl }
-              : m,
-          ),
-        );
+        applyOutboundSuccess(tempId, resultSend, { type: 'file' });
+        notifyInboxAfterSend(conversationId, 'file', label);
       } catch (err) {
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
-        Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le document.");
+        markOutboundFailed(tempId);
+        showMessageSendError(err, { peerName: contact.name });
       }
     } catch {
       Alert.alert('Erreur', 'Sélection du document annulée ou impossible.');
     }
-  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
+  }, [resolveOutboundRecipient, conversationId, ensureAuthenticated, isGroupThread, contact.name, applyOutboundSuccess, markOutboundFailed]);
 
   const shareLocationAttachment = useCallback(async () => {
     setShowAttach(false);
@@ -970,11 +1268,8 @@ export default function ChatScreen() {
       } catch {
         /* géocodage optionnel */
       }
-      const rid = await ensureRecipientUserId();
-      if (!rid) {
-        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-        return;
-      }
+      const rid = await resolveOutboundRecipient();
+      if (rid === null) return;
       const tempId = Date.now().toString();
       setMessages((prev) => [
         ...prev,
@@ -991,19 +1286,20 @@ export default function ChatScreen() {
         },
       ]);
       try {
-        const response = await apiClient.post('/messages/send', {
-          recipientId: rid,
+        const response = await apiClient.post(isGroupThread ? threadApi.sendPath : '/messages/send', {
+          ...(isGroupThread
+            ? {}
+            : { recipientId: rid, ...(conversationId ? { conversationId } : {}) }),
           content: label,
           type: 'location',
           location_lat: lat,
           location_lng: lng,
           location_label: label,
-          ...(conversationId ? { conversationId } : {}),
         });
         const sentMsg = response.data?.data;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m,
+            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'sent' } : m,
           ),
         );
       } catch {
@@ -1013,7 +1309,7 @@ export default function ChatScreen() {
     } catch {
       Alert.alert('Erreur', 'Position indisponible. Vérifiez le GPS.');
     }
-  }, [ensureRecipientUserId, conversationId]);
+  }, [resolveOutboundRecipient, conversationId, isGroupThread, threadApi.sendPath]);
 
   const openNativeContactPicker = useCallback(async () => {
     setShowAttach(false);
@@ -1043,11 +1339,8 @@ export default function ChatScreen() {
     async (c: Contacts.ExistingContact) => {
       setContactPickerOpen(false);
       const line = formatContactShareLine(c);
-      const rid = await ensureRecipientUserId();
-      if (!rid) {
-        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-        return;
-      }
+      const rid = await resolveOutboundRecipient();
+      if (rid === null) return;
       const tempId = Date.now().toString();
       setMessages((prev) => [
         ...prev,
@@ -1062,17 +1355,18 @@ export default function ChatScreen() {
         },
       ]);
       try {
-        const response = await apiClient.post('/messages/send', {
-          recipientId: rid,
+        const response = await apiClient.post(isGroupThread ? threadApi.sendPath : '/messages/send', {
+          ...(isGroupThread
+            ? {}
+            : { recipientId: rid, ...(conversationId ? { conversationId } : {}) }),
           content: line.slice(0, 500),
           type: 'contact',
           contact_name: line.slice(0, 200),
-          ...(conversationId ? { conversationId } : {}),
         });
         const sentMsg = response.data?.data;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m,
+            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'sent' } : m,
           ),
         );
       } catch {
@@ -1080,7 +1374,7 @@ export default function ChatScreen() {
         Alert.alert('Erreur', "Impossible d'envoyer le contact.");
       }
     },
-    [ensureRecipientUserId, conversationId],
+    [resolveOutboundRecipient, conversationId, isGroupThread, threadApi.sendPath],
   );
 
   const pickAudioFileAttachment = useCallback(async () => {
@@ -1093,11 +1387,8 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const rid = await ensureRecipientUserId();
-      if (!rid) {
-        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-        return;
-      }
+      const rid = await resolveOutboundRecipient();
+      if (rid === null) return;
       const tempId = Date.now().toString();
       const label = asset.name || 'Audio';
       const optimistic: Message = {
@@ -1105,7 +1396,7 @@ export default function ChatScreen() {
         text: label,
         isMine: true,
         time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        status: 'sent',
+        status: 'sending',
         type: 'audio',
         imageUri: asset.uri,
         retryMeta: {
@@ -1116,181 +1407,68 @@ export default function ChatScreen() {
         },
       };
       setMessages((prev) => [...prev, optimistic]);
+      trackPendingOutbound(optimistic);
       try {
-        const sentAudio = await runWithSingleSilentRetry(async () => {
-          const formData = new FormData();
-          await appendBlobOrFileField(
-            formData,
-            asset.uri,
-            asset.name,
-            asset.mimeType || 'audio/mpeg',
-            'audio',
-          );
-          const uploadRes = await apiClient.post('/upload/audio', formData, {
-            timeout: 120000,
-            maxBodyLength: Infinity,
-            maxContentLength: Infinity,
-          });
-          const ud = uploadRes.data?.data;
-          const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) throw new Error('AUDIO_UPLOAD_EMPTY_URL');
-          const sendAudioRes = await apiClient.post('/messages/send', {
-            recipientId: rid,
-            content: label.slice(0, 500),
-            type: 'audio',
-            media_url: mediaUrl,
-            ...(conversationId ? { conversationId } : {}),
-          });
-          return { payload: sendAudioRes.data?.data, mediaUrl };
+        const resultSend = await sendDmOutboundMedia({
+          kind: 'audio',
+          localUri: asset.uri,
+          messageId: tempId,
+          recipientId: rid,
+          conversationId,
+          ...(isGroupThread ? { groupId: conversationId } : {}),
+          content: label.slice(0, 500),
+          fileName: asset.name || 'audio.m4a',
+          mimeType: asset.mimeType || 'audio/mpeg',
         });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempId
-              ? { ...m, id: sentAudio?.payload?.id || tempId, status: 'delivered', imageUri: sentAudio.mediaUrl }
-              : m,
-          ),
-        );
+        applyOutboundSuccess(tempId, resultSend, { type: 'audio' });
       } catch (err) {
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
+        markOutboundFailed(tempId);
         Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le fichier audio.");
       }
     } catch {
       Alert.alert('Erreur', 'Sélection audio annulée ou impossible.');
     }
-  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
+  }, [resolveOutboundRecipient, conversationId, ensureAuthenticated, isGroupThread, applyOutboundSuccess, markOutboundFailed]);
 
   const retryFailedMessage = useCallback(async (msg: Message) => {
     if (!ensureAuthenticated("renvoyer le message")) return;
-    if (msg.status !== 'failed') return;
+    if (msg.status !== 'failed' && msg.status !== 'sending') return;
     const localUri = msg.retryMeta?.localUri || (msg.imageUri && !String(msg.imageUri).startsWith('http') ? msg.imageUri : '');
     if (!localUri) {
       Alert.alert('Réessayer', "Fichier local introuvable. Veuillez sélectionner à nouveau.");
       return;
     }
-    const rid = await ensureRecipientUserId();
-    if (!rid) {
-      Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
-      return;
-    }
+    const rid = await resolveOutboundRecipient();
+    if (rid === null) return;
 
-    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'sent' } : m)));
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'sending' } : m)));
     try {
-      const kind = msg.retryMeta?.kind || (msg.type === 'file' ? 'document' : msg.type === 'video' ? 'video' : msg.type === 'image' ? 'image' : 'audio');
-      if (kind === 'document') {
-        const formData = new FormData();
-        await appendBlobOrFileField(
-          formData,
-          localUri,
-          msg.retryMeta?.fileName || msg.text || 'document.pdf',
-          msg.retryMeta?.mimeType || 'application/pdf',
-          'document',
-        );
-        const uploadRes = await apiClient.post('/upload/document', formData, {
-          timeout: 300000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        });
-        const ud = uploadRes.data?.data;
-        const mediaUrl = ud?.file_url || ud?.url || '';
-        if (!mediaUrl) throw new Error('DOCUMENT_UPLOAD_EMPTY_URL');
-        const sendRes = await apiClient.post('/messages/send', {
-          recipientId: rid,
-          content: (msg.text || 'Document').slice(0, 500),
-          type: 'file',
-          media_url: mediaUrl,
-          ...(conversationId ? { conversationId } : {}),
-        });
-        const sent = sendRes.data?.data;
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, id: sent?.id || msg.id, status: 'delivered', imageUri: mediaUrl } : m)));
-        return;
-      }
-
-      if (kind === 'image' || kind === 'video') {
-        const isVideo = kind === 'video';
-        const formData = new FormData();
-        await appendUploadFile(formData, localUri, 0, isVideo ? 'video' : 'image', {
-          mimeType: msg.retryMeta?.mimeType || null,
-          fileName: msg.retryMeta?.fileName || null,
-        });
-        const uploadRes = await apiClient.post(isVideo ? '/upload/video' : '/upload/image', formData, {
-          timeout: 300000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        });
-        const ud = uploadRes.data?.data;
-        const mediaUrl = ud?.file_url || ud?.url || '';
-        if (!mediaUrl) throw new Error('MEDIA_UPLOAD_EMPTY_URL');
-        const sendRes = await apiClient.post('/messages/send', {
-          recipientId: rid,
-          content: isVideo ? 'Video' : 'Photo',
-          type: isVideo ? 'video' : 'image',
-          media_url: mediaUrl,
-          thumbnail_url: ud?.thumbnail_url,
-          ...(conversationId ? { conversationId } : {}),
-        });
-        const sent = sendRes.data?.data;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === msg.id
-              ? {
-                  ...m,
-                  id: sent?.id || msg.id,
-                  status: 'delivered',
-                  imageUri: mediaUrl,
-                  thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
-                }
-              : m,
-          ),
-        );
-        return;
-      }
-
-      const formData = new FormData();
-      await appendUploadFile(formData, localUri, 0, 'audio', {
-        mimeType: msg.retryMeta?.mimeType || null,
-        fileName: msg.retryMeta?.fileName || null,
-      });
-      const uploadRes = await apiClient.post('/upload/audio', formData, {
-        timeout: 120000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      });
-      const ud = uploadRes.data?.data;
-      const mediaUrl = ud?.file_url || ud?.url || '';
-      if (!mediaUrl) throw new Error('AUDIO_UPLOAD_EMPTY_URL');
-      const sendRes = await apiClient.post('/messages/send', {
+      const result = await sendDmOutboundMedia({
+        kind: outboundKindFromMessage(msg),
+        localUri,
+        messageId: msg.id,
         recipientId: rid,
-        content: msg.text || 'Audio',
-        type: 'audio',
-        media_url: mediaUrl,
-        ...(conversationId ? { conversationId } : {}),
+        conversationId,
+        ...(isGroupThread ? { groupId: conversationId } : {}),
+        content: msg.text || (msg.type === 'video' ? 'Video' : msg.type === 'image' ? 'Photo' : 'Audio'),
+        fileName: msg.retryMeta?.fileName,
+        mimeType: msg.retryMeta?.mimeType,
       });
-      const sent = sendRes.data?.data;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msg.id
-            ? { ...m, id: sent?.id || msg.id, status: 'delivered', imageUri: mediaUrl, type: 'audio' }
-            : m,
-        ),
-      );
+      applyOutboundSuccess(msg.id, result);
     } catch (err) {
-      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'failed' } : m)));
+      markOutboundFailed(msg.id);
       Alert.alert('Réessayer', getAlertMessageForCaughtError(err) || "Impossible de renvoyer ce message.");
     }
-  }, [ensureAuthenticated, ensureRecipientUserId, conversationId]);
+  }, [ensureAuthenticated, resolveOutboundRecipient, conversationId, isGroupThread, applyOutboundSuccess, markOutboundFailed]);
 
   const openCallScreen = useCallback(
     (type: 'audio' | 'video') => {
       if (!contact.otherUserId) return;
-      safeRouterPush({
-        pathname: '/messages/call' as any,
-        params: {
-          name: contact.name,
-          avatar: contact.avatar,
-          type,
-          otherUserId: String(contact.otherUserId || ''),
-          role: 'caller',
-        },
+      openNativeCallScreen({
+        peerUserId: String(contact.otherUserId),
+        peerName: contact.name,
+        peerAvatar: contact.avatar,
+        type,
       });
     },
     [contact.avatar, contact.name, contact.otherUserId],
@@ -1341,7 +1519,7 @@ export default function ChatScreen() {
       return m;
     }));
     try {
-      await apiClient.post(`/messages/message/${encodeURIComponent(selectedMessage.id)}/reaction`, { emoji });
+      await apiClient.post(threadApi.messageReactionPath(selectedMessage.id), { emoji });
     } catch {}
   };
 
@@ -1363,18 +1541,32 @@ export default function ChatScreen() {
 
   const doDelete = async (deleteFor: string) => {
     if (!selectedMessage) return;
+    const target = selectedMessage;
+    const localOnly = isLocalOnlyMessageId(target.id) || target.status === 'failed';
     try {
-      if (deleteFor === 'everyone' && selectedMessage.isMine) {
-        await apiClient.post(`/messages/message/${encodeURIComponent(selectedMessage.id)}/delete-for-all`, {});
-        setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, text: 'Ce message a ete supprime', deleted: true } : m));
-      } else if (selectedMessage.isMine) {
-        await apiClient.delete(`/messages/message/${encodeURIComponent(selectedMessage.id)}`);
-        setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+      if (localOnly) {
+        setMessages((prev) => prev.filter((m) => m.id !== target.id));
+        void removeFailedOutbound(conversationId, target.id);
+        return;
+      }
+      if (deleteFor === 'everyone' && target.isMine) {
+        if (isGroupThread) {
+          await apiClient.delete(threadApi.messageDeletePath(target.id));
+        } else {
+          await apiClient.post(threadApi.messageDeleteForAllPath(target.id), {});
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === target.id ? { ...m, text: 'Ce message a été supprimé', deleted: true } : m,
+          ),
+        );
       } else {
-        setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+        await apiClient.post(threadApi.messageHideForMePath(target.id), {});
+        await hideDmMessageForMe(conversationId, target.id);
+        setMessages((prev) => prev.filter((m) => m.id !== target.id));
       }
     } catch (_err) {
-      Alert.alert('Erreur', 'Impossible de supprimer le message');
+      Alert.alert('Erreur', getAlertMessageForCaughtError(_err) || 'Impossible de supprimer le message');
     }
   };
 
@@ -1383,11 +1575,11 @@ export default function ChatScreen() {
     setContextMenuVisible(false);
     try {
       if (selectedMessage.pinned) {
-        await apiClient.delete(`/messages/conversations/${encodeURIComponent(conversationId)}/pin`);
+        await apiClient.delete(threadApi.pinPath);
         setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, pinned: false } : m));
         Alert.alert('Désépinglé', 'Message désépinglé');
       } else {
-        await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/pin`, { messageId: selectedMessage.id });
+        await apiClient.post(threadApi.pinPath, { messageId: selectedMessage.id });
         setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, pinned: true } : m));
         Alert.alert('Épinglé', 'Message épinglé sur la conversation');
       }
@@ -1403,6 +1595,68 @@ export default function ChatScreen() {
       setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, starred: nextStar } : m));
     } catch {}
   };
+
+  const openMediaViewer = useCallback(
+    (msg: Message) => {
+      const uri = msg.imageUri || msg.thumbnailUri || '';
+      if (!uri || !String(uri).startsWith('http')) return;
+      setViewerItem({
+        id: msg.id,
+        uri,
+        type: msg.type === 'video' ? 'video' : 'image',
+        senderLabel: msg.isMine ? 'Vous' : contact.name || 'Contact',
+        timeLabel: msg.time,
+        caption: msg.text,
+        isMine: msg.isMine,
+        starred: msg.starred,
+      });
+    },
+    [contact.name],
+  );
+
+  const viewerToggleStar = useCallback(async (vi: MediaViewerItem) => {
+    const nextStar = !vi.starred;
+    setMessages((prev) => prev.map((m) => (m.id === vi.id ? { ...m, starred: nextStar } : m)));
+    setViewerItem((cur) => (cur && cur.id === vi.id ? { ...cur, starred: nextStar } : cur));
+    try {
+      await apiClient.patch(`/messages/message/${encodeURIComponent(vi.id)}/meta`, { is_important: nextStar });
+    } catch {
+      /* best effort */
+    }
+  }, []);
+
+  const viewerSetAsProfilePhoto = useCallback((vi: MediaViewerItem) => {
+    Alert.alert('Photo de profil', 'Utiliser cette photo comme photo de profil ?', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Confirmer',
+        onPress: async () => {
+          try {
+            const res = await apiClient.put('/users/me', { profile_image: vi.uri });
+            const updated = res.data?.data || res.data || {};
+            const nextUrl = String(updated.profile_image || vi.uri);
+            useAuthStore.getState().updateUser({ profile_image: nextUrl, avatar: nextUrl });
+            setViewerItem(null);
+            Alert.alert('Photo de profil', 'Votre photo de profil a été mise à jour.');
+          } catch (e) {
+            Alert.alert('Erreur', getAlertMessageForCaughtError(e) || 'Mise à jour impossible.');
+          }
+        },
+      },
+    ]);
+  }, []);
+
+  const viewerDeleteItem = useCallback(
+    (vi: MediaViewerItem) => {
+      const target = messagesRef.current.find((m) => m.id === vi.id);
+      if (!target) return;
+      setViewerItem(null);
+      setSelectedMessage(target);
+      setTimeout(() => handleDelete(), 50);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const handleForward = async () => {
     if (!selectedMessage) return;
@@ -1442,7 +1696,7 @@ export default function ChatScreen() {
       setMessages((prev) => prev.map((m) => (m.id === target.id ? { ...m, transcribing: false } : m)));
       Alert.alert(
         'Transcription impossible',
-        getAlertMessageForCaughtError(e, 'Reessayez plus tard.'),
+        getAlertMessageForCaughtError(e) || 'Reessayez plus tard.',
       );
     }
   };
@@ -1475,7 +1729,7 @@ export default function ChatScreen() {
         setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, translating: false } : m)));
         Alert.alert(
           'Traduction impossible',
-          getAlertMessageForCaughtError(e, 'Verifiez votre connexion ou reessayez plus tard.'),
+          getAlertMessageForCaughtError(e) || 'Verifiez votre connexion ou reessayez plus tard.',
         );
       }
     },
@@ -1555,6 +1809,10 @@ export default function ChatScreen() {
           showTail && (item.isMine ? styles.tailMine : styles.tailTheirs),
           item.deleted && styles.deletedBubble,
         ]}>
+          {!item.isMine && item.senderLabel ? (
+            <Text style={styles.groupSenderLabel}>{item.senderLabel}</Text>
+          ) : null}
+
           {/* Forwarded label */}
           {item.forwarded && (
             <View style={styles.forwardedRow}>
@@ -1697,7 +1955,7 @@ export default function ChatScreen() {
             <TouchableOpacity
               style={styles.imageBubble}
               activeOpacity={0.85}
-              onPress={() => item.imageUri && Linking.openURL(item.imageUri)}
+              onPress={() => openMediaViewer(item)}
             >
               {item.thumbnailUri || (item.imageUri && !String(item.imageUri).startsWith('file:')) ? (
                 <Image
@@ -1716,12 +1974,12 @@ export default function ChatScreen() {
               </View>
             </TouchableOpacity>
           ) : item.type === 'image' && item.imageUri ? (
-            <View style={styles.imageBubble}>
+            <TouchableOpacity style={styles.imageBubble} activeOpacity={0.85} onPress={() => openMediaViewer(item)}>
               <Image source={{ uri: item.imageUri }} style={styles.chatImage} resizeMode="cover" />
               {item.text && item.text !== 'Photo' && item.text !== 'Video' && (
                 <Text style={[styles.messageText, item.isMine && styles.messageTextMine]}>{item.text}</Text>
               )}
-            </View>
+            </TouchableOpacity>
           ) : (
             <Text style={[styles.messageText, item.isMine && styles.messageTextMine]}>{item.text}</Text>
           )}
@@ -1753,23 +2011,27 @@ export default function ChatScreen() {
     );
   };
 
-  const ATTACHMENT_OPTIONS = useMemo(
-    () => [
-    { icon: 'camera', label: 'Camera', color: '#FF6B6B', action: () => pickImage(true) },
-    { icon: 'images', label: 'Galerie', color: '#4ECDC4', action: () => pickImage(false) },
+  const ATTACHMENT_OPTIONS = useMemo(() => {
+    const all = [
+      { icon: 'camera', label: 'Camera', color: '#FF6B6B', action: () => pickImage(true) },
+      { icon: 'images', label: 'Galerie', color: '#4ECDC4', action: () => pickImage(false) },
       { icon: 'document', label: 'Document', color: '#45B7D1', action: () => void pickDocumentAttachment() },
       { icon: 'location', label: 'Position', color: '#FF6B00', action: () => void shareLocationAttachment() },
       { icon: 'person', label: 'Contact', color: '#96CEB4', action: () => void openNativeContactPicker() },
       { icon: 'musical-notes', label: 'Audio', color: '#DDA0DD', action: () => void pickAudioFileAttachment() },
-    ],
-    [
-      pickImage,
-      pickDocumentAttachment,
-      shareLocationAttachment,
-      openNativeContactPicker,
-      pickAudioFileAttachment,
-    ],
-  );
+    ];
+    if (isGroupThread) {
+      return all.filter((o) => o.icon !== 'location' && o.icon !== 'person');
+    }
+    return all;
+  }, [
+    pickImage,
+    pickDocumentAttachment,
+    shareLocationAttachment,
+    openNativeContactPicker,
+    pickAudioFileAttachment,
+    isGroupThread,
+  ]);
 
   const CONTEXT_MENU_ITEMS = useMemo(() => {
     const isVoice = !!selectedMessage && (selectedMessage.type === 'voice' || selectedMessage.type === 'audio');
@@ -1799,7 +2061,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView style={[styles.container, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeRouterBack('/messages')} style={styles.backBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerProfile}>
@@ -1809,10 +2071,18 @@ export default function ChatScreen() {
             {contact.username ? (
               <Text style={styles.headerHandle} numberOfLines={1}>{contact.username}</Text>
             ) : null}
-            <Text style={styles.headerStatus}>{isContactTyping ? 'En train d\'ecrire...' : contact.online ? 'En ligne' : 'AfriChat'}</Text>
+            <Text style={styles.headerStatus}>
+              {isGroupThread
+                ? 'Groupe'
+                : formatPeerPresenceLabel({
+                    isTyping: isContactTyping,
+                    isOnline: peerPresence.online,
+                    lastSeen: peerPresence.lastSeen,
+                  })}
+            </Text>
           </View>
         </TouchableOpacity>
-        {featureFlags.callsOnNative ? (
+        {featureFlags.callsOnNative && !isGroupThread ? (
           <>
             <TouchableOpacity
               style={styles.headerAction}
@@ -1832,7 +2102,8 @@ export default function ChatScreen() {
         ) : null}
       </View>
 
-      {dmRequest &&
+      {!isGroupThread &&
+        dmRequest &&
         dmRequest.pending_for_user_id &&
         dmRequest.initiator_user_id === currentUserId &&
         !dmRequest.pending_for_viewer && (
@@ -1852,8 +2123,66 @@ export default function ChatScreen() {
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loadingText}>Chargement...</Text>
           </View>
+        ) : loadError === 'session' ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={40}
+              color="rgba(255,255,255,0.45)"
+            />
+            <Text style={styles.loadingText}>
+              Session expirée. Reconnectez-vous pour voir vos messages.
+            </Text>
+            <TouchableOpacity
+              style={styles.loadErrorButton}
+              onPress={() => safeRouterPush('/(auth)/login')}
+              accessibilityRole="button"
+              accessibilityLabel="Se reconnecter"
+            >
+              <Text style={styles.loadErrorButtonText}>Se reconnecter</Text>
+            </TouchableOpacity>
+          </View>
+        ) : loadError === 'network' && messages.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons
+              name="cloud-offline-outline"
+              size={40}
+              color="rgba(255,255,255,0.45)"
+            />
+            <Text style={styles.loadingText}>
+              Impossible de charger la conversation. Vérifiez votre connexion.
+            </Text>
+            <TouchableOpacity
+              style={styles.loadErrorButton}
+              onPress={() => {
+                setLoading(true);
+                void loadMessages();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Réessayer"
+            >
+              <Text style={styles.loadErrorButtonText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <FlatList
+          <View style={styles.threadListWrap}>
+            {loadError === 'network' ? (
+              <TouchableOpacity
+                style={styles.offlineBanner}
+                onPress={() => {
+                  setLoading(true);
+                  void loadMessages();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Réessayer le chargement"
+              >
+                <Ionicons name="cloud-offline-outline" size={16} color="#FCD34D" />
+                <Text style={styles.offlineBannerText}>
+                  Hors ligne — messages en cache. Touchez pour synchroniser.
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <FlatList
             ref={flatListRef}
             data={messages}
             renderItem={renderMessage}
@@ -1876,6 +2205,7 @@ export default function ChatScreen() {
               ) : null
             }
           />
+          </View>
         )}
       </View>
 
@@ -1993,7 +2323,7 @@ export default function ChatScreen() {
       </View>
       ) : null}
 
-      {dmRequest?.pending_for_viewer ? (
+      {!isGroupThread && dmRequest?.pending_for_viewer ? (
         <View style={[styles.dmRequestFooter, { paddingBottom: insets.bottom + Spacing.md }]}>
           <Text style={styles.dmRequestTitle}>
             {contact.name} veut t&apos;envoyer un message
@@ -2131,6 +2461,25 @@ export default function ChatScreen() {
           />
         </View>
       </Modal>
+
+      {viewerItem ? (
+        <MediaViewerModal
+          item={viewerItem}
+          onClose={() => setViewerItem(null)}
+          onToggleStar={(vi) => void viewerToggleStar(vi)}
+          onDelete={viewerDeleteItem}
+          onShowInChat={() => setViewerItem(null)}
+          onSetAsProfilePhoto={viewerSetAsProfilePhoto}
+        />
+      ) : null}
+
+      {composerDraft ? (
+        <MediaCaptionComposer
+          draft={composerDraft}
+          onSend={(d, caption) => void sendComposedMedia(d, caption)}
+          onCancel={() => setComposerDraft(null)}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -2157,8 +2506,28 @@ const styles = StyleSheet.create({
   headerAction: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
   // Chat area
   chatArea: { flex: 1, backgroundColor: '#0B141A' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: Spacing.lg },
+  loadingText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center' },
+  loadErrorButton: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+  },
+  loadErrorButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  threadListWrap: { flex: 1 },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(252,211,77,0.12)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(252,211,77,0.25)',
+  },
+  offlineBannerText: { flex: 1, color: '#FCD34D', fontSize: 12 },
   peerIncomingBanner: {
     alignSelf: 'center',
     flexDirection: 'row',
@@ -2181,6 +2550,13 @@ const styles = StyleSheet.create({
   // Message bubble
   messageRow: { flexDirection: 'row', marginBottom: 2 },
   messageRowMine: { justifyContent: 'flex-end' },
+  groupSenderLabel: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: '600',
+    marginBottom: 4,
+    marginLeft: 4,
+  },
   messageBubble: { maxWidth: '80%', borderRadius: 8, paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
   bubbleMine: { backgroundColor: '#005C4B', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   bubbleTheirs: { backgroundColor: '#1F2C34', borderTopRightRadius: 8, borderTopLeftRadius: 8 },

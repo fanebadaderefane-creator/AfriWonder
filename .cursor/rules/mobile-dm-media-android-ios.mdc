@@ -1,0 +1,43 @@
+# Messagerie mobile — médias DM (Android / iOS)
+
+**Périmètre** : envoi photo, vidéo, document, vocal dans `frontend/app/messages/[id].tsx` et modules `frontend/src/messages/*`.
+
+## Pipeline obligatoire (ne pas contourner)
+
+Tout envoi média **natif** doit passer par **`sendDmOutboundMedia`** (`sendDmOutboundMedia.ts`), jamais par un `apiClient.post('/upload/...')` ad hoc dans l’écran.
+
+Ordre invariant :
+1. **`pinDmMediaFile`** — copie durable `documentDirectory/afw-dm-outbound/` (survit fermeture chat + nettoyage cache)
+2. **`verifyReadableNativeFile`** — taille > 0
+3. **`postDmMediaUpload`** — 3 tentatives + warmup backend si réseau
+4. **`POST /messages/send`** avec `media_url`
+5. **`releasePinnedDmMedia`** après succès ; **`upsertFailedOutbound`** après échec
+
+## Vocaux
+
+- Enregistrement : **`startDmVoiceRecording` / `stopDmVoiceRecording`** (`dmVoiceRecording.ts`) — format **AAC `.m4a`**, pas `HIGH_QUALITY` webm seul.
+- Permissions : **`ensureMicPermissionForDm`** avant tout enregistrement.
+
+## Permissions galerie / caméra
+
+- **`ensureCameraPermissionForDm`**, **`ensureMediaLibraryPermissionForDm`** — pas d’appels ImagePicker sans permission explicite.
+
+## Réessai automatique
+
+- File d’attente échecs : **`outboundFailedStore.ts`**
+- Réessai auto à l’ouverture du chat + retour réseau (`NetInfo`) — ne pas retirer sans remplacer.
+
+## Suppression
+
+- IDs optimistes (`/^\d{10,}$/`) : suppression **locale** via **`isLocalOnlyMessageId`** — pas d’appel API delete.
+
+## Backend (upload.routes.ts)
+
+- Accepter `application/octet-stream` + inférer MIME depuis l’extension (Android RN).
+- Ne pas resserrer le `fileFilter` multer sans test sur APK réel.
+
+## Interdit
+
+- Upload direct depuis URI `content://` sans copie cache/document
+- MIME `audio/m4a` non mappé vers `audio/mp4` côté client
+- Messages média en échec **uniquement** en state React (sans persistance AsyncStorage)

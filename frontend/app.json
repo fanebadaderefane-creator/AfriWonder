@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "AfriWonder",
-    "slug": "afriwonder",
+    "slug": "afriwonder-production",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -14,8 +14,8 @@
       "usesAppleSignIn": true,
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Enregistrer des messages vocaux dans AfriChat",
-        "NSCameraUsageDescription": "Prendre des photos et vidéos (profil, publication, messages, live streaming)",
+        "NSMicrophoneUsageDescription": "Micro pour messages vocaux et appels audio/vidéo AfriChat",
+        "NSCameraUsageDescription": "Caméra pour photos, vidéos, appels vidéo et live streaming",
         "NSPhotoLibraryUsageDescription": "Choisir des photos et vidéos (profil, publication, messages)",
         "NSPhotoLibraryAddUsageDescription": "Enregistrer des photos et vidéos AfriWonder dans votre galerie",
         "NSLocationWhenInUseUsageDescription": "AfriWonder utilise votre position pour les services locaux et recommandations proches de vous.",
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 11,
+      "versionCode": 22,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -41,6 +41,9 @@
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH",
+        "BLUETOOTH_CONNECT",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "VIBRATE",
@@ -68,6 +71,7 @@
     },
     "plugins": [
       "./plugins/withAndroidAdiRegistration.js",
+      "./plugins/withAndroidLargeHeap.js",
       [
         "expo-build-properties",
         {
@@ -101,6 +105,14 @@
         }
       ],
       "expo-image-picker",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Enregistrer les photos et vidéos AfriWonder dans votre galerie.",
+          "savePhotosPermission": "Enregistrer les photos et vidéos AfriWonder dans votre galerie.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
       "expo-secure-store",
       "expo-sqlite",
       "expo-video",
@@ -128,7 +140,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "f4715a6b-9779-4ec1-841a-9dd7cb73e2b3"
+        "projectId": "5d875c26-f610-4105-a241-1dc03c4edcc8"
       }
     },
     "experiments": {
@@ -137,6 +149,6 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "owner": "abdoulaye_fane"
+    "owner": "fanebadaderefane"
   }
 }

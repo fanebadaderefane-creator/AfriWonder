@@ -8,14 +8,23 @@ web-build/
 .metro-cache/
 coverage/
 *.log
+*.log.txt
+*.hprof
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+
+# Caches/builds Android locaux: EAS reconstruit tout côté serveur.
+android/.gradle/
+android/build/
+android/app/build/
 
 # Secrets locaux (mode sans Git — ne jamais envoyer à EAS)
 .env
 .env.*
 !.env.example
+credentials.json
+*.jks
 
 # Tests / CI locaux (inutiles pour compiler l’APK)
 e2e/

@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../../api/client';
 import { getAlertMessageForCaughtError } from '../../utils/userFacingError';
+import { getDmAccessDeniedMessage, parseDmAccessDenial } from '../../messages/dmAccess';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
@@ -28,6 +29,8 @@ export type CallMoreOptionsSheetProps = {
   onShareScreen: () => void;
   onOpenMessageComposer: () => void;
   screenShareLoading: boolean;
+  /** Web + appel vidéo uniquement (pas de faux bouton mobile → alerte « produit mort »). */
+  showScreenShare?: boolean;
 };
 
 /** Bottom sheet « trois points » pendant un appel (style WhatsApp). */
@@ -43,6 +46,7 @@ export function CallMoreOptionsSheet({
   onShareScreen,
   onOpenMessageComposer,
   screenShareLoading,
+  showScreenShare = false,
 }: CallMoreOptionsSheetProps) {
   const barColor =
     connectionQuality === 'good' ? '#69F0AE' : connectionQuality === 'fair' ? '#FFD54F' : '#FF8A65';
@@ -77,25 +81,32 @@ export function CallMoreOptionsSheet({
             <Ionicons name="hand-left-outline" size={22} color="#FFF" />
           </TouchableOpacity>
 
-          <View style={styles.groupedBox}>
-            <TouchableOpacity
-              style={[styles.sheetRowGrouped, styles.sheetRowGroupedFirst]}
-              onPress={onShareScreen}
-              disabled={screenShareLoading}
-            >
-              <Text style={styles.sheetRowLabel}>Partager l’écran</Text>
-              {screenShareLoading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Ionicons name="phone-portrait-outline" size={22} color="#FFF" />
-              )}
-            </TouchableOpacity>
-            <View style={styles.groupDivider} />
-            <TouchableOpacity style={styles.sheetRowGrouped} onPress={onOpenMessageComposer}>
+          {showScreenShare ? (
+            <View style={styles.groupedBox}>
+              <TouchableOpacity
+                style={[styles.sheetRowGrouped, styles.sheetRowGroupedFirst]}
+                onPress={onShareScreen}
+                disabled={screenShareLoading}
+              >
+                <Text style={styles.sheetRowLabel}>Partager l’écran</Text>
+                {screenShareLoading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Ionicons name="phone-portrait-outline" size={22} color="#FFF" />
+                )}
+              </TouchableOpacity>
+              <View style={styles.groupDivider} />
+              <TouchableOpacity style={styles.sheetRowGrouped} onPress={onOpenMessageComposer}>
+                <Text style={styles.sheetRowLabel}>Envoyer un message</Text>
+                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.sheetRow} onPress={onOpenMessageComposer}>
               <Text style={styles.sheetRowLabel}>Envoyer un message</Text>
               <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
             </TouchableOpacity>
-          </View>
+          )}
 
           <View style={styles.qualityRow}>
             <SignalBars bars={connectionBars} color={barColor} />
@@ -176,7 +187,12 @@ export function CallDuringMessageModal({
       onSendSuccess?.();
       onClose();
     } catch (e: unknown) {
-      setError(getAlertMessageForCaughtError(e));
+      const kind = parseDmAccessDenial(e);
+      setError(
+        kind !== 'unknown'
+          ? getDmAccessDeniedMessage(kind, { peerName })
+          : getAlertMessageForCaughtError(e),
+      );
     } finally {
       setBusy(false);
     }

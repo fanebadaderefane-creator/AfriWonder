@@ -61,6 +61,27 @@ export function safeRouterPush(href: unknown, fallback: Href = FALLBACK_ROUTE): 
   }
 }
 
+/**
+ * Retour arrière robuste : si la pile de navigation est vide (écran ouvert directement,
+ * deep link, notification…), `router.back()` ne fait rien (« GO_BACK was not handled »).
+ * On retombe alors sur une route par défaut pour que le bouton Retour marche toujours.
+ */
+export function safeRouterBack(fallback: Href = FALLBACK_ROUTE): void {
+  try {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+  } catch (err) {
+    reportNavError('safeRouter.back', err);
+  }
+  try {
+    router.replace(fallback);
+  } catch (err) {
+    reportNavError('safeRouter.back.fallback', err, fallback);
+  }
+}
+
 export function safeRouterReplace(href: unknown, fallback: Href = FALLBACK_ROUTE): void {
   const normalized = normalizeHref(href);
   if (!normalized) {

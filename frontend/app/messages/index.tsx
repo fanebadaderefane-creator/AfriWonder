@@ -19,12 +19,22 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { safeRouterBack } from '../../src/utils/safeRouter';
 import apiClient from '../../src/api/client';
 import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { devLog } from '../../src/utils/devLog';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { subscribeInboxConversationPatch } from '../../src/messages/inboxSync';
+import {
+  loadInboxConversationsCache,
+  saveInboxConversationsCache,
+} from '../../src/messages/inboxConversationsCache';
+import { alertDmAccessDenied, isDmAccessDeniedError } from '../../src/messages/dmAccess';
+import { mapApiGroupToInboxRow, mergeInboxDmAndGroups } from '../../src/messages/mergeInboxGroups';
+import { isGroupSocketEnvelope } from '../../src/messages/dmThreadApi';
+import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
@@ -52,7 +62,8 @@ interface Conversation {
   online: boolean;
   isTyping: boolean;
   lastMsgType: string;
-  isRead: boolean;
+  /** Dernier message sortant lu par le correspondant (double coche bleue). */
+  lastOutgoingRead: boolean;
   isMine: boolean;
   isGroup?: boolean;
   groupMembers?: number;
@@ -236,8 +247,11 @@ export default function MessagesListScreen() {
     try {
       // Pas de `inbox=primary` ici : défaut API = `all` (toutes les discussions), comme avant la fonctionnalité « demandes ».
       // Les fils « à accepter » restent accessibles via l’écran Demandes (`inbox=requests`).
-      const response = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 40 } });
-      const data = response.data?.data || response.data;
+      const [dmRes, groupsRes] = await Promise.all([
+        apiClient.get('/messages/conversations', { params: { page: 1, limit: 80 } }),
+        apiClient.get('/messages/groups', { params: { page: 1, limit: 50 } }).catch(() => null),
+      ]);
+      const data = dmRes.data?.data || dmRes.data;
       const backendConvos = data?.conversations || [];
       const transformed: Conversation[] = backendConvos.map((c: any) => {
         const other = c.other || {};
@@ -248,24 +262,36 @@ export default function MessagesListScreen() {
         const avatar = c.is_group
           ? profileAvatarUri(c.group_avatar, displayName)
           : profileAvatarUri(other.profile_image, displayName);
+        const lastSenderId = String(c.last_message_sender_id || '').trim();
+        const lastStatus = String(c.last_message_status || '').toLowerCase();
+        const lastType = String(c.last_message_type || 'text').toLowerCase();
+        const isMine = Boolean(currentUser?.id && lastSenderId && lastSenderId === currentUser.id);
         return {
           id: c.id,
           name: displayName,
           avatar,
           lastMessage: c.last_message_text || '',
-          lastMessageAt: c.last_message_at || null,
+          lastMessageAt: c.last_message_at || c.updated_at || c.created_at || null,
           time: timeStr,
           unread: c.unread_count || 0,
           online: Boolean(other.is_online ?? other.presence?.is_online ?? false),
           isTyping: false,
-          lastMsgType: 'text',
-          isRead: (c.unread_count || 0) === 0,
-          isMine: false,
+          lastMsgType: lastType === 'voice' ? 'voice' : lastType === 'image' ? 'image' : lastType === 'video' ? 'video' : lastType === 'audio' ? 'voice' : lastType === 'file' ? 'file' : 'text',
+          lastOutgoingRead: isMine && lastStatus === 'read',
+          isMine,
           isGroup: !!c.is_group,
           otherUserId: c.is_group ? undefined : other.id,
         };
       });
-      setConversations(sortConversationsByRecency(transformed));
+      const groupPayload = groupsRes?.data?.data || groupsRes?.data;
+      const apiGroups = Array.isArray(groupPayload?.groups) ? groupPayload.groups : [];
+      const groupRows = apiGroups.map((g: Record<string, unknown>) =>
+        mapApiGroupToInboxRow(g as Parameters<typeof mapApiGroupToInboxRow>[0], formatTimeAgo, currentUser?.id),
+      );
+      setConversations(sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows)));
+      void saveInboxConversationsCache(
+        sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows)),
+      );
 
       /** Récupère la présence en parallèle pour tous les peers 1-1 (best effort). */
       const peerIds = transformed
@@ -287,16 +313,64 @@ export default function MessagesListScreen() {
       }
     } catch (err) {
       devLog('Error loading conversations:', err);
-      setConversations([]);
+      const cached = await loadInboxConversationsCache();
+      if (cached.length > 0) {
+        setConversations(cached);
+      } else {
+        setConversations([]);
+      }
     } finally { setLoading(false); }
-  }, []);
+  }, [currentUser?.id]);
+
+  const applyInboxPatch = useCallback(
+    (patch: import('../../src/messages/inboxSync').InboxConversationPatch) => {
+      const at = patch.lastMessageAt || new Date().toISOString();
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === patch.conversationId);
+        const timeStr = formatTimeAgo(at);
+        const lastOutgoingRead = patch.isMine === true && patch.lastOutgoingStatus === 'read';
+        if (idx < 0) {
+          void loadConversations();
+          return prev;
+        }
+        const updated = [...prev];
+        const cur = updated[idx];
+        updated[idx] = {
+          ...cur,
+          ...(patch.lastMessage != null && patch.lastMessage !== '' ? { lastMessage: patch.lastMessage } : {}),
+          lastMessageAt: at,
+          time: timeStr,
+          ...(patch.lastMsgType ? { lastMsgType: patch.lastMsgType } : {}),
+          isMine: patch.isMine ?? cur.isMine,
+          lastOutgoingRead:
+            patch.lastOutgoingStatus != null ? lastOutgoingRead : cur.lastOutgoingRead,
+        };
+        return sortConversationsByRecency(updated);
+      });
+    },
+    [loadConversations],
+  );
 
   useEffect(() => {
+    return subscribeInboxConversationPatch(applyInboxPatch);
+  }, [applyInboxPatch]);
+
+  useEffect(() => {
+    void loadInboxConversationsCache().then((cached) => {
+      if (cached.length > 0) {
+        setConversations((prev) => (prev.length > 0 ? prev : cached));
+      }
+    });
     void loadConversations();
     void loadRealUsers();
     void loadRequestCount();
     void loadStories();
   }, [loadConversations, loadRealUsers, loadRequestCount, loadStories]);
+
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    void saveInboxConversationsCache(conversations);
+  }, [conversations]);
 
   /** Rafraîchit la liste à chaque retour sur l'écran (badge non-lu, dernier message, stories). */
   useFocusEffect(
@@ -330,8 +404,68 @@ export default function MessagesListScreen() {
         prev.map((c) => (c.otherUserId === data.userId ? { ...c, online: !!data.isOnline } : c)),
       );
     });
-    const offNew = socketService.on('new_message', () => {
-      void loadConversations();
+    const offNew = socketService.on('new_message', (payload: unknown) => {
+      let msg: Record<string, unknown>;
+      let convId = '';
+      if (isGroupSocketEnvelope(payload)) {
+        convId = payload.groupId;
+        msg = payload.message as Record<string, unknown>;
+      } else {
+        msg = (payload || {}) as Record<string, unknown>;
+        convId = String(msg.conversation_id || msg.conversationId || '').trim();
+      }
+      if (!convId) {
+        void loadConversations();
+        return;
+      }
+      const type = String(msg?.type || 'text').toLowerCase();
+      const preview =
+        type === 'image'
+          ? 'Photo'
+          : type === 'video'
+            ? 'Video'
+            : type === 'audio' || type === 'voice'
+              ? 'Audio'
+              : type === 'file'
+                ? 'Fichier'
+                : type === 'location'
+                  ? 'Position'
+                  : type === 'contact'
+                    ? 'Contact'
+                    : String(msg?.content || '').slice(0, 200) || 'Message';
+      const at = msg?.created_at ? String(msg.created_at) : new Date().toISOString();
+      const senderId = String(msg?.sender_id || '').trim();
+      const isMine = Boolean(currentUser?.id && senderId && senderId === currentUser.id);
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === convId);
+        const timeStr = formatTimeAgo(at);
+        if (idx < 0) {
+          void loadConversations();
+          return prev;
+        }
+        const updated = [...prev];
+        const cur = updated[idx];
+        updated[idx] = {
+          ...cur,
+          lastMessage: preview,
+          lastMessageAt: at,
+          time: timeStr,
+          lastMsgType:
+            type === 'image'
+              ? 'image'
+              : type === 'video'
+                ? 'video'
+                : type === 'audio' || type === 'voice'
+                  ? 'voice'
+                  : type === 'file'
+                    ? 'file'
+                    : 'text',
+          isMine,
+          lastOutgoingRead: false,
+          unread: isMine ? cur.unread : cur.unread + 1,
+        };
+        return bumpConversationToTop(updated, convId);
+      });
     });
     const offUnread = socketService.on('message:unread', (data: { conversationId?: string; unread?: number }) => {
       if (!data?.conversationId) return;
@@ -339,16 +473,28 @@ export default function MessagesListScreen() {
       setConversations((prev) => {
         const updated = prev.map((c) =>
           c.id === data.conversationId
-            ? { ...c, unread: n, isRead: n === 0, lastMessageAt: new Date().toISOString() }
+            ? { ...c, unread: n, lastMessageAt: c.lastMessageAt || new Date().toISOString() }
             : c,
         );
         return bumpConversationToTop(updated, data.conversationId!);
       });
     });
-    const offRead = socketService.on('message:read', (data: { conversationId?: string }) => {
-      if (!data?.conversationId) return;
+    const offRead = socketService.on('messages_read', (data: unknown) => {
+      const row = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+      const convId = String(row.conversationId || '').trim();
+      if (!convId) return;
+      const readerId = extractMessageReadReaderId(data);
       setConversations((prev) =>
-        prev.map((c) => (c.id === data.conversationId ? { ...c, unread: 0, isRead: true } : c)),
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          if (readerId === currentUser?.id) {
+            return { ...c, unread: 0 };
+          }
+          if (shouldApplyPeerReceiptEvent(readerId, currentUser?.id || '') && c.isMine) {
+            return { ...c, lastOutgoingRead: true };
+          }
+          return c;
+        }),
       );
     });
     return () => {
@@ -357,13 +503,16 @@ export default function MessagesListScreen() {
       offUnread();
       offRead();
     };
-  }, [loadConversations]);
+  }, [loadConversations, currentUser?.id]);
 
   const startConversation = async (user: any) => {
+    const userId = user._id || user.id;
+    const userName = user.full_name || user.username || 'Utilisateur';
+    const userAvatar =
+      user.avatar ||
+      user.profile_image ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=FF6B00&color=fff`;
     try {
-      const userId = user._id || user.id;
-      const userName = user.full_name || user.username || 'Utilisateur';
-      const userAvatar = user.avatar || user.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=FF6B00&color=fff`;
       const response = await apiClient.get(`/messages/conversation/${encodeURIComponent(userId)}`);
       const conv = response.data?.data;
       if (conv?.id) {
@@ -375,6 +524,10 @@ export default function MessagesListScreen() {
       }
     } catch (err) {
       devLog('Error starting conversation:', err);
+      if (isDmAccessDeniedError(err)) {
+        alertDmAccessDenied({ error: err, peerName: userName });
+        return;
+      }
       Alert.alert('Erreur', 'Impossible de démarrer la conversation');
     }
   };
@@ -398,7 +551,14 @@ export default function MessagesListScreen() {
 
   const renderReadReceipt = (item: Conversation) => {
     if (!item.isMine) return null;
-    return <Ionicons name="checkmark-done" size={16} color={item.isRead ? '#53BDEB' : Colors.textMuted} style={{ marginRight: 2 }} />;
+    return (
+      <Ionicons
+        name="checkmark-done"
+        size={16}
+        color={item.lastOutgoingRead ? '#53BDEB' : Colors.textMuted}
+        style={{ marginRight: 2 }}
+      />
+    );
   };
 
   const renderLastMessage = (item: Conversation) => {
@@ -437,19 +597,28 @@ export default function MessagesListScreen() {
    */
   const openConversation = useCallback((item: Conversation) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === item.id ? { ...c, unread: 0, isRead: true } : c)),
+      prev.map((c) => (c.id === item.id ? { ...c, unread: 0 } : c)),
     );
-    apiClient
-      .put(`/messages/${encodeURIComponent(item.id)}/read`, {})
-      .catch(() => {
-        /* best effort */
-      });
+    if (item.isGroup) {
+      apiClient
+        .post(`/messages/group/${encodeURIComponent(item.id)}/read`, {})
+        .catch(() => {
+          /* best effort */
+        });
+    } else {
+      apiClient
+        .put(`/messages/${encodeURIComponent(item.id)}/read`, {})
+        .catch(() => {
+          /* best effort */
+        });
+    }
     router.push({
       pathname: '/messages/[id]',
       params: {
         id: item.id,
         name: item.name,
         avatar: item.avatar,
+        ...(item.isGroup ? { kind: 'group' } : {}),
         ...(item.otherUserId ? { otherUserId: item.otherUserId } : {}),
       },
     });
@@ -468,7 +637,10 @@ export default function MessagesListScreen() {
       </View>
       <View style={styles.conversationInfo}>
         <View style={styles.conversationHeader}>
-          <Text style={[styles.conversationName, item.unread > 0 && styles.nameUnread]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.conversationName, item.unread > 0 && styles.nameUnread]} numberOfLines={1}>
+            {item.isGroup ? '👥 ' : ''}
+            {item.name}
+          </Text>
           <Text style={[styles.conversationTime, item.unread > 0 && styles.timeUnread]}>{item.time}</Text>
         </View>
         <View style={styles.conversationFooter}>
@@ -541,7 +713,7 @@ export default function MessagesListScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeRouterBack('/(tabs)')} style={styles.backBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AfriChat</Text>
@@ -1065,15 +1237,6 @@ const styles = StyleSheet.create({
   statusEmpty: { alignItems: 'center', paddingHorizontal: 30, paddingVertical: 60, gap: 8 },
   statusEmptyTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
   statusEmptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center', lineHeight: 18 },
-  // Calls
-  callItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
-  callAvatar: { width: 48, height: 48, borderRadius: 24 },
-  callInfo: { flex: 1 },
-  callName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
-  callMissed: { color: Colors.error },
-  callMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  callTime: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  callAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   // FAB
   fab: { position: 'absolute', right: 20, width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   headerMenuRoot: { flex: 1, justifyContent: 'flex-end' },

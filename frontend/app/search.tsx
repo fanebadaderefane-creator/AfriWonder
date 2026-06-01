@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../src/api/client';
 import { profileAvatarUri } from '../src/utils/avatarFallback';
 import { ImageOrPlaceholder } from '../src/components/common/ImageOrPlaceholder';
+import { useAuthStore } from '../src/store/authStore';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 
 const TABS = ['Tous', 'Hashtags', 'Utilisateurs', 'Vidéos', 'Sons', 'Produits', 'Posts'];
 const TAB_TYPES: Record<string, string> = {
@@ -30,10 +32,14 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ q?: string | string[] }>();
   const paramQ = useMemo(() => normParam(params.q), [params.q]);
+  const { user: me, isAuthenticated } = useAuthStore();
+  const myUserId = String(me?.id || '');
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('Tous');
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [followByUserId, setFollowByUserId] = useState<Record<string, boolean>>({});
+  const [followBusyId, setFollowBusyId] = useState<string | null>(null);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) { setResults(null); return; }
@@ -67,6 +73,58 @@ export default function SearchScreen() {
   }, [tab]);
 
   useEffect(() => {
+    const users = results?.users;
+    if (!Array.isArray(users) || users.length === 0) return;
+    setFollowByUserId((prev) => {
+      const next = { ...prev };
+      for (const u of users) {
+        const id = String(u?.id || '').trim();
+        if (!id || id in next) continue;
+        next[id] = Boolean(u.is_following ?? u.isFollowing);
+      }
+      return next;
+    });
+  }, [results]);
+
+  const isUserFollowed = useCallback(
+    (item: { id?: string; is_following?: boolean; isFollowing?: boolean }) => {
+      const id = String(item?.id || '').trim();
+      if (!id) return false;
+      if (id in followByUserId) return followByUserId[id];
+      return Boolean(item.is_following ?? item.isFollowing);
+    },
+    [followByUserId],
+  );
+
+  const toggleFollowUser = useCallback(
+    async (item: { id?: string }) => {
+      const id = String(item?.id || '').trim();
+      if (!id) return;
+      if (!isAuthenticated || !myUserId) {
+        Alert.alert('Connexion', 'Connectez-vous pour suivre un créateur.');
+        return;
+      }
+      if (id === myUserId) return;
+      setFollowBusyId(id);
+      try {
+        const res = await apiClient.post(`/users/${encodeURIComponent(id)}/follow`, {});
+        const d = res.data?.data ?? res.data;
+        if (d?.requestPending) {
+          Alert.alert('Compte privé', 'Demande de suivi envoyée.');
+          return;
+        }
+        const next = Boolean(d?.following);
+        setFollowByUserId((prev) => ({ ...prev, [id]: next }));
+      } catch (e: unknown) {
+        Alert.alert('Suivre', getAlertMessageForCaughtError(e));
+      } finally {
+        setFollowBusyId((cur) => (cur === id ? null : cur));
+      }
+    },
+    [isAuthenticated, myUserId],
+  );
+
+  useEffect(() => {
     if (!paramQ) return;
     setQuery(paramQ);
     void search(paramQ);
@@ -86,25 +144,44 @@ export default function SearchScreen() {
     router.push({ pathname: '/watch/[id]', params: { id } });
   };
 
-  const renderUser = ({ item }: any) => (
-    <View style={styles.userRow}>
-      <TouchableOpacity style={styles.userRowMain} onPress={() => goUser(item)} activeOpacity={0.85}>
-        <ImageOrPlaceholder
-          uri={profileAvatarUri(item.profile_image, item.id)}
-          style={styles.userAvatar}
-          icon="person"
-          iconSize={22}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>{item.full_name || item.username}</Text>
-          <Text style={styles.userHandle}>@{item.username}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.followSmallBtn} accessibilityLabel="Suivre ce profil">
-        <Text style={styles.followSmallText}>Suivre</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const renderUser = ({ item }: any) => {
+    const userId = String(item?.id || '').trim();
+    const followed = isUserFollowed(item);
+    const isSelf = Boolean(myUserId && userId && userId === myUserId);
+    const busy = followBusyId === userId;
+    return (
+      <View style={styles.userRow}>
+        <TouchableOpacity style={styles.userRowMain} onPress={() => goUser(item)} activeOpacity={0.85}>
+          <ImageOrPlaceholder
+            uri={profileAvatarUri(item.profile_image, item.id)}
+            style={styles.userAvatar}
+            icon="person"
+            iconSize={22}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.userName}>{item.full_name || item.username}</Text>
+            <Text style={styles.userHandle}>@{item.username}</Text>
+          </View>
+        </TouchableOpacity>
+        {isSelf ? null : (
+          <TouchableOpacity
+            style={[styles.followSmallBtn, followed && styles.followSmallBtnFollowing]}
+            onPress={() => void toggleFollowUser(item)}
+            disabled={busy}
+            accessibilityLabel={followed ? 'Ne plus suivre ce profil' : 'Suivre ce profil'}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={followed ? Colors.primary : '#FFF'} />
+            ) : (
+              <Text style={[styles.followSmallText, followed && styles.followSmallTextFollowing]}>
+                {followed ? 'Suivi' : 'Suivre'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderVideo = ({ item }: any) => (
     <TouchableOpacity style={styles.videoRow} onPress={() => goVideo(item)} activeOpacity={0.85}>
@@ -288,8 +365,22 @@ const styles = StyleSheet.create({
   userAvatar: { width: 48, height: 48, borderRadius: 24 },
   userName: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
   userHandle: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  followSmallBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.lg, paddingVertical: 6, borderRadius: BorderRadius.pill },
+  followSmallBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.pill,
+    minWidth: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followSmallBtnFollowing: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
   followSmallText: { color: '#FFF', fontSize: FontSizes.sm, fontWeight: '600' },
+  followSmallTextFollowing: { color: Colors.primary },
   videoRow: { flexDirection: 'row', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, gap: Spacing.md },
   videoThumb: { width: 100, height: 130, borderRadius: BorderRadius.md, backgroundColor: Colors.surface },
   videoTitle: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },

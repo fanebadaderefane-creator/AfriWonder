@@ -166,7 +166,10 @@ export default function LiveStreamViewerScreen() {
   const chatTimesRef = useRef<number[]>([]);
   const reactionCooldownRef = useRef(0);
   const heartsBurstRef = useRef<FloatingHeartsBurstHandle>(null);
-  const likeBatchRef = useRef<{ count: number; flushTimer: NodeJS.Timeout | null }>({ count: 0, flushTimer: null });
+  const likeBatchRef = useRef<{ count: number; flushTimer: ReturnType<typeof setTimeout> | null }>({
+    count: 0,
+    flushTimer: null,
+  });
 
   /** Tap sur la vidéo live = cœur flottant + batch d'envoi de likes au backend. */
   const onLiveTap = useCallback(

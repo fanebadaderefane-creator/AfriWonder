@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SettingsScreen } from '../../src/components/settings/SettingsScreen';
 import { SettingsRow, SettingsSection } from '../../src/components/settings/SettingsRow';
+import feedVideoOfflineCache from '../../src/services/feedVideoOfflineCache';
 
 /**
  * Free up space — purge :
@@ -46,6 +47,9 @@ export default function FreeUpSpaceScreen() {
       );
       if (target.length > 0) {
         await AsyncStorage.multiRemove(target);
+      }
+      if (Platform.OS !== 'web') {
+        await feedVideoOfflineCache.clearAll();
       }
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         try {

@@ -71,6 +71,7 @@ export const API_ROUTES = {
   ADMIN_CREATORS: '/admin/creators',
 
   MOBILE_HEALTH: '/mobile/health',
+  MOBILE_APP_VERSION: '/mobile/app-version',
   MOBILE_PUSH_TOKEN: '/mobile/push-token',
   MOBILE_PUSH_TOKEN_DELETE: (token: string) => `/mobile/push-token/${encodeURIComponent(token)}`,
   MOBILE_SYNC: '/mobile/sync',

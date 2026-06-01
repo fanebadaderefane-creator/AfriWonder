@@ -17,6 +17,9 @@ Toute **nouvelle** librairie npm doit avoir une **justification** dans la PR (al
 | `expo-image` | Cache disque + mémoire, formats modernes (ch.9.3 compression) |
 | `expo-image-manipulator` | Rotation / recadrage profil en JS — évite l’éditeur natif Android instable avec `expo-image-picker` |
 | `@react-native-community/netinfo` | Qualité connexion / mode dégradé |
+| `expo-media-library` | Enregistrer une photo/vidéo reçue dans la galerie (visionneur média façon WhatsApp). Choisi vs téléchargement manuel + partage : seul moyen fiable d'écrire dans la galerie système Android/iOS. |
+| `react-native-incall-manager` | Routage audio natif appels WebRTC (HP / écouteur / micro Android-iOS). Choisi vs expo-av seul qui bloque souvent le duplex audio avec `react-native-webrtc`. |
+| `react-native-webrtc` | Appels vocaux/vidéo P2P natifs (PeerConnection, RTCView) |
 | `expo-sqlite` | Persistance locale (hors-ligne partiel) |
 | `expo-secure-store` | Secrets / tokens hors stockage AsyncStorage en clair |
 | `react-native-iap` | Conformité Play Store pour biens numériques (coins) |

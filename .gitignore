@@ -16,7 +16,9 @@ node_modules/
 !.yarn/releases
 !.yarn/versions
 
-# Testing
+# Local dev DM uploads (backend/.data/local-uploads)
+backend/.data/
+
 /coverage
 coverage/
 backend/coverage/

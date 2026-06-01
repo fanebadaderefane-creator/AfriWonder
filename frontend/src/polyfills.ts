@@ -3,9 +3,23 @@
  * Requis pour `crypto.getRandomValues` sur certaines builds React Native.
  */
 import 'react-native-get-random-values';
+import { Platform } from 'react-native';
 import {
   isBenignMediaConsoleNoise,
 } from './utils/webBenignBrowserNoise';
+
+/** WebRTC natif : globals (`navigator.mediaDevices`, etc.) avant tout écran d’appel. */
+if (Platform.OS !== 'web') {
+  try {
+    const nm = require('react-native').NativeModules as Record<string, unknown>;
+    if (nm.WebRTCModule != null) {
+      const { registerGlobals } = require('react-native-webrtc') as { registerGlobals?: () => void };
+      registerGlobals?.();
+    }
+  } catch {
+    /* Expo Go / build sans react-native-webrtc */
+  }
+}
 
 /**
  * expo-video (web) appelle `HTMLVideoElement.play()` sans rattacher `.catch()` sur chaque vidéo.
@@ -32,12 +46,12 @@ function installWebVideoPlayPromiseGuards() {
       throw error;
     }
     if (ret != null && typeof (ret as Promise<unknown>).catch === 'function') {
-      void (ret as Promise<unknown>).catch((reason: unknown) => {
+      return (ret as Promise<unknown>).catch((reason: unknown) => {
         if (isBenignMediaConsoleNoise(reason)) {
-          return;
+          return undefined;
         }
         return Promise.reject(reason);
-      });
+      }) as ReturnType<typeof originalPlay>;
     }
     return ret;
   };

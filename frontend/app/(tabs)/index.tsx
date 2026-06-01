@@ -32,6 +32,26 @@ import VideoReactionBar, { reactionEmojiForType } from '../../src/components/fee
 import { addRecentlyViewedVideo } from '../../src/utils/recentlyViewedVideos';
 import { devLog } from '../../src/utils/devLog';
 import { FollowingStoriesBar } from '../../src/components/feed/FollowingStoriesBar';
+import { capFeedVideosForMemory, trimIdSet, trimRecordKeys } from '../../src/utils/feedMemoryCap';
+import {
+  getFeedPageLimit,
+  getFeedScrollTuning,
+  getLiveHubHintRefreshMs,
+  shouldBustFeedCacheOnFirstPage,
+  shouldPreferLowQualityPlayback,
+} from '../../src/config/mobileDataPolicy';
+import feedVideoOfflineCache, {
+  type FeedSnapshotVideo,
+  type FeedTabKey,
+} from '../../src/services/feedVideoOfflineCache';
+import { isProgressiveVideoUrl, pickProgressivePlaybackUrl } from '../../src/utils/pickProgressivePlaybackUrl';
+import NetInfo from '@react-native-community/netinfo';
+import {
+  applyFeedVideoStates,
+  mergeFeedVideoInteraction,
+  parseFeedVideoStatesPayload,
+  pickFeedStateSyncIds,
+} from '../../src/feed/feedVideoInteraction';
 const { height } = Dimensions.get('window');
 
 /** Temps sous l’aperçu de scrub (style PWA / TikTok). */
@@ -153,11 +173,15 @@ interface Video {
   /** Réactions vidéo (Like.type) — phase 23 */
   reactionCounts?: Record<string, number> | null;
   myReaction?: string | null;
+  /** true si like/save utilisateur proviennent de l’API (refresh fiable). */
+  viewerStateFromApi?: boolean;
   commentsDisabled?: boolean;
   remixCreditName?: string | null;
   remixKind?: string | null;
   /** `video` | `photo` — pour suggestions « similaires ». */
   mediaType?: 'video' | 'photo' | string;
+  offlineCached?: boolean;
+  progressiveCacheUrl?: string;
 }
 
 interface Comment {
@@ -226,7 +250,6 @@ const FALLBACK_VIDEOS: Video[] = [];
  * Le JSON mélange vidéos + pubs + bannières : avec 10 slots on ne recevait souvent que 3–5 vidéos,
  * et `hasMore` se basait sur le nombre de vidéos → pagination coupée trop tôt.
  */
-const FEED_PAGE_LIMIT = 28;
 const TTFF_SENT_KEYS = new Set<string>();
 const MAX_TTFF_SENT_KEYS = 4000;
 
@@ -659,10 +682,19 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
     return () => clearInterval(id);
   }, [isActive, isPaused, video.id, video.dataSaverLowQuality, addPlaybackEstimate]);
 
-  // CRITICAL: Cleanup on unmount — pause video to stop background audio
+  // CRITICAL: Cleanup on unmount — libérer le décodeur natif (sinon RAM monte jusqu'au kill Android).
   useEffect(() => {
     return () => {
-      try { player?.pause(); } catch {}
+      try {
+        player?.pause();
+        player.muted = true;
+        const replace = (player as { replace?: (src: string | null) => void })?.replace;
+        if (typeof replace === 'function') {
+          replace(null);
+        }
+      } catch {
+        /* player déjà détruit */
+      }
     };
   }, [player]);
 
@@ -1259,6 +1291,8 @@ const VideoItem = React.memo(VideoItemImpl, (prev, next) => {
   if (prev.video.comments !== next.video.comments) return false;
   if (prev.video.shares !== next.video.shares) return false;
   if (prev.video.isLiked !== next.video.isLiked) return false;
+  if (prev.video.myReaction !== next.video.myReaction) return false;
+  if (prev.video.views !== next.video.views) return false;
   if (prev.video.isSaved !== next.video.isSaved) return false;
   if (prev.video.user?.isFollowing !== next.video.user?.isFollowing) return false;
   if (prev.pollState !== next.pollState) return false;
@@ -2503,6 +2537,8 @@ export default function FeedScreen(props?: {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [feedOfflineMode, setFeedOfflineMode] = useState(false);
+  const [feedOfflinePlayableCount, setFeedOfflinePlayableCount] = useState(0);
   const likeScrollLockUntilRef = useRef(0);
   const likeTapDebounceRef = useRef<Map<string, number>>(new Map());
   const playbackIndexRef = useRef(0);
@@ -2593,7 +2629,12 @@ export default function FeedScreen(props?: {
       });
     }
   }, [amisStandalone, diversifiedStandalone, feedParams.feed, feedParams.topic]);
-  const { effectiveDataSaver, tapToPlayOnly, reduceAnimations } = useDataSaver();
+  const { effectiveDataSaver, isOnCellular, tapToPlayOnly, reduceAnimations } = useDataSaver();
+  const feedPageLimit = useMemo(() => getFeedPageLimit(effectiveDataSaver), [effectiveDataSaver]);
+  const feedScrollTuning = useMemo(
+    () => getFeedScrollTuning(effectiveDataSaver, isOnCellular),
+    [effectiveDataSaver, isOnCellular],
+  );
   const feedAutoplayFromSettings = useFeedAutoplayFromSettings();
   const tapToPlayOnlyEffective = useMemo(
     () => tapToPlayOnly || !feedAutoplayFromSettings,
@@ -2617,12 +2658,42 @@ export default function FeedScreen(props?: {
   useEffect(() => {
     if (amisStandalone || !isScreenFocused) return undefined;
     void refreshLiveHubHint();
-    const id = setInterval(() => void refreshLiveHubHint(), 75_000);
+    const id = setInterval(() => void refreshLiveHubHint(), getLiveHubHintRefreshMs(effectiveDataSaver));
     return () => clearInterval(id);
-  }, [amisStandalone, isScreenFocused, refreshLiveHubHint]);
+  }, [amisStandalone, isScreenFocused, refreshLiveHubHint, effectiveDataSaver]);
 
   const videosRef = useRef<Video[]>([]);
   useEffect(() => { videosRef.current = videos; }, [videos]);
+
+  const feedStateSyncKeyRef = useRef('');
+  const syncFeedVideoStates = useCallback(async () => {
+    if (!isAuthenticated || !currentUserId) return;
+    const list = videosRef.current;
+    if (list.length === 0) return;
+    const ids = pickFeedStateSyncIds(
+      list.map((v) => v.id),
+      playbackIndexRef.current,
+    );
+    const syncKey = ids.join(',');
+    if (!syncKey || syncKey === feedStateSyncKeyRef.current) return;
+    feedStateSyncKeyRef.current = syncKey;
+    try {
+      const res = await apiClient.get('/me/feed-video-states', { params: { ids: syncKey } });
+      const states = parseFeedVideoStatesPayload(res.data?.data ?? res.data);
+      setVideos((prev) => applyFeedVideoStates(prev, states, new Set(ids)));
+    } catch {
+      feedStateSyncKeyRef.current = '';
+    }
+  }, [isAuthenticated, currentUserId]);
+
+  useEffect(() => {
+    feedStateSyncKeyRef.current = '';
+    void syncFeedVideoStates();
+  }, [activeTab, isAuthenticated, currentUserId, syncFeedVideoStates]);
+
+  useEffect(() => {
+    void syncFeedVideoStates();
+  }, [playbackIndex, videos.length, syncFeedVideoStates]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => setAppState(next));
@@ -2630,7 +2701,6 @@ export default function FeedScreen(props?: {
   }, []);
 
   const playbackAllowed = isScreenFocused && appState === 'active';
-  const androidLowRamMode = Platform.OS === 'android' && effectiveDataSaver;
 
   /** Hauteur réelle du viewport liste (sinon snap / offset ≠ hauteur des cellules → index bloqué sur 0). */
   const [listViewportHeight, setListViewportHeight] = useState(0);
@@ -2739,6 +2809,8 @@ export default function FeedScreen(props?: {
 
   useLayoutEffect(() => {
     const id = activeVideoId;
+    trimIdSet(pollFetchedRef.current, 40, id ? [id] : []);
+    setPollByVideoId((prev) => trimRecordKeys(prev, 32, id ? [id] : []));
     if (!id || pollFetchedRef.current.has(id)) return;
     pollFetchedRef.current.add(id);
     setPollByVideoId((prev) => ({ ...prev, [id]: 'loading' }));
@@ -2828,6 +2900,7 @@ export default function FeedScreen(props?: {
                 reactionCounts: counts,
                 myReaction: reaction,
                 isLiked: reaction === 'like',
+                viewerStateFromApi: true,
                 likes: total > 0 ? total : v.likes,
               }
             : v
@@ -2885,13 +2958,25 @@ export default function FeedScreen(props?: {
       if (!video) return;
       if (lastViewedVideoIdRef.current === video.id) return;
       lastViewedVideoIdRef.current = video.id;
-      apiClient.post(`/videos/${video.id}/view`, {
-        // Backend compte la vue a partir de >=3s ou >=25%.
-        watchSeconds: 3,
-        watchPercent: 25,
-        scrollSlow: true,
-        interactionDetected: true,
-      }).catch(() => {});
+      void apiClient
+        .post(`/videos/${video.id}/view`, {
+          // Backend compte la vue a partir de >=3s ou >=25%.
+          watchSeconds: 3,
+          watchPercent: 25,
+          scrollSlow: true,
+          interactionDetected: true,
+        })
+        .then((res) => {
+          const data = res.data?.data ?? res.data;
+          const nextViews = Number(data?.views);
+          if (!Number.isFinite(nextViews) || nextViews <= 0) return;
+          setVideos((prev) =>
+            prev.map((v) =>
+              v.id === video.id ? { ...v, views: Math.max(Number(v.views) || 0, nextViews) } : v,
+            ),
+          );
+        })
+        .catch(() => {});
     }
   );
 
@@ -2910,8 +2995,8 @@ export default function FeedScreen(props?: {
 
   const transformVideo = useCallback((v: any): Video => {
     const nameParts = (v.creator_name || v.creator?.full_name || '').split(' ');
-    const preferLow = effectiveDataSaver;
-    const adaptiveFirstMobile = Platform.OS !== 'web';
+    const preferLow = shouldPreferLowQualityPlayback(effectiveDataSaver, isOnCellular);
+    const adaptiveFirstMobile = Platform.OS !== 'web' && !preferLow;
     const playUrl = pickWebPlaybackUrl(v as Record<string, unknown>, preferLow, adaptiveFirstMobile);
     const rawThumb =
       [v.thumbnail_url, v.poster_url, v.cover_url, v.preview_image_url]
@@ -2925,6 +3010,11 @@ export default function FeedScreen(props?: {
         ? (v.reaction_counts as Record<string, number>)
         : null;
     const myR = (v.current_user_reaction ?? v.my_reaction ?? null) as string | null;
+    const viewerStateFromApi =
+      v.is_liked !== undefined ||
+      v.current_user_reaction !== undefined ||
+      v.my_reaction !== undefined ||
+      v.is_saved !== undefined;
     const remixCredit =
       v.remix_credit?.creator?.username ||
       v.remix_credit?.creator?.full_name ||
@@ -2960,12 +3050,65 @@ export default function FeedScreen(props?: {
       dataSaverLowQuality: preferLow && Boolean(v.low_quality_playback_url || v.low_quality_url),
       reactionCounts: rc,
       myReaction: myR,
+      viewerStateFromApi,
       commentsDisabled: Boolean(v.comments_disabled),
       remixCreditName: remixCredit ? String(remixCredit).replace(/^@/, '') : null,
       remixKind: typeof v.remix_kind === 'string' ? v.remix_kind : null,
       mediaType: String(v.media_type || 'video').toLowerCase() === 'photo' ? 'photo' : 'video',
+      progressiveCacheUrl: pickProgressivePlaybackUrl(v as Record<string, unknown>, true),
     };
-  }, [effectiveDataSaver, currentUserId]);
+  }, [effectiveDataSaver, isOnCellular, currentUserId]);
+
+  const feedTabKey = activeTab as FeedTabKey;
+
+  const buildWarmItems = useCallback(
+    (list: Video[]) =>
+      list.map((v) => ({
+        id: v.id,
+        progressiveUrl:
+          (v.progressiveCacheUrl || '').trim() ||
+          (isProgressiveVideoUrl(v.videoUrl) ? v.videoUrl.trim() : ''),
+      })),
+    [],
+  );
+
+  const autoWarmFeedList = useCallback(
+    (list: Video[], focusIndex: number) => {
+      if (Platform.OS === 'web' || list.length === 0) return;
+      feedVideoOfflineCache.warmFeedPage(buildWarmItems(list), focusIndex, {
+        effectiveDataSaver,
+        isOnCellular,
+      });
+    },
+    [buildWarmItems, effectiveDataSaver, isOnCellular],
+  );
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const sub = NetInfo.addEventListener((state) => {
+      const offline = state.isConnected === false || state.isInternetReachable === false;
+      setFeedOfflineMode(offline);
+    });
+    return () => sub();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || videos.length === 0) return;
+    autoWarmFeedList(videosRef.current, playbackIndex);
+  }, [playbackIndex, autoWarmFeedList, videos.length]);
+
+  /** Perte réseau en cours de session : bascule auto sur fichiers locaux (sans action utilisateur). */
+  useEffect(() => {
+    if (Platform.OS === 'web' || !feedOfflineMode || videos.length === 0) return;
+    void feedVideoOfflineCache
+      .hydrateLocalPlaybackUrls(videosRef.current as FeedSnapshotVideo[])
+      .then((hydrated) => {
+        setVideos(hydrated as Video[]);
+        void feedVideoOfflineCache
+          .countOfflinePlayable(hydrated.map((v) => v.id))
+          .then(setFeedOfflinePlayableCount);
+      });
+  }, [feedOfflineMode, videos.length]);
 
   const loadFeed = async (
     pageNum: number = 1,
@@ -2976,14 +3119,45 @@ export default function FeedScreen(props?: {
     else setLoadingMore(true);
     try {
       setFeedEmptyMessage(null);
+
+      if (reset && Platform.OS !== 'web') {
+        const deviceOffline = await feedVideoOfflineCache.isDeviceOffline();
+        const snap = await feedVideoOfflineCache.loadFeedSnapshot(feedTabKey);
+        let prepared: FeedSnapshotVideo[] = [];
+        if (snap?.videos?.length) {
+          prepared = deviceOffline
+            ? await feedVideoOfflineCache.filterOfflinePlayable(snap.videos as FeedSnapshotVideo[])
+            : await feedVideoOfflineCache.hydrateLocalPlaybackUrls(snap.videos as FeedSnapshotVideo[]);
+          if (prepared.length > 0) {
+            setVideos(prepared as Video[]);
+            setPage(snap.page);
+            setHasMore(snap.hasMore);
+            setFeedOfflineMode(deviceOffline);
+            const playableN = await feedVideoOfflineCache.countOfflinePlayable(prepared.map((v) => v.id));
+            setFeedOfflinePlayableCount(playableN);
+            if (!deviceOffline) {
+              autoWarmFeedList(prepared as Video[], playbackIndexRef.current);
+            }
+          }
+          if (deviceOffline) {
+            if (!prepared.length) {
+              setVideos(FALLBACK_VIDEOS);
+              setFeedEmptyMessage(
+                'Patience : les vidéos se préparent toutes seules. Laissez l’accueil ouvert quelques secondes avec Internet, puis réessayez.',
+              );
+            }
+            return;
+          }
+        }
+      }
       let backendVideos: any[] = [];
       let pagination: { totalPages?: number } | undefined;
       /** Pour « Pour toi » : nombre d’items renvoyés (vidéo + pub + bannière), pour heuristique `hasMore`. */
       let rawFeedItemCount = 0;
 
       if (activeTab === 'foryou') {
-        const params: Record<string, string | number> = { page: pageNum, limit: FEED_PAGE_LIMIT };
-        if (pageNum === 1) {
+        const params: Record<string, string | number> = { page: pageNum, limit: feedPageLimit };
+        if (pageNum === 1 && shouldBustFeedCacheOnFirstPage()) {
           params._ = Date.now();
         }
         const response = await apiClient.get('/feed', { params });
@@ -2995,7 +3169,7 @@ export default function FeedScreen(props?: {
       } else if (activeTab === 'apprendre') {
         /** Fil thématique : éducation / science / tech (preset backend `/videos/topic/apprendre`). */
         const response = await apiClient.get('/videos/topic/apprendre', {
-          params: { page: pageNum, limit: FEED_PAGE_LIMIT },
+          params: { page: pageNum, limit: feedPageLimit },
         });
         const data = response.data?.data || response.data;
         backendVideos = data?.videos || [];
@@ -3004,7 +3178,7 @@ export default function FeedScreen(props?: {
       } else if (activeTab === 'diversified') {
         /** Fil « Explorer » — vidéos hors bulle utilisateur (créateurs non suivis). */
         const response = await apiClient.get('/videos/diversified', {
-          params: { page: pageNum, limit: FEED_PAGE_LIMIT },
+          params: { page: pageNum, limit: feedPageLimit },
         });
         const data = response.data?.data || response.data;
         backendVideos = data?.videos || [];
@@ -3014,7 +3188,7 @@ export default function FeedScreen(props?: {
         const response = await apiClient.get('/videos', {
           params: {
             page: pageNum,
-            limit: FEED_PAGE_LIMIT,
+            limit: feedPageLimit,
             following_only: 1,
           },
         });
@@ -3026,17 +3200,26 @@ export default function FeedScreen(props?: {
 
       if (backendVideos.length > 0) {
         const transformed = backendVideos.map(transformVideo);
+        const hydrated =
+          Platform.OS === 'web'
+            ? transformed
+            : await feedVideoOfflineCache.hydrateLocalPlaybackUrls(transformed as FeedSnapshotVideo[]);
+        if (Platform.OS !== 'web') {
+          autoWarmFeedList(hydrated as Video[], reset ? 0 : playbackIndexRef.current);
+        }
+        setFeedOfflineMode(false);
         if (reset) {
           const keepExistingOnReset = options?.keepExistingOnReset === true;
           setVideos((prev) => {
+            const prevById = new Map(prev.map((v) => [v.id, v]));
             if (!keepExistingOnReset || prev.length === 0) {
               refreshOutcomeRef.current = { hadNewTop: true, keepIndex: 0 };
-              return transformed;
+              return hydrated.map((v) => mergeFeedVideoInteraction(v, prevById.get(v.id)));
             }
             const prevTopId = prev[0]?.id ?? null;
             const prevIds = new Set(prev.map((v) => v.id));
-            const hasNewInFreshBatch = transformed.some((v) => !prevIds.has(v.id));
-            const merged: Video[] = [...transformed];
+            const hasNewInFreshBatch = hydrated.some((v) => !prevIds.has(v.id));
+            const merged: Video[] = hydrated.map((v) => mergeFeedVideoInteraction(v, prevById.get(v.id)));
             const mergedIds = new Set(merged.map((v) => v.id));
             for (const old of prev) {
               if (!mergedIds.has(old.id)) {
@@ -3045,12 +3228,37 @@ export default function FeedScreen(props?: {
               }
             }
             const hadNewTop = Boolean(merged[0]?.id && merged[0]?.id !== prevTopId && hasNewInFreshBatch);
-            const keepIndex = Math.min(playbackIndexRef.current, Math.max(0, merged.length - 1));
-            refreshOutcomeRef.current = { hadNewTop, keepIndex };
-            return merged;
+            const { list: capped, anchorIndex: capIdx } = capFeedVideosForMemory(merged, playbackIndexRef.current);
+            refreshOutcomeRef.current = {
+              hadNewTop,
+              keepIndex: Math.min(capIdx, Math.max(0, capped.length - 1)),
+            };
+            if (capIdx !== playbackIndexRef.current) {
+              playbackIndexRef.current = capIdx;
+              queueMicrotask(() => {
+                setPlaybackIndex(capIdx);
+                lastSettledPlaybackIndexRef.current = capIdx;
+              });
+            }
+            return capped;
           });
         } else {
-          setVideos(prev => [...prev, ...transformed]);
+          setVideos((prev) => {
+            const prevById = new Map(prev.map((v) => [v.id, v]));
+            const incoming = hydrated
+              .filter((v) => !prevById.has(v.id))
+              .map((v) => mergeFeedVideoInteraction(v, prevById.get(v.id)));
+            const merged = [...prev, ...incoming];
+            const { list, anchorIndex } = capFeedVideosForMemory(merged, playbackIndexRef.current);
+            if (anchorIndex !== playbackIndexRef.current) {
+              playbackIndexRef.current = anchorIndex;
+              queueMicrotask(() => {
+                setPlaybackIndex(anchorIndex);
+                lastSettledPlaybackIndexRef.current = anchorIndex;
+              });
+            }
+            return list;
+          });
         }
         setPage(pageNum);
         const totalPages =
@@ -3060,9 +3268,18 @@ export default function FeedScreen(props?: {
         const moreByPagination = totalPages != null && pageNum < totalPages;
         /** Page « pleine » côté API → il peut y avoir une suite même si `totalPages` est absent. */
         const fullPageSlots =
-          activeTab === 'foryou' ? rawFeedItemCount >= FEED_PAGE_LIMIT : rawFeedItemCount >= FEED_PAGE_LIMIT;
+          activeTab === 'foryou' ? rawFeedItemCount >= feedPageLimit : rawFeedItemCount >= feedPageLimit;
         const moreByHeuristic = totalPages == null && fullPageSlots;
-        setHasMore(Boolean(moreByPagination || moreByHeuristic));
+        const hasMoreNext = Boolean(moreByPagination || moreByHeuristic);
+        setHasMore(hasMoreNext);
+        if (Platform.OS !== 'web') {
+          void feedVideoOfflineCache.saveFeedSnapshot(
+            feedTabKey,
+            hydrated as FeedSnapshotVideo[],
+            pageNum,
+            hasMoreNext,
+          );
+        }
       } else if (reset) {
         setVideos(FALLBACK_VIDEOS);
         setHasMore(false);
@@ -3079,6 +3296,23 @@ export default function FeedScreen(props?: {
     } catch (err) {
       devLog('Feed vidéo indisponible', err);
       if (reset) {
+        if (Platform.OS !== 'web') {
+          const snap = await feedVideoOfflineCache.loadFeedSnapshot(feedTabKey);
+          if (snap?.videos?.length) {
+            const playable = await feedVideoOfflineCache.filterOfflinePlayable(
+              snap.videos as FeedSnapshotVideo[],
+            );
+            if (playable.length > 0) {
+              setVideos(playable as Video[]);
+              setPage(snap.page);
+              setHasMore(false);
+              setFeedOfflineMode(true);
+              setFeedEmptyMessage(null);
+              setFeedOfflinePlayableCount(playable.length);
+              return;
+            }
+          }
+        }
         setVideos(FALLBACK_VIDEOS);
         const msg = (err as any)?.response?.data?.error?.message || (err as any)?.message;
         setFeedEmptyMessage(
@@ -3387,6 +3621,17 @@ export default function FeedScreen(props?: {
         </View>
       ) : null}
 
+      {feedOfflineMode && Platform.OS !== 'web' ? (
+        <View style={styles.feedOfflineBanner} accessibilityRole="text">
+          <Ionicons name="cloud-offline" size={16} color="#FFF" />
+          <Text style={styles.feedOfflineBannerText}>
+            {feedOfflinePlayableCount > 0
+              ? `Hors ligne — ${feedOfflinePlayableCount} vidéo${feedOfflinePlayableCount > 1 ? 's' : ''} prêtes`
+              : 'Hors ligne — préparation automatique en cours'}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.feedListClip}>
         <View style={styles.feedListInner}>
         {Platform.OS === 'web' ? (
@@ -3430,10 +3675,10 @@ export default function FeedScreen(props?: {
             scrollEventThrottle={32}
             onScroll={handlePlaybackScroll}
             removeClippedSubviews={false}
-            windowSize={androidLowRamMode ? 1 : effectiveDataSaver ? 2 : 5}
+            windowSize={feedScrollTuning.windowSize}
             initialNumToRender={2}
-            maxToRenderPerBatch={androidLowRamMode ? 1 : effectiveDataSaver ? 1 : 2}
-            updateCellsBatchingPeriod={androidLowRamMode ? 160 : effectiveDataSaver ? 120 : 80}
+            maxToRenderPerBatch={feedScrollTuning.maxToRenderPerBatch}
+            updateCellsBatchingPeriod={feedScrollTuning.updateCellsBatchingPeriod}
             getItemLayout={(_, index) => {
               const h = Math.max(1, feedItemHeight);
               return { length: h, offset: h * index, index };
@@ -3444,7 +3689,7 @@ export default function FeedScreen(props?: {
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
             onEndReached={loadMore}
-            onEndReachedThreshold={effectiveDataSaver ? 0.2 : 0.4}
+            onEndReachedThreshold={feedScrollTuning.onEndReachedThreshold}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
             ListEmptyComponent={
               loading ? null : (
@@ -3560,7 +3805,7 @@ export default function FeedScreen(props?: {
             disableIntervalMomentum={Platform.OS === 'android'}
             bounces={false}
             overScrollMode="never"
-            scrollEventThrottle={androidLowRamMode ? 48 : effectiveDataSaver ? 32 : 16}
+            scrollEventThrottle={feedScrollTuning.scrollEventThrottle}
             onScroll={handlePlaybackScroll}
             onScrollBeginDrag={onFeedScrollBeginDrag}
             onScrollEndDrag={onFeedScrollEndDrag}
@@ -3568,13 +3813,13 @@ export default function FeedScreen(props?: {
             estimatedItemSize={feedItemHeight}
             drawDistance={
               feedItemHeight > 0
-                ? feedItemHeight * (androidLowRamMode ? 0.75 : effectiveDataSaver ? 1 : Platform.OS === 'android' ? 2 : 3)
-                : 600
+                ? feedItemHeight * feedScrollTuning.drawDistanceMultiplier
+                : 400
             }
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
             onEndReached={loadMore}
-            onEndReachedThreshold={effectiveDataSaver ? 0.2 : 0.5}
+            onEndReachedThreshold={feedScrollTuning.onEndReachedThreshold}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
             ListEmptyComponent={
               loading ? null : (
@@ -3689,6 +3934,20 @@ export default function FeedScreen(props?: {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+  feedOfflineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    marginTop: 6,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(40,40,40,0.92)',
+    zIndex: 90,
+  },
+  feedOfflineBannerText: { color: '#E8E8E8', fontSize: 12, fontWeight: '600' },
   header: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: Spacing.lg, zIndex: 100 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   friendsHeaderTitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: '800', flex: 1, minWidth: 0 },

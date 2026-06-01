@@ -250,6 +250,8 @@ export function LiveTopFansEmbedded({ liveId }: { liveId: string }) {
   );
 }
 
+export default LiveTopFansSheet;
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,

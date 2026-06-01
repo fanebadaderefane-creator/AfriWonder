@@ -18,10 +18,13 @@
  */
 import { Platform, AppState } from 'react-native';
 import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility, EventType } from '@notifee/react-native';
-import RNCallKeep from 'react-native-callkeep';
 import { router } from 'expo-router';
+import { getCallKeep } from './callKeepIos';
 import socketService from './socketService';
 import { devLog, devWarn } from '../utils/devLog';
+import { useAuthStore } from '../store/authStore';
+import { ANDROID_INCOMING_CALL_VIBRATION_PATTERN } from '../call/callIncomingAlerts';
+import { buildCallDeclinePayload } from '../call/callSignalingPayload';
 
 const ANDROID_CHANNEL_ID = 'afriwonder-incoming-call';
 const ANDROID_CHANNEL_NAME = 'Appels entrants AfriWonder';
@@ -85,7 +88,9 @@ export async function initIncomingCallService(): Promise<void> {
         importance: AndroidImportance.HIGH,
         sound: 'default',
         vibration: true,
-        bypassDnd: true,
+        vibrationPattern: [...ANDROID_INCOMING_CALL_VIBRATION_PATTERN],
+        /** Respecte le mode « Ne pas déranger » — l’utilisateur peut autoriser les appels dans les réglages système. */
+        bypassDnd: false,
         visibility: AndroidVisibility.PUBLIC,
       });
 
@@ -99,22 +104,27 @@ export async function initIncomingCallService(): Promise<void> {
     }
 
     if (Platform.OS === 'ios') {
-      await RNCallKeep.setup(IOS_CALLKEEP_OPTIONS);
-      RNCallKeep.setAvailable(true);
+      const callKeep = getCallKeep();
+      if (callKeep) {
+        await callKeep.setup(IOS_CALLKEEP_OPTIONS);
+        callKeep.setAvailable(true);
 
-      // Listeners CallKit
-      RNCallKeep.addEventListener('answerCall', ({ callUUID }: { callUUID: string }) => {
-        onCallKeepAnswer(callUUID);
-      });
-      RNCallKeep.addEventListener('endCall', ({ callUUID }: { callUUID: string }) => {
-        onCallKeepEnd(callUUID);
-      });
-      RNCallKeep.addEventListener(
-        'didPerformSetMutedCallAction',
-        ({ muted, callUUID }: { muted: boolean; callUUID: string }) => {
-          devLog('[CallKeep] Mute toggle', callUUID, muted);
-        },
-      );
+        // Listeners CallKit
+        callKeep.addEventListener('answerCall', ({ callUUID }: { callUUID: string }) => {
+          onCallKeepAnswer(callUUID);
+        });
+        callKeep.addEventListener('endCall', ({ callUUID }: { callUUID: string }) => {
+          onCallKeepEnd(callUUID);
+        });
+        callKeep.addEventListener(
+          'didPerformSetMutedCallAction',
+          ({ muted, callUUID }: { muted: boolean; callUUID: string }) => {
+            devLog('[CallKeep] Mute toggle', callUUID, muted);
+          },
+        );
+      } else {
+        devWarn('[IncomingCall] CallKeep indisponible sur iOS');
+      }
     }
 
     initialized = true;
@@ -135,8 +145,10 @@ export async function displayIncomingCall(payload: IncomingCallPayload): Promise
 
   try {
     if (Platform.OS === 'ios') {
+      const callKeep = getCallKeep();
+      if (!callKeep) return;
       const handle = payload.callerUserId || payload.callId;
-      RNCallKeep.displayIncomingCall(
+      callKeep.displayIncomingCall(
         payload.callId,
         handle,
         payload.callerName,
@@ -186,7 +198,9 @@ export async function displayIncomingCall(payload: IncomingCallPayload): Promise
             },
           ],
           sound: 'default',
-          loopSound: true,
+          /** Pas de sonnerie système en boucle — l’overlay (app ouverte) gère le motif pulsé. */
+          loopSound: false,
+          vibrationPattern: [...ANDROID_INCOMING_CALL_VIBRATION_PATTERN],
           lightUpScreen: true,
         },
       });
@@ -203,7 +217,7 @@ export async function dismissIncomingCall(callId: string): Promise<void> {
   pendingCalls.delete(callId);
   try {
     if (Platform.OS === 'ios') {
-      RNCallKeep.endCall(callId);
+      getCallKeep()?.endCall(callId);
     } else if (Platform.OS === 'android') {
       await notifee.cancelNotification(callId);
     }
@@ -216,7 +230,8 @@ async function handleNotifeeEvent(type: EventType, detail: { notification?: any;
   const notif = detail.notification;
   if (!notif?.data || notif.data.type !== 'incoming_call') return;
   const callId = String(notif.data.callId || '');
-  const fromUserId = String(notif.data.fromUserId || '');
+  const callerUserId = String(notif.data.fromUserId || '');
+  const myUserId = String(useAuthStore.getState().user?.id || '');
   const callerName = String(notif.data.callerName || 'Contact');
   const callerAvatar = String(notif.data.callerAvatar || '');
   const callType = (String(notif.data.callType || 'audio') === 'video' ? 'video' : 'audio') as 'audio' | 'video';
@@ -224,7 +239,17 @@ async function handleNotifeeEvent(type: EventType, detail: { notification?: any;
 
   if (type === EventType.ACTION_PRESS && actionId === 'decline_call') {
     await dismissIncomingCall(callId);
-    socketService.emit?.('call:decline', { callId, fromUserId });
+    if (myUserId && callerUserId) {
+      socketService.emit?.(
+        'call:decline',
+        buildCallDeclinePayload({
+          callId,
+          declinerUserId: myUserId,
+          callerUserId,
+          reason: 'declined',
+        }),
+      );
+    }
     return;
   }
   if (
@@ -232,13 +257,12 @@ async function handleNotifeeEvent(type: EventType, detail: { notification?: any;
     type === EventType.PRESS
   ) {
     await dismissIncomingCall(callId);
-    socketService.emit?.('call:accept', { callId, fromUserId, toUserId: '', type: callType });
     try {
       router.push({
         pathname: '/messages/call',
         params: {
           callId,
-          peerId: fromUserId,
+          peerId: callerUserId,
           peerName: callerName,
           peerAvatar: callerAvatar,
           callType,
@@ -256,12 +280,6 @@ function onCallKeepAnswer(callUUID: string) {
   pendingCalls.delete(callUUID);
   activeCallIds.delete(callUUID);
   if (!payload) return;
-  socketService.emit?.('call:accept', {
-    callId: callUUID,
-    fromUserId: payload.fromUserId,
-    toUserId: '',
-    type: payload.type,
-  });
   try {
     router.push({
       pathname: '/messages/call',
@@ -284,7 +302,19 @@ function onCallKeepEnd(callUUID: string) {
   pendingCalls.delete(callUUID);
   activeCallIds.delete(callUUID);
   if (!payload) return;
-  socketService.emit?.('call:decline', { callId: callUUID, fromUserId: payload.fromUserId });
+  const myUserId = String(useAuthStore.getState().user?.id || '');
+  const callerUserId = String(payload.fromUserId || '');
+  if (myUserId && callerUserId) {
+    socketService.emit?.(
+      'call:decline',
+      buildCallDeclinePayload({
+        callId: callUUID,
+        declinerUserId: myUserId,
+        callerUserId,
+        reason: 'declined',
+      }),
+    );
+  }
 }
 
 /**

@@ -14,6 +14,7 @@ import { Colors, FontSizes, Spacing } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { safeRouterBack } from '../../src/utils/safeRouter';
 import apiClient from '../../src/api/client';
 import MessageRequestDetailPane from './components/MessageRequestDetailPane';
 
@@ -125,7 +126,7 @@ export default function MessageRequestsScreen() {
 
   const listHeader = (
     <View style={[styles.header, isWide && styles.headerSidebar]}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Retour">
+      <TouchableOpacity onPress={() => safeRouterBack('/messages')} style={styles.backBtn} accessibilityLabel="Retour">
         <Ionicons name="arrow-back" size={24} color={Colors.text} />
       </TouchableOpacity>
       <Text style={styles.headerTitle} numberOfLines={1}>

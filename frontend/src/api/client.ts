@@ -80,7 +80,12 @@ apiClient.interceptors.request.use(
           config.headers.Authorization = `Bearer ${token}`;
         }
       } else {
-        const token = await secureStorage.getItem('accessToken');
+        let token = await secureStorage.getItem('accessToken');
+        /** Rafraîchit avant envoi si le JWT expire bientôt — évite rafales de 401 au focus chat / feed. */
+        if (accessTokenExpiresWithin(token, 60)) {
+          await tryRefreshAccessToken();
+          token = await secureStorage.getItem('accessToken');
+        }
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }

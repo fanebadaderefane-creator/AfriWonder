@@ -30,9 +30,10 @@ export function installMobileRuntimeGuards(): void {
 
     const previous = EU.getGlobalHandler();
     EU.setGlobalHandler((error: Error, isFatal?: boolean) => {
+      const fatal = Boolean(isFatal);
       try {
         captureSentryException(error, {
-          isFatal: Boolean(isFatal),
+          isFatal: fatal,
           source: 'ErrorUtils.globalHandler',
           sentryReady,
         });
@@ -40,10 +41,19 @@ export function installMobileRuntimeGuards(): void {
         /* */
       }
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        devLog('[GlobalHandler]', isFatal ? 'fatal' : 'non-fatal', error?.message);
+        devLog('[GlobalHandler]', fatal ? 'fatal' : 'non-fatal', error?.message);
+      }
+      /**
+       * En production mobile, un fatal JS déclenche souvent la fermeture immédiate de l'app
+       * (symptôme perçu "l'app se ferme quand je navigue"). On journalise dans Sentry puis
+       * on évite de relayer au handler natif fatal pour limiter ces fermetures brutales.
+       * Les crashs 100% natifs restent gérés par Android/iOS.
+       */
+      if (fatal && (typeof __DEV__ === 'undefined' || !__DEV__)) {
+        return;
       }
       if (typeof previous === 'function') {
-        previous(error, isFatal);
+        previous(error, fatal);
       }
     });
   } catch {

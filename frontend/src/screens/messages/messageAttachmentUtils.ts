@@ -1,4 +1,5 @@
 import { Platform, Linking } from 'react-native';
+import { copyNativeUriToCacheForDmUpload, normalizeDmUploadMime } from '../../messages/dmMediaUpload';
 import type { ExistingContact } from 'expo-contacts';
 
 /** Ligne lisible pour un message type contact (backend accepte `contact_name`). */
@@ -57,15 +58,10 @@ export async function appendBlobOrFileField(
     return 'application/pdf';
   };
 
-  let ct = (mime || '').trim().toLowerCase();
+  let ct = normalizeDmUploadMime(mime, mode === 'document' ? 'document' : 'audio', safe);
   if (!ct || ct === 'application/octet-stream') {
     ct = inferMimeFromExt();
   }
-  if (mode === 'audio' && ct === 'audio/m4a') {
-    // Backend whitelist accepte audio/mp4 (conteneur m4a)
-    ct = 'audio/mp4';
-  }
-  if (!ct) ct = fallbackMime;
 
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
@@ -74,5 +70,6 @@ export async function appendBlobOrFileField(
     formData.append('file', new File([blob], safe, { type }));
     return;
   }
-  formData.append('file', { uri, name: safe, type: ct } as any);
+  const uploadUri = await copyNativeUriToCacheForDmUpload(uri, ext || (mode === 'document' ? 'pdf' : 'm4a'));
+  formData.append('file', { uri: uploadUri, name: safe, type: ct } as any);
 }

@@ -17,50 +17,50 @@ import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { safeRouterBack } from '../../src/utils/safeRouter';
 import socketService from '../../src/services/socketService';
+import { buildCallAcceptPayload } from '../../src/call/callSignalingPayload';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { startOutgoingRingbackPattern } from '../../src/call/callRingtone';
 import { tryLoadReactNativeWebRtc } from '../../src/call/tryLoadReactNativeWebRtc';
+import {
+  applyNativeCallSpeakerRoute,
+  releaseExpoAvForWebRtcCall,
+  requestNativeCallPermissions,
+  resolveWebRtcMediaDevices,
+  startNativeCallAudioSession,
+  stopNativeCallAudioSession,
+} from '../../src/call/callNativeMedia';
 import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
+import {
+  buildCallIceConfig,
+  pickVideoProfileForNetwork,
+  type VideoQualityProfile as NetVideoQualityProfile,
+} from '../../src/call/callNetworkConfig';
+import { parseTurnCredentialsResponse } from '../../src/call/parseTurnCredentialsResponse';
 import { formatCallStatusLine } from '../../src/call/callStatusLine';
+import { logCallPhase, sdpContainsMedia } from '../../src/call/callDebug';
+import { countLocalTracks, shouldMarkCallConnected, streamHasLiveAudio } from '../../src/call/callRemoteMedia';
 import { devWarn } from '../../src/utils/devLog';
 import { CallDuringMessageModal, CallMoreOptionsSheet } from '../../src/components/call/CallMoreMenu';
 import NetInfo from '@react-native-community/netinfo';
 
 /**
- * Profil de qualité vidéo selon la bande passante détectée.
- * Optimisé pour Afrique de l'Ouest (réseaux 2G/3G/4G mixtes).
+ * Profil de qualité vidéo selon la bande passante détectée (2G/3G/4G/Wi‑Fi).
+ * Logique pure + testée dans `callNetworkConfig.ts`.
  */
-type VideoQualityProfile = {
-  width: number;
-  height: number;
-  frameRate: number;
-  label: string;
-};
-
-const VIDEO_PROFILES: Record<'low' | 'medium' | 'high', VideoQualityProfile> = {
-  low: { width: 320, height: 240, frameRate: 15, label: 'low-bandwidth' },
-  medium: { width: 640, height: 480, frameRate: 24, label: 'medium' },
-  high: { width: 1280, height: 720, frameRate: 30, label: 'hd' },
-};
-
-async function detectVideoProfile(): Promise<VideoQualityProfile> {
+async function detectVideoProfile(): Promise<NetVideoQualityProfile> {
   try {
     const st = await NetInfo.fetch();
-    const type = String(st.type || '').toLowerCase();
-    const isCellular = type === 'cellular';
     const details = (st.details || {}) as { cellularGeneration?: string | null };
-    const gen = String(details.cellularGeneration || '').toLowerCase();
-    if (isCellular && (gen === '2g' || gen === '3g')) return VIDEO_PROFILES.low;
-    if (isCellular && gen === '4g') return VIDEO_PROFILES.medium;
-    if (type === 'wifi' || type === 'ethernet') return VIDEO_PROFILES.high;
-    if (isCellular) return VIDEO_PROFILES.medium;
-    return VIDEO_PROFILES.medium;
+    return pickVideoProfileForNetwork({
+      type: st.type,
+      cellularGeneration: details.cellularGeneration,
+    });
   } catch {
-    return VIDEO_PROFILES.medium;
+    return pickVideoProfileForNetwork(null);
   }
 }
 
@@ -154,6 +154,8 @@ type SignalPayload =
 
 const CALL_RING_MS = 30_000;
 const CALL_CONNECTING_WATCHDOG_MS = 15_000;
+/** Délai sans piste distante après accept — message réseau / TURN. */
+const CALL_MEDIA_READY_HINT_MS = 12_000;
 const isWebRuntime = Platform.OS === 'web';
 
 /** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
@@ -166,7 +168,6 @@ const nativeWebRTC: any = tryLoadReactNativeWebRtc();
 const RTCPeerConnectionImpl: any = isWebRuntime ? RTCPeerConnection : nativeWebRTC?.RTCPeerConnection;
 const RTCIceCandidateImpl: any = isWebRuntime ? RTCIceCandidate : nativeWebRTC?.RTCIceCandidate;
 const RTCSessionDescriptionImpl: any = isWebRuntime ? RTCSessionDescription : nativeWebRTC?.RTCSessionDescription;
-const mediaDevicesImpl: any = isWebRuntime ? navigator?.mediaDevices : nativeWebRTC?.mediaDevices;
 const RTCViewNative: any = nativeWebRTC?.RTCView;
 
 function newCallId(): string {
@@ -189,15 +190,25 @@ export default function CallScreen() {
   const initialCallId = String(params.callId || '').trim();
 
   const { user } = useAuthStore();
+  const myAvatarUri = useMemo(
+    () => profileAvatarUri(user?.profile_image || user?.avatar || '', user?.full_name || user?.username || 'Moi'),
+    [user?.profile_image, user?.avatar, user?.full_name, user?.username],
+  );
   const myUserId = String(user?.id || '');
   const callIdRef = useRef<string>(initialCallId || newCallId());
 
   const [callState, setCallState] = useState<'ringing' | 'connecting' | 'connected' | 'ended'>(
     role === 'caller' ? 'ringing' : 'connecting',
   );
+  const [peerOnline, setPeerOnline] = useState<boolean | null>(null);
+  /** Dès que le correspondant a décroché — le chronomètre démarre seulement à `connected` (média WebRTC). */
+  const [peerAnswered, setPeerAnswered] = useState(false);
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
+  const speakerOnRef = useRef(true);
+  const webrtcMediaActiveRef = useRef(false);
+  const stopOutgoingRingRef = useRef<(() => Promise<void>) | null>(null);
   const [cameraOff, setCameraOff] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -215,6 +226,8 @@ export default function CallScreen() {
   }>({ labelFr: 'Connexion…', bars: 2, quality: 'fair' });
   const [pipEffect, setPipEffect] = useState<'none' | 'warm' | 'cool' | 'soft'>('none');
   const [effectsModalOpen, setEffectsModalOpen] = useState(false);
+  /** `remote` = correspondant plein écran ; `local` = selfie plein écran (PiP = l’autre flux). */
+  const [videoLayoutFocus, setVideoLayoutFocus] = useState<'remote' | 'local'>('remote');
 
   const screenShareDisplayStreamRef = useRef<MediaStream | null>(null);
   const facingModeRef = useRef<'user' | 'environment'>('user');
@@ -223,6 +236,7 @@ export default function CallScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectionWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaReadyHintRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Refs PeerConnection + flux média (web et natif lorsque l’appel démarre). */
   const pcRef = useRef<any>(null);
@@ -233,8 +247,18 @@ export default function CallScreen() {
   const remoteAudioElRef = useRef<HTMLAudioElement | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const startedAtRef = useRef<number | null>(null);
+  const callStateRef = useRef(callState);
   const [remoteStreamUrl, setRemoteStreamUrl] = useState<string>('');
   const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
+  const [localStreamKey, setLocalStreamKey] = useState(0);
+  const [remoteStreamKey, setRemoteStreamKey] = useState(0);
+  const pcTearingDownRef = useRef(false);
+  /** Évite une double offre SDP si `call:accept` est reçu deux fois. */
+  const callerOfferSentRef = useRef(false);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
 
   const stopAllMedia = useCallback(() => {
     try {
@@ -269,6 +293,11 @@ export default function CallScreen() {
       /* ignore */
     }
     pcRef.current = null;
+    pcTearingDownRef.current = true;
+    webrtcMediaActiveRef.current = false;
+    void stopNativeCallAudioSession();
+    void stopOutgoingRingRef.current?.();
+    stopOutgoingRingRef.current = null;
     if (!isWebRuntime) {
       setLocalStreamUrl('');
       setRemoteStreamUrl('');
@@ -306,7 +335,7 @@ export default function CallScreen() {
         });
       setTimeout(() => {
         try {
-          router.back();
+          safeRouterBack('/messages');
         } catch {
           /* ignore */
         }
@@ -328,7 +357,7 @@ export default function CallScreen() {
     return () => loop.stop();
   }, [callState, pulseAnim]);
 
-  /** Timer durée d'appel. */
+  /** Timer : uniquement après connexion média WebRTC (`connected`), pas au simple accept socket. */
   useEffect(() => {
     if (callState !== 'connected') return;
     startedAtRef.current = startedAtRef.current ?? Date.now();
@@ -338,14 +367,48 @@ export default function CallScreen() {
     };
   }, [callState]);
 
+  /** Présence du correspondant (en ligne → « Appel en cours… », sinon « Appel »). */
+  useEffect(() => {
+    if (!otherUserId) return undefined;
+    let cancelled = false;
+    void apiClient
+      .get(`/messages/presence/${encodeURIComponent(otherUserId)}`)
+      .then((res) => {
+        if (cancelled) return;
+        setPeerOnline(Boolean(res.data?.data?.is_online));
+      })
+      .catch(() => {
+        if (!cancelled) setPeerOnline(null);
+      });
+    const offPresence = socketService.on(
+      'presence:update',
+      (data: { userId?: string; isOnline?: boolean }) => {
+        if (data?.userId === otherUserId) setPeerOnline(Boolean(data.isOnline));
+      },
+    );
+    return () => {
+      cancelled = true;
+      offPresence();
+    };
+  }, [otherUserId]);
+
   /**
    * Bootstrap PeerConnection : web (navigateur) ou natif (`react-native-webrtc` présent dans la build).
    */
   useEffect(() => {
+    const mediaDevicesImpl = resolveWebRtcMediaDevices();
     const canRunCalls =
       isWebRuntime ||
       Boolean(nativeWebRTC && RTCPeerConnectionImpl && mediaDevicesImpl?.getUserMedia);
-    if (!canRunCalls) return;
+    if (!canRunCalls) {
+      if (!isWebRuntime) {
+        setErrorMsg(
+          'Les appels audio/vidéo nécessitent l’application installée (build EAS). Expo Go ne prend pas en charge WebRTC.',
+        );
+        setCallState('ended');
+      }
+      return;
+    }
 
     if (!otherUserId) {
       setErrorMsg('Identifiant du correspondant manquant.');
@@ -358,7 +421,17 @@ export default function CallScreen() {
 
     let cancelled = false;
 
-    const setupRemoteEl = (stream: MediaStream) => {
+    const callId = callIdRef.current;
+    logCallPhase(callId, 'bootstrap', { role, isVideo, otherUserId, platform: Platform.OS });
+
+    const setupRemoteEl = (stream: MediaStream, trackKind?: string) => {
+      try {
+        stream.getAudioTracks?.().forEach((t) => {
+          t.enabled = true;
+        });
+      } catch {
+        /* ignore */
+      }
       if (isWebRuntime && isVideo && remoteVideoElRef.current) {
         remoteVideoElRef.current.srcObject = stream;
         remoteVideoElRef.current.play().catch(() => {});
@@ -369,9 +442,75 @@ export default function CallScreen() {
         remoteAudioElRef.current.play().catch(() => {});
       }
       if (!isWebRuntime) {
-        const url = (stream as any)?.toURL?.();
-        if (url) setRemoteStreamUrl(url);
+        const url = (stream as { toURL?: () => string })?.toURL?.();
+        if (url) {
+          setRemoteStreamUrl(url);
+          /** Remonte RTCView pour prendre en compte les pistes audio ajoutées après la vidéo. */
+          setRemoteStreamKey((k) => k + 1);
+        }
       }
+      logCallPhase(callId, 'remote_stream_updated', {
+        trackKind,
+        audioTracks: stream.getAudioTracks?.().length ?? 0,
+        videoTracks: stream.getVideoTracks?.().length ?? 0,
+      });
+    };
+
+    const markCallConnected = () => {
+      if (callStateRef.current === 'connected') return;
+      logCallPhase(callId, 'media_connected', {
+        remoteAudio: streamHasLiveAudio(remoteStreamRef.current as MediaStream),
+      });
+      setCallState('connected');
+      if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+      if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
+      if (isWebRuntime && remoteAudioElRef.current) {
+        try {
+          remoteAudioElRef.current.muted = false;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (isWebRuntime && isVideo && remoteVideoElRef.current) {
+        try {
+          remoteVideoElRef.current.muted = false;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!isWebRuntime) {
+        void applyNativeCallSpeakerRoute(speakerOnRef.current);
+      }
+      void apiClient
+        .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
+        .catch(() => {});
+    };
+
+    const maybeMarkCallConnected = (stream: MediaStream, trackKind?: string) => {
+      if (!shouldMarkCallConnected({ trackKind, stream })) return;
+      markCallConnected();
+    };
+
+    const armMediaReadyHint = () => {
+      if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
+      mediaReadyHintRef.current = setTimeout(() => {
+        if (cancelled || callStateRef.current === 'connected') return;
+        if (streamHasLiveAudio(remoteStreamRef.current as MediaStream)) return;
+        setErrorMsg(
+          'Connexion lente ou bloquée par le réseau mobile. Vérifiez le Wi‑Fi ou réessayez dans quelques secondes.',
+        );
+      }, CALL_MEDIA_READY_HINT_MS);
+    };
+
+    const waitForLocalMediaReady = async (): Promise<boolean> => {
+      for (let i = 0; i < 60; i++) {
+        if (cancelled) return false;
+        const local = localStreamRef.current as MediaStream | null;
+        if (local?.getTracks?.().length) return true;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return Boolean((localStreamRef.current as MediaStream | null)?.getTracks?.().length);
     };
 
     const setupLocalEl = (stream: MediaStream) => {
@@ -380,8 +519,11 @@ export default function CallScreen() {
         localVideoElRef.current.play().catch(() => {});
       }
       if (!isWebRuntime) {
-        const url = (stream as any)?.toURL?.();
-        if (url) setLocalStreamUrl(url);
+        const url = (stream as { toURL?: () => string })?.toURL?.();
+        if (url) {
+          setLocalStreamUrl(url);
+          setLocalStreamKey((k) => k + 1);
+        }
       }
     };
 
@@ -392,16 +534,11 @@ export default function CallScreen() {
         toUserId: otherUserId,
         signal,
       };
-      // SDP est critique : garantir l'émission même pendant une reconnexion socket.
-      if (signal.kind === 'sdp') {
-        void socketService.ensureConnectedEmit('call:signal', payload, 12_000).then((ok) => {
-          if (!ok && !cancelled) {
-            setErrorMsg('Connexion instable. Nouvelle tentative…');
-          }
-        });
-        return;
-      }
-      socketService.emit('call:signal', payload);
+      void socketService.ensureConnectedEmit('call:signal', payload, signal.kind === 'sdp' ? 12_000 : 8_000).then((ok) => {
+        if (!ok && !cancelled && signal.kind === 'sdp') {
+          setErrorMsg('Connexion instable. Nouvelle tentative…');
+        }
+      });
     };
 
     let restartAttempted = false;
@@ -445,14 +582,15 @@ export default function CallScreen() {
         if (!c) continue;
         try {
           await pc.addIceCandidate(c);
-        } catch {
-          /* ignore bad candidate */
+        } catch (e) {
+          logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
         }
       }
     };
 
     const handleSignal = async (payload: { callId: string; fromUserId: string; signal: SignalPayload }) => {
       if (payload?.callId !== callIdRef.current) return;
+      if (payload.fromUserId && payload.fromUserId !== otherUserId) return;
       const pc = pcRef.current as RTCPeerConnection | null;
       if (!pc) return;
       const sig = payload.signal;
@@ -462,17 +600,34 @@ export default function CallScreen() {
             ? (sig.sdp as RTCSessionDescriptionInit)
             : new RTCSessionDescriptionImpl(sig.sdp);
           await pc.setRemoteDescription(remoteDescription);
+          logCallPhase(callId, 'sdp_remote', {
+            type: sig.sdp.type,
+            hasAudio: sdpContainsMedia(sig.sdp.sdp, 'audio'),
+            hasVideo: sdpContainsMedia(sig.sdp.sdp, 'video'),
+          });
           await flushPendingIce();
           if (sig.sdp.type === 'offer') {
-            const ans = await pc.createAnswer();
+            const ans = await pc.createAnswer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: isVideo,
+            });
             await pc.setLocalDescription(ans);
+            logCallPhase(callId, 'sdp_local', {
+              type: ans.type,
+              hasAudio: sdpContainsMedia(ans.sdp, 'audio'),
+              hasVideo: sdpContainsMedia(ans.sdp, 'video'),
+            });
             sendSignal({ kind: 'sdp', sdp: { type: ans.type, sdp: ans.sdp } });
           }
         } else if (sig.kind === 'ice') {
           if (!sig.candidate) return;
           if (pc.remoteDescription) {
             const ice = isWebRuntime ? sig.candidate : new RTCIceCandidateImpl(sig.candidate);
-            await pc.addIceCandidate(ice);
+            try {
+              await pc.addIceCandidate(ice);
+            } catch (e) {
+              logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
+            }
           } else {
             pendingIceRef.current.push(sig.candidate);
           }
@@ -487,19 +642,45 @@ export default function CallScreen() {
      * l'offre SDP. Sinon le receveur n'a pas encore monté son listener `call:signal`
      * et perd l'offre → l'appel ne se connecte jamais.
      */
-    const handlePeerAccepted = async () => {
+    const handlePeerAccepted = async (payload: { callId?: string; type?: 'audio' | 'video' }) => {
       if (cancelled || role !== 'caller') return;
+      if (payload?.callId && payload.callId !== callIdRef.current) return;
+      if (callerOfferSentRef.current) return;
+      if (payload?.type === 'video' && !isVideo) {
+        logCallPhase(callId, 'accept_type_mismatch', { invite: 'video', local: 'audio' });
+        setErrorMsg('Le correspondant a répondu en vidéo — relancez un appel vidéo.');
+        finishCall('failed');
+        return;
+      }
+      if (payload?.type === 'audio' && isVideo) {
+        logCallPhase(callId, 'accept_type_mismatch', { invite: 'video', accept: 'audio' });
+      }
+      setPeerAnswered(true);
       setCallState('connecting');
+      armMediaReadyHint();
       const pc = pcRef.current as RTCPeerConnection | null;
       if (!pc) return;
+      const mediaReady = await waitForLocalMediaReady();
+      if (cancelled || !mediaReady) {
+        setErrorMsg('Micro indisponible. Réessayez l’appel.');
+        finishCall('failed');
+        return;
+      }
+      callerOfferSentRef.current = true;
       try {
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: isVideo,
         });
         await pc.setLocalDescription(offer);
+        logCallPhase(callId, 'sdp_local', {
+          type: offer.type,
+          hasAudio: sdpContainsMedia(offer.sdp, 'audio'),
+          hasVideo: sdpContainsMedia(offer.sdp, 'video'),
+        });
         sendSignal({ kind: 'sdp', sdp: { type: offer.type, sdp: offer.sdp } });
       } catch (e) {
+        callerOfferSentRef.current = false;
         devWarn('[Call] offer failed', e);
         finishCall('failed');
       }
@@ -524,98 +705,126 @@ export default function CallScreen() {
          * 2. TURN obligatoire pour Carrier-Grade NAT mobile (Orange, MTN, Moov) — sinon ~30% des appels échouent
          * 3. Détection bande passante via NetInfo → adapter codec/résolution
          */
-        const STUN_FALLBACKS: RTCIceServer[] = [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          { urls: 'stun:global.stun.twilio.com:3478' },
-        ];
-        let iceServers: RTCIceServer[] = STUN_FALLBACKS;
+        let iceServers: RTCIceServer[] = parseTurnCredentialsResponse(null).iceServers;
         let turnConfigured = false;
         try {
           const res = await apiClient.get('/calls/turn-credentials');
-          const data = res.data?.data || res.data;
-          // STUN publics depuis le serveur (plus à jour) — fallback sur la liste locale.
-          const serverStun = Array.isArray(data?.publicStun) && data.publicStun.length > 0
-            ? data.publicStun.map((u: string) => ({ urls: u }))
-            : STUN_FALLBACKS;
-          const turnUrls = Array.isArray(data?.urls) ? data.urls : data?.urls ? [data.urls] : [];
-          if (data?.turnConfigured && turnUrls.length > 0 && data?.username && data?.credential) {
-            iceServers = [
-              ...serverStun,
-              {
-                urls: turnUrls,
-                username: String(data.username),
-                credential: String(data.credential),
-              },
-            ];
-            turnConfigured = true;
-          } else {
-            iceServers = serverStun;
-          }
+          const parsed = parseTurnCredentialsResponse(res.data?.data || res.data);
+          iceServers = parsed.iceServers;
+          turnConfigured = parsed.turnConfigured;
         } catch {
           /* Endpoint indisponible : STUN locaux uniquement. */
         }
 
         /**
-         * Pour les réseaux très restreints (corp/4G Mali) : forcer le relay TURN.
-         * Sans cela, certains carrier-grade NAT cassent la connexion P2P en silence.
-         * iceTransportPolicy 'all' par défaut, 'relay' uniquement si flag activé.
+         * Mobile Afrique : relais TURN forcé sur cellulaire (2G/3G/4G) si TURN configuré (CGNAT opérateur).
+         * Logique pure + testée dans `callNetworkConfig.ts`.
          */
-        const pc = new RTCPeerConnectionImpl({
+        let iceNetSnapshot: { type?: string | null; cellularGeneration?: string | null } = {};
+        if (!isWebRuntime) {
+          try {
+            const net = await NetInfo.fetch();
+            const det = (net.details || {}) as { cellularGeneration?: string | null };
+            iceNetSnapshot = { type: net.type, cellularGeneration: det.cellularGeneration };
+          } catch {
+            /** En cas d'échec NetInfo sur mobile : on suppose cellulaire (cas majoritaire Afrique) → relais. */
+            iceNetSnapshot = { type: 'cellular' };
+          }
+        }
+        const pcConfig = buildCallIceConfig({
           iceServers,
-          iceCandidatePoolSize: 4,
-          // bundlePolicy + rtcpMuxPolicy : meilleures perfs sur mobile faible
-          bundlePolicy: 'max-bundle' as RTCBundlePolicy,
-          rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+          turnConfigured,
+          isWeb: isWebRuntime,
+          net: iceNetSnapshot,
         });
+        logCallPhase(callId, 'turn_config', {
+          turnConfigured,
+          iceTransportPolicy: pcConfig.iceTransportPolicy ?? 'all',
+          netType: iceNetSnapshot.type,
+          cellularGeneration: iceNetSnapshot.cellularGeneration,
+          iceServersCount: iceServers.length,
+        });
+        pcTearingDownRef.current = false;
+        const pc = new RTCPeerConnectionImpl(pcConfig);
         pcRef.current = pc;
 
         const remoteStream = isWebRuntime ? new MediaStream() : new nativeWebRTC.MediaStream();
         remoteStreamRef.current = remoteStream;
 
         pc.ontrack = (ev: RTCTrackEvent) => {
-          ev.streams[0]?.getTracks().forEach((t) => remoteStream.addTrack(t));
-          setupRemoteEl(remoteStream);
+          const trackKind = ev.track?.kind;
+          const inbound = ev.streams?.[0];
+          if (inbound) {
+            remoteStreamRef.current = inbound;
+            setupRemoteEl(inbound, trackKind);
+            if (!isWebRuntime && trackKind === 'audio') {
+              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+            }
+            maybeMarkCallConnected(inbound, trackKind);
+            return;
+          }
+          if (ev.track) {
+            try {
+              remoteStream.addTrack(ev.track);
+            } catch {
+              /* piste déjà présente */
+            }
+            remoteStreamRef.current = remoteStream;
+            setupRemoteEl(remoteStream, trackKind);
+            if (!isWebRuntime && trackKind === 'audio') {
+              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+            }
+            maybeMarkCallConnected(remoteStream, trackKind);
+          }
         };
 
         pc.onicecandidate = (ev: RTCPeerConnectionIceEvent) => {
           if (ev.candidate) {
+            logCallPhase(callId, 'ice_local', {
+              type: ev.candidate.type,
+              protocol: ev.candidate.protocol,
+            });
             sendSignal({ kind: 'ice', candidate: ev.candidate.toJSON() });
           }
         };
 
         pc.onconnectionstatechange = () => {
+          if (pcTearingDownRef.current) return;
           const s = pc.connectionState;
-          if (s === 'connected') {
-            setCallState('connected');
-            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
-            if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
-            if (isWebRuntime && remoteAudioElRef.current) {
-              try {
-                remoteAudioElRef.current.muted = false;
-              } catch {
-                /* ignore */
-              }
+          logCallPhase(callId, 'pc_state', { connectionState: s });
+          if (s === 'failed') {
+            finishCall('failed');
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          if (pcTearingDownRef.current) return;
+          const ice = String(pc.iceConnectionState || '');
+          logCallPhase(callId, 'ice_state', { iceConnectionState: ice });
+          if (ice === 'failed') {
+            if (!turnConfigured && !isWebRuntime) {
+              setErrorMsg(
+                'Audio bloqué par le réseau mobile. Le serveur TURN n’est pas configuré — contactez le support AfriWonder.',
+              );
             }
-          } else if (s === 'failed' || s === 'closed') {
             finishCall('failed');
           }
         };
 
         if (!isWebRuntime) {
-          try {
-            await Audio.setAudioModeAsync({
-              playsInSilentModeIOS: true,
-              allowsRecordingIOS: true,
-              interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-              interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-              shouldDuckAndroid: true,
-              playThroughEarpieceAndroid: false,
-              staysActiveInBackground: false,
-            });
-          } catch {
-            /* ignore */
+          await releaseExpoAvForWebRtcCall();
+          const permitted = await requestNativeCallPermissions(isVideo);
+          if (!permitted) {
+            throw new Error('NOTALLOWED');
+          }
+        }
+
+        if (!turnConfigured && !isWebRuntime) {
+          devWarn('[Call] TURN non configuré — risque élevé de silence audio sur 4G Afrique');
+          if (String(iceNetSnapshot.type || '').toLowerCase() === 'cellular') {
+            setErrorMsg(
+              'Réseau mobile sans relais TURN serveur — l’audio peut ne pas passer. Passez en Wi‑Fi ou contactez le support.',
+            );
           }
         }
 
@@ -648,6 +857,17 @@ export default function CallScreen() {
           return;
         }
         localStreamRef.current = local;
+        webrtcMediaActiveRef.current = true;
+        void stopOutgoingRingRef.current?.();
+        stopOutgoingRingRef.current = null;
+        const localTrackCounts = countLocalTracks(local);
+        logCallPhase(callId, 'local_media', {
+          ...localTrackCounts,
+          isVideo,
+        });
+        if (!isWebRuntime) {
+          await startNativeCallAudioSession(isVideo, speakerOnRef.current);
+        }
         local.getTracks().forEach((t: any) => pc.addTrack(t, local));
         setupLocalEl(local);
 
@@ -664,15 +884,9 @@ export default function CallScreen() {
             for (const sender of senders) {
               if (sender?.track?.kind !== 'video') continue;
               const params = sender.getParameters?.() || {};
-              const cap =
-                videoProfile.label === 'low-bandwidth'
-                  ? 200_000
-                  : videoProfile.label === 'medium'
-                    ? 500_000
-                    : 1_500_000;
               params.encodings = (params.encodings || [{}]).map((enc: any) => ({
                 ...enc,
-                maxBitrate: cap,
+                maxBitrate: videoProfile.maxBitrate,
                 maxFramerate: videoProfile.frameRate,
               }));
               await sender.setParameters?.(params).catch(() => {});
@@ -709,25 +923,30 @@ export default function CallScreen() {
           }
 
           ringTimeoutRef.current = setTimeout(() => {
-            if (callState !== 'connected') {
+            if (callStateRef.current !== 'connected') {
               setErrorMsg('Pas de réponse.');
               finishCall('ended');
             }
           }, CALL_RING_MS);
         } else {
           // Receveur : PC prêt avant accept — indispensable si l’app a été ouverte depuis une notification push.
-          const accepted = await socketService.ensureConnectedEmit('call:accept', {
-            callId: callIdRef.current,
-            fromUserId: myUserId,
-            toUserId: otherUserId,
-            type: isVideo ? 'video' : 'audio',
-          });
+          const accepted = await socketService.ensureConnectedEmit(
+            'call:accept',
+            buildCallAcceptPayload({
+              callId: callIdRef.current,
+              accepterUserId: myUserId,
+              callerUserId: otherUserId,
+              type: isVideo ? 'video' : 'audio',
+            }),
+          );
           if (!accepted) {
             setErrorMsg('Connexion indisponible. Réessayez.');
             finishCall('failed');
             return;
           }
+          setPeerAnswered(true);
           setCallState('connecting');
+          armMediaReadyHint();
         }
         armConnectionWatchdog();
       } catch (e: any) {
@@ -753,23 +972,47 @@ export default function CallScreen() {
       stopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+      if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherUserId, myUserId, isVideo, role]);
 
-  /** Tonalité d’attente pendant que le correspondant ne décroche pas (mobile + module d’appel présent). */
+  useEffect(() => {
+    speakerOnRef.current = speakerOn;
+  }, [speakerOn]);
+
+  /**
+   * Tonalité d’attente — uniquement avant capture micro WebRTC.
+   * Après getUserMedia, expo-av volerait la session audio native (silence des deux côtés).
+   */
   useEffect(() => {
     if (Platform.OS === 'web') return;
     if (!nativeWebRTC) return;
     if (role !== 'caller' || callState !== 'ringing') return;
-    let stopOutgoing: (() => Promise<void>) | null = null;
+    if (webrtcMediaActiveRef.current) return;
+    let cancelled = false;
     void startOutgoingRingbackPattern(0.58).then((fn) => {
-      stopOutgoing = fn;
+      if (cancelled || webrtcMediaActiveRef.current) {
+        void fn();
+        return;
+      }
+      stopOutgoingRingRef.current = fn;
     });
     return () => {
-      void stopOutgoing?.();
+      cancelled = true;
+      void stopOutgoingRingRef.current?.();
+      stopOutgoingRingRef.current = null;
     };
   }, [role, callState]);
+
+  /** Libère expo-av dès la négociation WebRTC (appelant + receveur). */
+  useEffect(() => {
+    if (isWebRuntime) return;
+    if (callState !== 'connecting' && callState !== 'connected') return;
+    void stopOutgoingRingRef.current?.();
+    stopOutgoingRingRef.current = null;
+    void releaseExpoAvForWebRtcCall();
+  }, [callState]);
 
   /**
    * Détection de changement de réseau en cours d'appel (WiFi <-> 4G, 4G <-> 3G, perte connexion).
@@ -837,16 +1080,8 @@ export default function CallScreen() {
           /* ignore */
         }
       }
-      if (!isWebRuntime && Platform.OS !== 'web') {
-        void Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: true,
-          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: !next,
-          staysActiveInBackground: false,
-        }).catch(() => {});
+      if (!isWebRuntime) {
+        void applyNativeCallSpeakerRoute(next);
       }
       return next;
     });
@@ -917,6 +1152,10 @@ export default function CallScreen() {
           bars: q.bars,
           quality: q.quality,
         });
+        logCallPhase(callIdRef.current, 'stats', {
+          quality: q.quality,
+          labelFr: q.labelFr,
+        });
       });
     };
     tick();
@@ -925,6 +1164,7 @@ export default function CallScreen() {
   }, [callState]);
 
   const restoreCameraTrack = useCallback(async () => {
+    const mediaDevicesImpl = resolveWebRtcMediaDevices();
     if (!mediaDevicesImpl?.getUserMedia || !pcRef.current || !localStreamRef.current) return;
     const facing = facingModeRef.current;
     const camOnly = await mediaDevicesImpl.getUserMedia({
@@ -948,10 +1188,12 @@ export default function CallScreen() {
     }
     if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
       setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
+      setLocalStreamKey((k) => k + 1);
     }
   }, []);
 
   const flipCamera = useCallback(async () => {
+    const mediaDevicesImpl = resolveWebRtcMediaDevices();
     if (!isVideo || !pcRef.current || !localStreamRef.current || !mediaDevicesImpl?.getUserMedia) {
       Alert.alert('Caméra', 'Caméra indisponible.');
       return;
@@ -981,6 +1223,7 @@ export default function CallScreen() {
         }
         if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
           setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
+          setLocalStreamKey((k) => k + 1);
         }
         facingModeRef.current = nextFacing;
       }
@@ -995,10 +1238,6 @@ export default function CallScreen() {
       return;
     }
     if (!isWebRuntime) {
-      Alert.alert(
-        'Partage d’écran',
-        'Le partage d’écran n’est pas disponible sur l’application mobile. Utilisez AfriWonder dans un navigateur sur ordinateur pour cette fonctionnalité.',
-      );
       return;
     }
     if (!pcRef.current || !localStreamRef.current) return;
@@ -1072,13 +1311,35 @@ export default function CallScreen() {
         callState,
         durationSeconds: duration,
         role,
+        peerOnline,
+        answered: peerAnswered,
       }),
-    [callState, duration, errorMsg, role],
+    [callState, duration, errorMsg, role, peerOnline, peerAnswered],
   );
 
   const onMinimizeHint = useCallback(() => {
     Alert.alert('Appel', 'Pour terminer l’appel, utilisez le bouton rouge.');
   }, []);
+
+  const toggleVideoLayoutFocus = useCallback(() => {
+    setVideoLayoutFocus((prev) => (prev === 'remote' ? 'local' : 'remote'));
+  }, []);
+
+  /**
+   * Le flux distant est réellement disponible (caméra du correspondant) :
+   * - natif : on a un `streamURL` distant ;
+   * - web : la connexion est établie.
+   * Tant qu'il n'est pas là (sonnerie / connexion), on affiche SA PROPRE caméra en plein écran
+   * (comportement WhatsApp : on se voit en attendant que l'autre décroche).
+   */
+  const remoteVideoLive = isWebRuntime
+    ? callState === 'connected'
+    : Boolean(remoteStreamUrl && RTCViewNative);
+  /** Quand le distant n'est pas encore là, MA caméra prend tout l'écran. */
+  const selfFullScreen = !remoteVideoLive;
+  const peerVideoFullscreen = remoteVideoLive && videoLayoutFocus === 'remote';
+  const hasRemoteVideoReady = remoteVideoLive;
+  const showRemoteWaitingOverlay = !remoteVideoLive;
 
   const openAddPeople = useCallback(() => {
     if (!otherUserId) return;
@@ -1108,6 +1369,17 @@ export default function CallScreen() {
             style: { display: 'none' },
           })
         : null}
+
+      {/* Natif : RTCView caché pour l’audio distant (appels vocaux — évite double lecture en vidéo). */}
+      {!isWeb && remoteStreamUrl && RTCViewNative && !isVideo ? (
+        <RTCViewNative
+          key={`remote-audio-${remoteStreamKey}`}
+          streamURL={remoteStreamUrl}
+          style={styles.hiddenRemoteRtc}
+          objectFit="cover"
+          zOrder={0}
+        />
+      ) : null}
 
       {!isVideo ? <CallWallpaperPattern /> : null}
 
@@ -1148,29 +1420,78 @@ export default function CallScreen() {
 
       {isVideo ? (
         <View style={styles.videoBackground}>
-          {isWeb ? (
-            createElement('video', {
-              ref: (el: HTMLVideoElement | null) => {
-                remoteVideoElRef.current = el;
-              },
-              autoPlay: true,
-              playsInline: true,
-              muted: false,
-              style: {
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                background: '#0b111d',
-              },
-            })
-          ) : remoteStreamUrl && RTCViewNative ? (
-            <RTCViewNative streamURL={remoteStreamUrl} style={styles.nativeVideoFill} objectFit="cover" />
-          ) : (
-            <View style={styles.videoPlaceholder}>
-              <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.videoPlaceholderText}>Connexion vidéo...</Text>
-            </View>
-          )}
+          {/* Flux distant — toujours monté (audio web) ; taille = plein écran ou PiP */}
+          <View
+            style={peerVideoFullscreen ? styles.videoLayerFull : styles.videoLayerPip}
+            pointerEvents={peerVideoFullscreen ? 'none' : 'box-none'}
+          >
+            {isWeb ? (
+              <View style={StyleSheet.absoluteFill}>
+                {createElement('video', {
+                  ref: (el: HTMLVideoElement | null) => {
+                    remoteVideoElRef.current = el;
+                  },
+                  autoPlay: true,
+                  playsInline: true,
+                  muted: false,
+                  style: {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    background: '#0b111d',
+                  },
+                })}
+                {showRemoteWaitingOverlay && peerVideoFullscreen ? (
+                  <View style={[styles.videoPlaceholder, styles.videoPlaceholderOverlay]}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.videoPlaceholderText}>
+                      {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : remoteStreamUrl && RTCViewNative ? (
+              <View style={StyleSheet.absoluteFill}>
+                <RTCViewNative
+                  key={`remote-video-${remoteStreamKey}`}
+                  streamURL={remoteStreamUrl}
+                  style={styles.nativeVideoFill}
+                  objectFit="cover"
+                  zOrder={0}
+                  zOrderMediaOverlay={Platform.OS === 'android'}
+                />
+                {showRemoteWaitingOverlay && peerVideoFullscreen ? (
+                  <View style={[styles.videoPlaceholder, styles.videoPlaceholderOverlay]}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.videoPlaceholderText}>
+                      {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View style={[styles.videoPlaceholder, !peerVideoFullscreen && styles.videoPlaceholderPip]}>
+                {!peerVideoFullscreen ? (
+                  <Image source={{ uri: peerAvatarUri }} style={styles.pipAvatar} />
+                ) : (
+                  <>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.videoPlaceholderText}>
+                      {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
+                    </Text>
+                  </>
+                )}
+              </View>
+            )}
+            {!peerVideoFullscreen ? (
+              <Pressable
+                style={styles.pipTapTarget}
+                onPress={toggleVideoLayoutFocus}
+                accessibilityLabel="Agrandir la vidéo du correspondant"
+                accessibilityRole="button"
+              />
+            ) : null}
+          </View>
 
           <View style={[styles.videoSideTools, { top: insets.top + 56 }]}>
             <TouchableOpacity style={styles.sideToolBtn} onPress={openAddPeople} accessibilityLabel="Ajouter">
@@ -1188,9 +1509,12 @@ export default function CallScreen() {
             </TouchableOpacity>
           </View>
 
-          {!cameraOff && (
-            <View style={styles.selfView}>
-              <View style={StyleSheet.absoluteFill}>
+          {!cameraOff ? (
+            <View
+              style={peerVideoFullscreen ? styles.videoLayerPip : styles.videoLayerFull}
+              pointerEvents={peerVideoFullscreen ? 'box-none' : 'none'}
+            >
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 {isWeb ? (
                   createElement('video', {
                     ref: (el: HTMLVideoElement | null) => {
@@ -1202,9 +1526,16 @@ export default function CallScreen() {
                     style: { width: '100%', height: '100%', objectFit: 'cover' },
                   })
                 ) : localStreamUrl && RTCViewNative ? (
-                  <RTCViewNative streamURL={localStreamUrl} style={styles.nativeVideoFill} objectFit="cover" mirror />
+                  <RTCViewNative
+                    key={`local-video-${localStreamKey}`}
+                    streamURL={localStreamUrl}
+                    style={styles.nativeVideoFill}
+                    objectFit="cover"
+                    mirror
+                    zOrderMediaOverlay
+                  />
                 ) : (
-                  <Image source={{ uri: peerAvatarUri }} style={styles.selfViewImage} />
+                  <Image source={{ uri: myAvatarUri }} style={styles.selfViewImage} />
                 )}
               </View>
               {pipEffect !== 'none' ? (
@@ -1213,15 +1544,33 @@ export default function CallScreen() {
                   pointerEvents="none"
                 />
               ) : null}
-              <TouchableOpacity
-                style={styles.pipFlipHit}
-                onPress={() => void flipCamera()}
-                accessibilityLabel="Changer de caméra"
-              >
-                <Ionicons name="camera-reverse-outline" size={18} color="#FFF" />
-              </TouchableOpacity>
+              {peerVideoFullscreen ? (
+                <TouchableOpacity
+                  style={styles.pipFlipHit}
+                  onPress={() => void flipCamera()}
+                  accessibilityLabel="Changer de caméra"
+                >
+                  <Ionicons name="camera-reverse-outline" size={18} color="#FFF" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.pipFlipHit, styles.pipFlipHitFullscreen]}
+                  onPress={() => void flipCamera()}
+                  accessibilityLabel="Changer de caméra"
+                >
+                  <Ionicons name="camera-reverse-outline" size={22} color="#FFF" />
+                </TouchableOpacity>
+              )}
+              {peerVideoFullscreen ? (
+                <Pressable
+                  style={styles.pipTapTarget}
+                  onPress={toggleVideoLayoutFocus}
+                  accessibilityLabel="Agrandir ma caméra"
+                  accessibilityRole="button"
+                />
+              ) : null}
             </View>
-          )}
+          ) : null}
         </View>
       ) : (
         <View style={styles.audioStage}>
@@ -1324,6 +1673,7 @@ export default function CallScreen() {
           setMoreMenuOpen(false);
         }}
         onShareScreen={() => void toggleScreenShare()}
+        showScreenShare={isWebRuntime && isVideo}
         onOpenMessageComposer={() => {
           setMoreMenuOpen(false);
           setMessageModalOpen(true);
@@ -1382,6 +1732,15 @@ export default function CallScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0B141A' },
+  /** Lecture audio distante (appels vocaux natifs) — invisible mais monté dans l’arbre RN. */
+  hiddenRemoteRtc: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: -9999,
+    top: -9999,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1405,7 +1764,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#101822',
     position: 'relative',
   },
+  videoLayerFull: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    backgroundColor: '#101822',
+  },
+  videoLayerPip: {
+    position: 'absolute',
+    bottom: 200,
+    right: 16,
+    width: 112,
+    height: 158,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: '#000',
+    zIndex: 12,
+  },
   videoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 280 },
+  videoPlaceholderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16,24,34,0.88)',
+    minHeight: 0,
+  },
+  videoPlaceholderPip: { minHeight: 0, padding: 8 },
+  pipAvatar: { width: '100%', height: '100%', borderRadius: 12 },
   videoPlaceholderText: { color: 'rgba(255,255,255,0.55)', fontSize: 14, marginTop: 12 },
   nativeVideoFill: { width: '100%', height: '100%' },
   videoSideTools: {
@@ -1424,19 +1808,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selfView: {
-    position: 'absolute',
-    bottom: 200,
-    right: 16,
-    width: 112,
-    height: 158,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: '#000',
-    zIndex: 12,
-  },
   pipFlipHit: {
     position: 'absolute',
     top: 6,
@@ -1447,6 +1818,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 14,
+  },
+  pipFlipHitFullscreen: {
+    top: undefined,
+    bottom: 200,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  pipTapTarget: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 13,
   },
   selfViewImage: { width: '100%', height: '100%' },
   avatarRingWrap: {

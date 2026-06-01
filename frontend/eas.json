@@ -17,7 +17,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "abdoulaye_fane"
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane"
       }
     },
     "preview": {
@@ -32,13 +32,14 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "abdoulaye_fane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
     },
     "production": {
       "autoIncrement": true,
+      "credentialsSource": "local",
       "android": {
         "buildType": "app-bundle"
       },
@@ -49,7 +50,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "abdoulaye_fane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
@@ -66,7 +67,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "abdoulaye_fane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }

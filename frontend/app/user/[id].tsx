@@ -28,6 +28,7 @@ import { getPublicWebOrigin } from '../../src/config/shareUrls';
 import ReportModal from '../../src/components/ReportModal';
 import { getRecentlyViewedVideoIds, getRecentlyViewedVideoTsMap } from '../../src/utils/recentlyViewedVideos';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
+import { alertDmAccessDenied, isDmAccessDeniedError } from '../../src/messages/dmAccess';
 
 type PublicUser = {
   id: string;
@@ -37,6 +38,7 @@ type PublicUser = {
   bio?: string | null;
   is_verified?: boolean;
   isFollowing?: boolean;
+  isFollowingMe?: boolean;
   _count?: { videos?: number; follows?: number; following?: number };
 };
 
@@ -358,12 +360,12 @@ export default function PublicUserProfileScreen() {
       return;
     }
     if (!profile || isSelf) return;
+    const name = profile.full_name?.trim() || profile.username || 'Contact';
+    const avatar = toAbsoluteMediaUrl(profile.profile_image || '').trim();
     try {
       const res = await apiClient.get(`/messages/conversation/${encodeURIComponent(profile.id)}`);
       const pkg = res.data?.data ?? res.data;
       const convId = pkg?.id;
-      const name = profile.full_name?.trim() || profile.username || 'Contact';
-      const avatar = toAbsoluteMediaUrl(profile.profile_image || '').trim();
       if (convId) {
         router.push({
           pathname: '/messages/[id]',
@@ -376,8 +378,19 @@ export default function PublicUserProfileScreen() {
         });
         return;
       }
-    } catch {
-      /* pas de conv existante */
+    } catch (e: unknown) {
+      if (isDmAccessDeniedError(e)) {
+        alertDmAccessDenied({
+          error: e,
+          peerName: name,
+          isFollowing: profile.isFollowing,
+          isFollowingMe: profile.isFollowingMe,
+          onPressWonder: () => void toggleFollow(),
+        });
+        return;
+      }
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
+      return;
     }
     router.push('/messages');
   };

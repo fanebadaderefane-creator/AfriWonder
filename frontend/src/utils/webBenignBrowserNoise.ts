@@ -73,11 +73,27 @@ export function isBenignMediaIllegalInvocation(raw: unknown): boolean {
   );
 }
 
+/** Politique navigateur : autoplay non muet bloqué tant que l'utilisateur n'a pas interagi. */
+export function isBenignMediaAutoplayBlocked(raw: unknown): boolean {
+  const name =
+    typeof raw === 'object' && raw !== null && 'name' in raw
+      ? String((raw as { name?: string }).name ?? '')
+      : '';
+  const text = normalizeWebErrorText(messageFromUnknown(raw)).toLowerCase();
+  return (
+    name === 'NotAllowedError' ||
+    (text.includes('play method is not allowed') && text.includes('user agent')) ||
+    (text.includes('lecture automatique') && text.includes('utilisateur')) ||
+    (text.includes('autoplay') && text.includes('not allowed'))
+  );
+}
+
 /** Réduit le bruit console / LogBox pour erreurs média attendues en dev web. */
 export function isBenignMediaConsoleNoise(raw: unknown): boolean {
   return (
     isBenignMediaResourceAbort(raw) ||
     isBenignMediaNotSuitable(raw) ||
-    isBenignMediaIllegalInvocation(raw)
+    isBenignMediaIllegalInvocation(raw) ||
+    isBenignMediaAutoplayBlocked(raw)
   );
 }

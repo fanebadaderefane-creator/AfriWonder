@@ -5,8 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import apiClient from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
+import { useDataSaverOptional } from '../../dataSaver/DataSaverContext';
+import { getStoriesBarRefreshMs } from '../../config/mobileDataPolicy';
 import { toAbsoluteMediaUrl } from '../../utils/absoluteMediaUrl';
 
 /**
@@ -83,6 +86,9 @@ function avatarUrl(item: FeedBarItem): string {
 }
 
 export function FollowingStoriesBar() {
+  const isFocused = useIsFocused();
+  const dataSaverCtx = useDataSaverOptional();
+  const storiesRefreshMs = getStoriesBarRefreshMs(dataSaverCtx?.effectiveDataSaver ?? true);
   const authUser = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.accessToken);
   const [items, setItems] = useState<FeedBarItem[]>([]);
@@ -117,10 +123,11 @@ export function FollowingStoriesBar() {
   }, [token]);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     void load();
-    const id = setInterval(() => void load(), 30000);
+    const id = setInterval(() => void load(), storiesRefreshMs);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, isFocused, storiesRefreshMs]);
 
   /** Re-trie côté client en tenant compte du cache « vu » local. */
   const sortedItems = useMemo(() => {

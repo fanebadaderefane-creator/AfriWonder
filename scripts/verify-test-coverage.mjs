@@ -11,13 +11,16 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 
-function run(label, command, cwd = root) {
+const BACKEND_COVERAGE_HEAP =
+  process.env.BACKEND_COVERAGE_HEAP_MB || '12288';
+
+function run(label, command, cwd = root, extraEnv = {}) {
   console.log(`\n[verify-test-coverage] ${label}`);
   const result = spawnSync(command, {
     cwd,
     shell: true,
     stdio: 'inherit',
-    env: { ...process.env, CI: process.env.CI || 'true' },
+    env: { ...process.env, CI: process.env.CI || 'true', ...extraEnv },
   });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
@@ -25,7 +28,14 @@ function run(label, command, cwd = root) {
 }
 
 if (process.env.SKIP_BACKEND_COVERAGE !== '1') {
-  run('Backend — Jest + couverture (seuil global jest.config.js)', 'npm run test:coverage', path.join(root, 'backend'));
+  const backendHeap = `--max-old-space-size=${BACKEND_COVERAGE_HEAP}`;
+  const nodeOptions = [process.env.NODE_OPTIONS, backendHeap].filter(Boolean).join(' ');
+  run(
+    `Backend — Jest + couverture (heap ${BACKEND_COVERAGE_HEAP} Mo, seuil jest.config.js)`,
+    'npm run test:coverage',
+    path.join(root, 'backend'),
+    { NODE_OPTIONS: nodeOptions },
+  );
 } else {
   console.log('[verify-test-coverage] SKIP_BACKEND_COVERAGE=1 — backend ignoré.');
 }

@@ -1,6 +1,7 @@
 import '../src/polyfills';
 import { captureSentryException, initMobileSentry } from '../src/lib/sentryMobile';
 import { installMobileRuntimeGuards } from '../src/lib/mobileRuntimeGuards';
+import { installMobileSessionStability } from '../src/lib/mobileSessionStability';
 import { AppRootErrorBoundary } from '../src/components/common/AppRootErrorBoundary';
 import { Stack } from 'expo-router';
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
@@ -32,8 +33,11 @@ import { initLiveStartedNotifService } from '../src/services/liveStartedNotifSer
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
 import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils/mobileDeepLink';
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
+import feedVideoOfflineCache from '../src/services/feedVideoOfflineCache';
+import NetInfo from '@react-native-community/netinfo';
 import uploadRecoveryService from '../src/services/uploadRecoveryService';
 import { RouteErrorFallback } from '../src/components/common/RouteErrorFallback';
+import { AppUpdatePrompt } from '../src/components/common/AppUpdatePrompt';
 import { DataSaverProvider } from '../src/dataSaver/DataSaverContext';
 import { navigateFromStarBookingNotification } from '../src/utils/starBookingPushNavigation';
 import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavigation';
@@ -43,6 +47,7 @@ import { safeRouterPush } from '../src/utils/safeRouter';
 
 initMobileSentry();
 installMobileRuntimeGuards();
+installMobileSessionStability();
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   /* Expo Go / OEM : keep-awake parfois indisponible — éviter promesse rejetée non gérée */
@@ -324,6 +329,24 @@ function RootLayoutContent() {
     void notificationService.syncPushTokenWithBackend();
   }, [isAuthenticated]);
 
+  /** Pré-cache vidéo hors ligne automatique au démarrage + à chaque reconnexion (style TikTok). */
+  useEffect(() => {
+    if (Platform.OS === 'web' || !isAuthenticated) return undefined;
+    const runBootstrap = () => {
+      void NetInfo.fetch().then((state) => {
+        const cellular = state.type === 'cellular';
+        void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(false, cellular);
+      });
+    };
+    runBootstrap();
+    const sub = NetInfo.addEventListener((state) => {
+      if (state.isConnected !== true && state.isInternetReachable !== true) return;
+      const cellular = state.type === 'cellular';
+      void feedVideoOfflineCache.bootstrapOfflineCacheOnLaunch(false, cellular);
+    });
+    return () => sub();
+  }, [isAuthenticated]);
+
   /**
    * Connecte le socket Socket.IO dès qu'on a un access token, pour recevoir
    * les invitations d'appel (`call:invite`), les nouveaux messages, présences, etc.
@@ -376,6 +399,7 @@ function RootLayoutContent() {
           <View style={[styles.fill, { backgroundColor: colors.background, overflow: 'hidden' }]}>
             <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
             <OfflineBanner />
+            <AppUpdatePrompt />
             <IncomingCallOverlay />
             <Stack
               screenOptions={{

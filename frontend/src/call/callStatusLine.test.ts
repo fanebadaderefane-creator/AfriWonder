@@ -16,6 +16,8 @@ describe('formatCallStatusLine', () => {
     errorMsg: null as string | null,
     durationSeconds: 0,
     role: 'caller' as const,
+    peerOnline: true as boolean | null,
+    answered: false,
   };
 
   it('sans WebRTC utilisable', () => {
@@ -38,23 +40,35 @@ describe('formatCallStatusLine', () => {
     ).toBe('Pas de réponse.');
   });
 
-  it('sonnerie selon le rôle', () => {
-    expect(formatCallStatusLine({ ...base, callState: 'ringing', role: 'caller' })).toBe('Sonnerie…');
-    expect(formatCallStatusLine({ ...base, callState: 'ringing', role: 'receiver' })).toBe('Appel entrant…');
+  it('sonnerie : en ligne → Appel en cours, hors ligne → Appel', () => {
+    expect(
+      formatCallStatusLine({ ...base, callState: 'ringing', role: 'caller', peerOnline: true }),
+    ).toBe('Appel en cours…');
+    expect(
+      formatCallStatusLine({ ...base, callState: 'ringing', role: 'caller', peerOnline: false }),
+    ).toBe('Appel');
+    expect(
+      formatCallStatusLine({ ...base, callState: 'ringing', role: 'receiver' }),
+    ).toBe('Appel entrant…');
   });
 
-  it('connexion en cours', () => {
-    expect(formatCallStatusLine({ ...base, callState: 'connecting' })).toBe('Appel en cours…');
-  });
-
-  it('connecté avec durée', () => {
+  it('après décrochage : connexion média avant chronomètre', () => {
+    expect(
+      formatCallStatusLine({
+        ...base,
+        callState: 'connecting',
+        answered: true,
+        durationSeconds: 125,
+      }),
+    ).toBe('Connexion média…');
     expect(
       formatCallStatusLine({
         ...base,
         callState: 'connected',
-        durationSeconds: 125,
+        answered: true,
+        durationSeconds: 9,
       }),
-    ).toBe('Appel en cours · 02:05');
+    ).toBe('00:09');
   });
 
   it('terminé', () => {

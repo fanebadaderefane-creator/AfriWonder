@@ -16,6 +16,7 @@
     "verify:delivery": "node scripts/verify-delivery.mjs",
     "report:final": "node scripts/generate-final-report.mjs",
     "verify:delivery:expo": "npm run verify --prefix frontend",
+    "verify:pre-apk": "npm run verify:pre-apk --prefix frontend",
     "standards:expo": "npm run verify --prefix frontend",
     "standards:mobile": "npm run verify --prefix frontend",
     "verify:root-docs": "node scripts/verify-root-docs.js",

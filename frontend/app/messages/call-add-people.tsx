@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import { safeRouterBack } from '../../src/utils/safeRouter';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import apiClient from '../../src/api/client';
 import socketService from '../../src/services/socketService';
@@ -176,7 +177,7 @@ export default function CallAddPeopleScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerHit}
-          onPress={() => router.back()}
+          onPress={() => safeRouterBack('/messages')}
           accessibilityRole="button"
           accessibilityLabel="Retour"
         >

@@ -15,6 +15,7 @@
  */
 
 import { Platform } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { getBackendOrigin, MISSING_BACKEND_URL_SENTINEL } from '../config/backendBase';
 import { applyAfriDeviceTrustToFetchInit } from '../utils/afwDeviceRequestId';
 
@@ -84,17 +85,36 @@ async function pingHealth(timeoutMs: number): Promise<boolean> {
   }
 }
 
-const WARMUP_ATTEMPTS: { delayMs: number; timeoutMs: number }[] = [
+const WARMUP_ATTEMPTS_FULL: { delayMs: number; timeoutMs: number }[] = [
   { delayMs: 0, timeoutMs: 8_000 },
   { delayMs: 3_000, timeoutMs: 15_000 },
   { delayMs: 8_000, timeoutMs: 30_000 },
   { delayMs: 20_000, timeoutMs: 60_000 },
 ];
 
+/** Cellulaire : 2 pings courts (fluide au 1er feed) au lieu de 4 longs. */
+const WARMUP_ATTEMPTS_LIGHT: { delayMs: number; timeoutMs: number }[] = [
+  { delayMs: 0, timeoutMs: 6_000 },
+  { delayMs: 4_000, timeoutMs: 12_000 },
+];
+
 /**
  * Idempotent : plusieurs appels concurrents partagent la même promesse.
  * Renvoie `true` si le serveur répond avant l'épuisement des retries.
  */
+async function resolveWarmupAttempts(): Promise<{ delayMs: number; timeoutMs: number }[]> {
+  if (Platform.OS === 'web') return WARMUP_ATTEMPTS_FULL;
+  try {
+    const state = await NetInfo.fetch();
+    if (state.type === 'cellular') {
+      return WARMUP_ATTEMPTS_LIGHT;
+    }
+  } catch {
+    /* ignore */
+  }
+  return WARMUP_ATTEMPTS_FULL;
+}
+
 export function warmupBackend(): Promise<boolean> {
   if (activePromise) return activePromise;
   if (currentState === 'awake' && lastSuccessAt && Date.now() - lastSuccessAt < 60_000) {
@@ -102,7 +122,8 @@ export function warmupBackend(): Promise<boolean> {
   }
   notify('warming');
   activePromise = (async () => {
-    for (const attempt of WARMUP_ATTEMPTS) {
+    const attempts = await resolveWarmupAttempts();
+    for (const attempt of attempts) {
       if (attempt.delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, attempt.delayMs));
       }
@@ -132,5 +153,6 @@ export function startBackendWarmupAtBoot(): void {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     if (window.location?.hostname === 'localhost') return;
   }
+  /** Wi‑Fi : warmup complet ; cellulaire : ping unique (cf. resolveWarmupAttempts). */
   void warmupBackend();
 }

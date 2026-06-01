@@ -89,11 +89,21 @@ export default function NewGroupScreen() {
     if (!name) return;
     setCreating(true);
     try {
-      await apiClient.post('/messages/groups', {
+      const res = await apiClient.post('/messages/groups', {
         name,
         memberIds: selectedIds,
       });
-      Alert.alert('Groupe créé', 'Votre groupe a été créé.', [
+      const group = res.data?.data ?? res.data;
+      const groupId = String(group?.id || '').trim();
+      const avatar = profileAvatarUri(group?.avatar_url, name);
+      if (groupId) {
+        router.replace({
+          pathname: '/messages/[id]',
+          params: { id: groupId, name, avatar, kind: 'group' },
+        } as any);
+        return;
+      }
+      Alert.alert('Groupe créé', 'Le groupe a été créé.', [
         { text: 'OK', onPress: () => router.replace('/messages' as any) },
       ]);
     } catch (err: unknown) {

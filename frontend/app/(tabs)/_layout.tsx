@@ -11,9 +11,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../../src/store/authStore';
 import { isAdminUser } from '../../src/utils/adminAccess';
 import apiClient from '../../src/api/client';
+import { useDataSaver } from '../../src/dataSaver/DataSaverContext';
+import { getInboxPollIntervalMs } from '../../src/config/mobileDataPolicy';
 
 function useInboxUnreadTotal() {
   const token = useAuthStore((s) => s.accessToken);
+  const { effectiveDataSaver, isOnCellular } = useDataSaver();
+  const inboxPollMs = useMemo(
+    () => getInboxPollIntervalMs(effectiveDataSaver, isOnCellular),
+    [effectiveDataSaver, isOnCellular],
+  );
   const [total, setTotal] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -39,9 +46,9 @@ function useInboxUnreadTotal() {
   useEffect(() => {
     const id = setInterval(() => {
       void refresh();
-    }, 120_000);
+    }, inboxPollMs);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, inboxPollMs]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,7 +72,8 @@ export default function TabsLayout() {
   const tabScreenOptions = useMemo(
     () => ({
       lazy: true,
-      freezeOnBlur: false,
+      /** Gèle les onglets inactifs (feed vidéo, discover…) → moins de lecteurs / timers en arrière-plan (OOM ~10 min). */
+      freezeOnBlur: true,
       detachInactiveScreens: true,
       headerShown: false,
       tabBarStyle: {

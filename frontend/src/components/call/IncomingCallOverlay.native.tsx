@@ -7,14 +7,13 @@ import {
   Image,
   Modal,
   Platform,
-  Vibration,
   Alert,
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AnimatedRe, {
   runOnJS,
   useAnimatedStyle,
@@ -24,15 +23,19 @@ import AnimatedRe, {
 import socketService from '../../services/socketService';
 import { useAuthStore } from '../../store/authStore';
 import { featureFlags } from '../../config/featureFlags';
+import { INCOMING_CALL_RING_VOLUME, startIncomingCallVibration } from '../../call/callIncomingAlerts';
 import { startLoopingCallRing } from '../../call/callRingtone';
+import { buildCallDeclinePayload } from '../../call/callSignalingPayload';
+import { dismissIncomingCall } from '../../services/incomingCallService';
 import { profileAvatarUri } from '../../utils/avatarFallback';
 import apiClient from '../../api/client';
 import { getAlertMessageForCaughtError } from '../../utils/userFacingError';
+import { useToast } from '../common/ToastProvider';
 import { IncomingCallQuickReplyPanel } from './IncomingCallQuickReplyPanel';
 
 /**
  * Appel entrant plein écran (Refuser · balayer pour accepter · Message avec réponses rapides).
- * Son + vibration jusqu'à réponse / refus / fin.
+ * Sonnerie pulsée + vibration discrète (style WhatsApp) jusqu'à réponse / refus / fin.
  */
 
 type IncomingCall = {
@@ -44,11 +47,12 @@ type IncomingCall = {
   callerAvatar?: string;
 };
 
-const SWIPE_ACCEPT_THRESHOLD_PX = 56;
-const SWIPE_ACCEPT_VELOCITY = -520;
+const SWIPE_ACCEPT_THRESHOLD_PX = 40;
+const SWIPE_ACCEPT_VELOCITY = -420;
 
 export function IncomingCallOverlay() {
   const myUserId = useAuthStore((s) => s.user?.id);
+  const { showToast } = useToast();
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const incomingRef = useRef<IncomingCall | null>(null);
   incomingRef.current = incoming;
@@ -60,6 +64,14 @@ export function IncomingCallOverlay() {
 
   const dragY = useSharedValue(0);
   const pulse = useRef(new Animated.Value(1)).current;
+  const acceptingRef = useRef(false);
+
+  const dismissIncomingUi = useCallback(() => {
+    setIncoming(null);
+    setShowQuickReplies(false);
+    setShowCustomMessage(false);
+    setCustomText('');
+  }, []);
 
   useEffect(() => {
     if (!myUserId) return;
@@ -109,109 +121,109 @@ export function IncomingCallOverlay() {
   useEffect(() => {
     if (!incoming || Platform.OS === 'web') return;
     let stopRing: (() => Promise<void>) | null = null;
-    let vibeTimer: ReturnType<typeof setInterval> | null = null;
+    const stopVibration = startIncomingCallVibration();
     void (async () => {
-      stopRing = await startLoopingCallRing(0.92, { preset: 'incoming' });
+      stopRing = await startLoopingCallRing(INCOMING_CALL_RING_VOLUME, { preset: 'incoming' });
     })();
-    try {
-      if (Platform.OS === 'android') {
-        Vibration.vibrate([0, 520, 260, 520], true);
-      } else {
-        const pulseVibe = () => {
-          try {
-            Vibration.vibrate(380);
-          } catch {
-            /* ignore */
-          }
-        };
-        pulseVibe();
-        vibeTimer = setInterval(pulseVibe, 1250);
-      }
-    } catch {
-      /* ignore */
-    }
     return () => {
       void stopRing?.();
-      if (vibeTimer) clearInterval(vibeTimer);
-      try {
-        Vibration.cancel();
-      } catch {
-        /* ignore */
-      }
+      stopVibration();
     };
   }, [incoming]);
 
-  const accept = useCallback(() => {
+  const accept = useCallback(async () => {
+    if (acceptingRef.current) return;
     const c = incomingRef.current;
-    if (!c) return;
-    setIncoming(null);
-    setShowQuickReplies(false);
-    setShowCustomMessage(false);
-    router.push({
-      pathname: '/messages/call' as never,
-      params: {
-        name: c.callerName || 'Contact',
-        avatar: c.callerAvatar || '',
-        type: c.type,
-        otherUserId: c.fromUserId,
-        role: 'receiver',
-        callId: c.callId,
-      } as never,
-    });
-  }, []);
-
-  const decline = useCallback(() => {
-    const c = incomingRef.current;
-    setIncoming(null);
-    setShowQuickReplies(false);
-    setShowCustomMessage(false);
-    setCustomText('');
-    if (c && myUserId) {
-      void socketService.ensureConnectedEmit('call:decline', {
-        callId: c.callId,
-        fromUserId: myUserId,
-        toUserId: c.fromUserId,
-        reason: 'busy',
+    if (!c || !myUserId) return;
+    acceptingRef.current = true;
+    try {
+      /**
+       * Ne pas émettre `call:accept` ici : l’offre SDP part côté appelant dès l’accept.
+       * L’écran `/messages/call` monte d’abord la PeerConnection puis envoie l’accept (évite perte SDP / silence audio).
+       */
+      dismissIncomingUi();
+      void dismissIncomingCall(c.callId);
+      router.push({
+        pathname: '/messages/call' as never,
+        params: {
+          callId: c.callId,
+          peerId: c.fromUserId,
+          peerName: c.callerName || 'Contact',
+          peerAvatar: c.callerAvatar || '',
+          callType: c.type,
+          role: 'receiver',
+        } as never,
       });
+    } finally {
+      acceptingRef.current = false;
     }
-  }, [myUserId]);
+  }, [dismissIncomingUi, myUserId]);
+
+  const decline = useCallback(async () => {
+    const c = incomingRef.current;
+    dismissIncomingUi();
+    if (c) void dismissIncomingCall(c.callId);
+    if (c && myUserId) {
+      await socketService.ensureConnectedEmit(
+        'call:decline',
+        buildCallDeclinePayload({
+          callId: c.callId,
+          declinerUserId: myUserId,
+          callerUserId: c.fromUserId,
+          reason: 'busy',
+        }),
+        8_000,
+      );
+    }
+  }, [dismissIncomingUi, myUserId]);
 
   const sendTextToCaller = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       const c = incomingRef.current;
       if (!trimmed || !c || !myUserId) return;
+      const callerUserId = c.fromUserId;
+      const callId = c.callId;
       setSendingReply(true);
       try {
         let conversationId: string | undefined;
         try {
-          const r = await apiClient.get(
-            `/messages/conversation/${encodeURIComponent(c.fromUserId)}`,
-          );
+          const r = await apiClient.get(`/messages/conversation/${encodeURIComponent(callerUserId)}`);
           const conv = r.data?.data;
           if (conv && typeof conv.id === 'string') conversationId = conv.id;
         } catch {
-          /* fil de discussion peut encore être créé côté serveur au send */
+          /* fil créé côté serveur au send si besoin */
         }
         await apiClient.post('/messages/send', {
-          recipientId: c.fromUserId,
+          recipientId: callerUserId,
           content: trimmed,
           type: 'text',
           ...(conversationId ? { conversationId } : {}),
         });
-        decline();
+        await socketService.ensureConnectedEmit(
+          'call:decline',
+          buildCallDeclinePayload({
+            callId,
+            declinerUserId: myUserId,
+            callerUserId,
+            reason: 'busy',
+          }),
+          8_000,
+        );
+        dismissIncomingUi();
+        showToast({ message: 'Message envoyé', type: 'success' });
       } catch (err: unknown) {
         Alert.alert('Message', getAlertMessageForCaughtError(err));
       } finally {
         setSendingReply(false);
       }
     },
-    [myUserId, decline],
+    [dismissIncomingUi, myUserId, showToast],
   );
 
   const panAccept = Gesture.Pan()
-    .activeOffsetY(-12)
-    .failOffsetX([-48, 48])
+    .activeOffsetY(-10)
+    .failOffsetX([-56, 56])
     .onUpdate((e) => {
       if (e.translationY < 0) {
         dragY.value = Math.max(e.translationY, -140);
@@ -225,6 +237,12 @@ export function IncomingCallOverlay() {
       }
       dragY.value = withSpring(0, { damping: 18, stiffness: 220 });
     });
+
+  const tapAccept = Gesture.Tap().maxDuration(280).onEnd(() => {
+    runOnJS(accept)();
+  });
+
+  const acceptGesture = Gesture.Exclusive(tapAccept, panAccept);
 
   const acceptCircleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: dragY.value }],
@@ -243,7 +261,7 @@ export function IncomingCallOverlay() {
       onRequestClose={decline}
       presentationStyle="fullScreen"
     >
-      <View style={styles.root}>
+      <GestureHandlerRootView style={styles.root}>
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
               <View style={styles.headerBlock}>
                 <Text style={styles.callerName} numberOfLines={2}>
@@ -285,12 +303,12 @@ export function IncomingCallOverlay() {
                     color="rgba(255,255,255,0.55)"
                     style={{ marginTop: -10 }}
                   />
-                  <GestureDetector gesture={panAccept}>
+                  <GestureDetector gesture={acceptGesture}>
                     <AnimatedRe.View style={[styles.circleBtn, styles.btnAccept, acceptCircleStyle]}>
                       <Ionicons name="call" size={32} color="#FFF" />
                     </AnimatedRe.View>
                   </GestureDetector>
-                  <Text style={styles.swipeHint}>Balayer vers le haut pour accepter</Text>
+                  <Text style={styles.swipeHint}>Appuyer ou balayer vers le haut pour accepter</Text>
                 </View>
 
                 <View style={styles.dockCol}>
@@ -326,7 +344,7 @@ export function IncomingCallOverlay() {
             onSendCustom={() => void sendTextToCaller(customText)}
           />
         </SafeAreaView>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

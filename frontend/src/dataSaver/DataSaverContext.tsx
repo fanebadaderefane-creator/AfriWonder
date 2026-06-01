@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useAuthStore } from '../store/authStore';
+import { updateMobileDeviceSettings } from '../services/mobileApiService';
 import { dataUsage, formatDataEstimateBytes, useDataUsage } from './dataUsageStore';
+import { socketService } from '../services/socketService';
 
 const STORAGE_REDUCE_ANIM = 'afw_reduce_animations_v1';
+const STORAGE_AFRICA_DATA_DEFAULTS = 'afw_africa_mobile_data_defaults_v1';
 const AFRICA_DEFAULT_CELLULAR_DATA_SAVER = true;
 
 export { formatDataEstimateBytes };
@@ -17,6 +20,8 @@ interface DataSaverContextValue {
   manualDataSaver: boolean;
   /** Connexion cellulaire lente détectée (2G/3G). */
   autoSlowNetwork: boolean;
+  /** Données mobiles (forfait) — pas Wi‑Fi. */
+  isOnCellular: boolean;
   /**
    * Conservé pour l'API du contexte ; le fil vertical autoplay comme TikTok.
    * L'économie de données (`effectiveDataSaver`) agit surtout sur la qualité et le préchargement.
@@ -36,7 +41,9 @@ const DataSaverContext = createContext<DataSaverContextValue | null>(null);
 export function DataSaverProvider({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const manualDataSaver = Boolean(user?.data_saver_mode);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const [autoSlowNetwork, setAutoSlowNetwork] = useState(false);
+  const [isOnCellular, setIsOnCellular] = useState(false);
   const [reduceAnimations, setReduceState] = useState(false);
 
   const refreshTodayUsage = useCallback(async () => {
@@ -68,8 +75,10 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
        * On active aussi le mode économe quand la connexion cellulaire est marquée
        * "expensive" pour favoriser les flux plus légers et un démarrage vidéo plus rapide.
        */
+      const cellular = state.type === 'cellular';
+      setIsOnCellular(cellular);
       const slow =
-        state.type === 'cellular' &&
+        cellular &&
         (
           AFRICA_DEFAULT_CELLULAR_DATA_SAVER ||
           cg === '2g' ||
@@ -85,6 +94,39 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
 
   const effectiveDataSaver = manualDataSaver || autoSlowNetwork;
   const tapToPlayOnly = false;
+
+  useEffect(() => {
+    socketService.setNetworkPolicy(effectiveDataSaver, isOnCellular);
+  }, [effectiveDataSaver, isOnCellular]);
+
+  /**
+   * Nouveaux comptes mobile : activer l’économie de données une fois (forfaits Afrique).
+   * L’utilisateur peut la désactiver dans Paramètres → Économie de données.
+   */
+  useEffect(() => {
+    if (Platform.OS === 'web' || !user?.id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const flag = await AsyncStorage.getItem(STORAGE_AFRICA_DATA_DEFAULTS);
+        if (flag === '1' || cancelled) return;
+        if (!user.data_saver_mode) {
+          updateUser({ data_saver_mode: true });
+          try {
+            await updateMobileDeviceSettings({ data_saver_mode: true });
+          } catch {
+            /* hors ligne : état local suffit */
+          }
+        }
+        await AsyncStorage.setItem(STORAGE_AFRICA_DATA_DEFAULTS, '1');
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.data_saver_mode, updateUser]);
 
   const setReduceAnimations = useCallback(async (v: boolean) => {
     setReduceState(v);
@@ -109,6 +151,7 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
       effectiveDataSaver,
       manualDataSaver,
       autoSlowNetwork,
+      isOnCellular,
       tapToPlayOnly,
       reduceAnimations,
       setReduceAnimations,
@@ -119,6 +162,7 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
       effectiveDataSaver,
       manualDataSaver,
       autoSlowNetwork,
+      isOnCellular,
       tapToPlayOnly,
       reduceAnimations,
       setReduceAnimations,

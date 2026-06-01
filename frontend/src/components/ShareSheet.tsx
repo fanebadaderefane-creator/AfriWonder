@@ -25,6 +25,7 @@ import { toAbsoluteMediaUrl } from '../utils/absoluteMediaUrl';
 import { getPublicWebOrigin, getVideoSharePageUrl } from '../config/shareUrls';
 import apiClient from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { alertDmAccessDenied, isDmAccessDeniedError } from '../messages/dmAccess';
 
 const OFFLINE_VIDEO_META_PREFIX = 'afriwonder_offline_video_';
 const SHEET_VIDEO_BG = '#0b111d';
@@ -204,10 +205,12 @@ export default function ShareSheet({ visible, onClose, title, message, url, vide
           delete next[friend.id];
           return next;
         });
-        if (status === 403) {
-          Alert.alert('Send', "This person doesn't accept direct messages.");
+        if (isDmAccessDeniedError(e)) {
+          alertDmAccessDenied({ error: e, peerName: friendDisplayName(friend) });
+        } else if (status === 403) {
+          Alert.alert('Envoi', "Cette personne n'accepte pas les messages privés.");
         } else {
-          Alert.alert('Send', 'Could not send the message. Try again.');
+          Alert.alert('Envoi', "Impossible d'envoyer le message. Réessayez.");
         }
       }
     },

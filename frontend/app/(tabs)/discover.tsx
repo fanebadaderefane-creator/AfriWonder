@@ -27,6 +27,16 @@ import {
 } from '../../src/utils/videoFrameExtractCache';
 import { featureFlags } from '../../src/config/featureFlags';
 import { filterCommerceShortcuts } from '../../src/discover/commerceShortcuts';
+import { useIsFocused } from '@react-navigation/native';
+import { useDataSaver } from '../../src/dataSaver/DataSaverContext';
+import {
+  getDiscoverLiveStripRefreshMs,
+  getDiscoverVideoPrefetchCap,
+  getDiscoverVideosPageLimit,
+  shouldFetchAllUsersForDiscoverStories,
+  shouldSkipDiscoverVideoPrefetch,
+  shouldVerifyDiscoverLiveStreamsIndividually,
+} from '../../src/config/mobileDataPolicy';
 
 const GRID_GAP = 2;
 
@@ -268,6 +278,16 @@ export default function DiscoverScreen() {
   const [stories, setStories] = useState(DEFAULT_STORIES);
   const [liveStrip, setLiveStrip] = useState<LiveStripItem[]>([]);
   const [trendingTags, setTrendingTags] = useState<TrendingHashtag[]>([]);
+  const { effectiveDataSaver, isOnCellular } = useDataSaver();
+  const isScreenFocused = useIsFocused();
+  const discoverLiveRefreshMs = useMemo(
+    () => getDiscoverLiveStripRefreshMs(effectiveDataSaver),
+    [effectiveDataSaver],
+  );
+  const discoverPageLimit = useMemo(
+    () => getDiscoverVideosPageLimit(effectiveDataSaver),
+    [effectiveDataSaver],
+  );
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
@@ -285,7 +305,12 @@ export default function DiscoverScreen() {
         return;
       }
 
-      // Vérification stricte anti-stale: un live affiché dans Discover doit encore être "live" sur son endpoint détail.
+      if (!shouldVerifyDiscoverLiveStreamsIndividually(effectiveDataSaver, isOnCellular)) {
+        setLiveStrip(prelim);
+        return;
+      }
+
+      // Wi‑Fi uniquement : vérif anti-stale (N appels `/live/:id` — coûteux en forfait).
       const checks = await Promise.all(
         prelim.map(async (stream) => {
           try {
@@ -295,13 +320,13 @@ export default function DiscoverScreen() {
           } catch {
             return null;
           }
-        })
+        }),
       );
       setLiveStrip(checks.filter((s): s is LiveStripItem => Boolean(s)));
     } catch {
       setLiveStrip([]);
     }
-  }, []);
+  }, [effectiveDataSaver, isOnCellular]);
 
   const loadRealCreatorsAsStories = useCallback(async () => {
     try {
@@ -309,13 +334,15 @@ export default function DiscoverScreen() {
       const creatorMap = new Map<string, ExploreCreatorRow>();
 
       const userById = new Map<string, any>();
-      try {
-        const usersData = await fetchAllUsersFromApi();
-        for (const u of usersData) {
-          if (u?.id) userById.set(u.id, u);
+      if (shouldFetchAllUsersForDiscoverStories(effectiveDataSaver, isOnCellular)) {
+        try {
+          const usersData = await fetchAllUsersFromApi();
+          for (const u of usersData) {
+            if (u?.id) userById.set(u.id, u);
+          }
+        } catch (e) {
+          devLog('Discover stories: liste utilisateurs indisponible', e);
         }
-      } catch (e) {
-        devLog('Discover stories: liste utilisateurs indisponible', e);
       }
 
       for (const [id, agg] of aggByCreator) {
@@ -382,7 +409,7 @@ export default function DiscoverScreen() {
     } catch (err) {
       devLog('Failed to load real creators:', err);
     }
-  }, [user]);
+  }, [user, effectiveDataSaver, isOnCellular]);
 
   const loadDiscoverVideos = useCallback(async () => {
     setIsLoading(true);
@@ -393,7 +420,7 @@ export default function DiscoverScreen() {
         category?.topic && category.topic !== ''
           ? `/videos/topic/${encodeURIComponent(category.topic)}`
           : '/videos';
-      const response = await apiClient.get(endpoint, { params: { page: 1, limit: 24 } });
+      const response = await apiClient.get(endpoint, { params: { page: 1, limit: discoverPageLimit } });
       const data = response.data?.data || response.data;
       const backendVideos = data?.videos || [];
       const transformed: ExploreTile[] =
@@ -445,23 +472,24 @@ export default function DiscoverScreen() {
        * Préchauffage en arrière-plan (natif) : pas d’attente — la grille s’affiche tout de suite,
        * les miniatures arrivent au fil de l’eau.
        */
-      if (transformed.length && Platform.OS !== 'web') {
+      if (transformed.length && Platform.OS !== 'web' && !shouldSkipDiscoverVideoPrefetch(effectiveDataSaver, isOnCellular)) {
         const urls = transformed.map((t) => t.videoUrl);
-        const startFrameWarm = () => {
-          queueMicrotask(() => {
-            const cap = Platform.OS === 'android' ? 20 : 32;
-            queuePrefetchDiscoverFrames(urls, cap);
-            for (const t of transformed) {
-              const u = (t.videoUrl || '').trim();
-              if (u) void ensureVideoFrameLocalUri(u);
-            }
-          });
-        };
-        if (Platform.OS === 'android') {
-          /* Après 1er rendu : moins d’I/O + décodeur en rafale (OOM / sortie du process). */
-          InteractionManager.runAfterInteractions(startFrameWarm);
-        } else {
-          startFrameWarm();
+        const cap = getDiscoverVideoPrefetchCap(effectiveDataSaver, isOnCellular);
+        if (cap > 0) {
+          const startFrameWarm = () => {
+            queueMicrotask(() => {
+              queuePrefetchDiscoverFrames(urls, cap);
+              for (const t of transformed.slice(0, cap)) {
+                const u = (t.videoUrl || '').trim();
+                if (u) void ensureVideoFrameLocalUri(u);
+              }
+            });
+          };
+          if (Platform.OS === 'android') {
+            InteractionManager.runAfterInteractions(startFrameWarm);
+          } else {
+            startFrameWarm();
+          }
         }
       }
       setExploreItems(transformed);
@@ -474,7 +502,7 @@ export default function DiscoverScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeCategory, refreshLiveStrip]);
+  }, [activeCategory, refreshLiveStrip, discoverPageLimit, effectiveDataSaver, isOnCellular]);
 
   const loadTrendingHashtags = useCallback(async () => {
     try {
@@ -498,12 +526,13 @@ export default function DiscoverScreen() {
   }, [loadTrendingHashtags]);
 
   useEffect(() => {
+    if (!isScreenFocused) return undefined;
     void refreshLiveStrip();
     const id = setInterval(() => {
       void refreshLiveStrip();
-    }, 15000);
+    }, discoverLiveRefreshMs);
     return () => clearInterval(id);
-  }, [refreshLiveStrip]);
+  }, [refreshLiveStrip, discoverLiveRefreshMs, isScreenFocused]);
 
   useEffect(() => {
     let cancelled = false;

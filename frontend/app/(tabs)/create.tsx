@@ -20,8 +20,7 @@ import { tryRefreshAccessToken } from '../../src/api/tokenRefresh';
 import { beginUploadNetworkPriority, endUploadNetworkPriority } from '../../src/api/uploadNetworkPriority';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { getBackendOrigin } from '../../src/config/backendBase';
-import { cacheDirectory, copyAsync, uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import VideoEditor, { type VideoEditorResult } from '../../src/components/VideoEditor';
 import IntegratedCameraRecorder, {
@@ -31,6 +30,12 @@ import IntegratedCameraRecorder, {
   type CameraEffectId,
 } from '../../src/components/create/IntegratedCameraRecorder';
 import WebVideoRecorder from '../../src/components/create/WebVideoRecorder';
+import { UploadProgressOverlay } from '../../src/components/create/UploadProgressOverlay';
+import {
+  clampPublishUploadPercent,
+  getPublishUploadStatusLabel,
+  mapVideoBytesRatioToGlobalPercent,
+} from '../../src/create/publishUploadProgress';
 import { buildCameraEffectPayload } from '../../src/components/create/cameraEffects';
 import {
   buildRemixApiPayload,
@@ -140,12 +145,12 @@ async function copyNativeUriToCacheForUpload(uri: string, extHint: string): Prom
   const u = uri.trim();
   const shouldCopy = u.startsWith('content://') || u.startsWith('ph://') || u.startsWith('assets-library://');
   if (!shouldCopy) return u;
-  const dir = cacheDirectory;
+  const dir = FileSystem.cacheDirectory;
   if (!dir) return u;
   const safeExt = extHint.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
   const dest = `${dir}afw-create-upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${safeExt}`;
   try {
-    await copyAsync({ from: u, to: dest });
+    await FileSystem.copyAsync({ from: u, to: dest });
     return dest;
   } catch {
     return u;
@@ -540,6 +545,10 @@ export default function CreateScreen() {
   const autoRetryAttemptRef = useRef(0);
   const cancelUploadRef = useRef(false);
   const activeUploadAbortRef = useRef<AbortController | null>(null);
+  const activeUploadXhrsRef = useRef<Set<XMLHttpRequest>>(new Set());
+  /** Évite deux `handlePublish` / flush parallèles (doublon en base). */
+  const publishInFlightRef = useRef(false);
+  const uploadingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -565,6 +574,7 @@ export default function CreateScreen() {
   }, []);
 
   const setUploadingSafe = useCallback((v: boolean) => {
+    uploadingRef.current = v;
     if (!isMountedRef.current) return;
     setUploading(v);
   }, []);
@@ -1041,6 +1051,7 @@ export default function CreateScreen() {
     path: '/upload/video' | '/upload/image' | '/upload/audio',
     buildForm: () => Promise<FormData>,
     timeoutMs: number,
+    onUploadBytesProgress?: (loaded: number, total: number) => void,
   ) => {
     const attempts = path === '/upload/video' ? 4 : 3;
     let lastError: unknown = null;
@@ -1055,6 +1066,13 @@ export default function CreateScreen() {
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
           signal: activeUploadAbortRef.current?.signal,
+          onUploadProgress: onUploadBytesProgress
+            ? (ev) => {
+                const total = Number(ev.total || 0);
+                const loaded = Number(ev.loaded || 0);
+                if (total > 0) onUploadBytesProgress(loaded, total);
+              }
+            : undefined,
         });
       } catch (error: unknown) {
         if (isUploadCancelledError(error)) throw error;
@@ -1220,7 +1238,12 @@ export default function CreateScreen() {
     }
   };
 
-  const uploadPartBytesWithXhr = async (url: string, bytes: Uint8Array, contentType: string): Promise<string> => {
+  const uploadPartBytesWithXhr = async (
+    url: string,
+    bytes: Uint8Array,
+    contentType: string,
+    onPartBytesProgress?: (ratio01: number) => void,
+  ): Promise<string> => {
     const attempts = 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -1233,9 +1256,21 @@ export default function CreateScreen() {
         const etag = await new Promise<string>((resolve, reject) => {
           try {
             const xhr = new XMLHttpRequest();
+            activeUploadXhrsRef.current.add(xhr);
             xhr.open('PUT', url, true);
             xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream');
+            if (onPartBytesProgress) {
+              xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable && ev.total > 0) {
+                  onPartBytesProgress(ev.loaded / ev.total);
+                }
+              };
+            }
+            const finishXhr = () => {
+              activeUploadXhrsRef.current.delete(xhr);
+            };
             xhr.onload = () => {
+              finishXhr();
               if (xhr.status >= 200 && xhr.status < 300) {
                 const etagRaw = xhr.getResponseHeader('etag') || xhr.getResponseHeader('ETag') || '';
                 const parsed = String(etagRaw).replace(/"/g, '').trim();
@@ -1248,8 +1283,14 @@ export default function CreateScreen() {
               }
               reject(new Error(`Upload part HTTP ${xhr.status}`));
             };
-            xhr.onerror = () => reject(new Error('Upload part réseau interrompu'));
-            xhr.onabort = () => reject(new Error(UPLOAD_CANCELLED_MARKER));
+            xhr.onerror = () => {
+              finishXhr();
+              reject(new Error('Upload part réseau interrompu'));
+            };
+            xhr.onabort = () => {
+              finishXhr();
+              reject(new Error(UPLOAD_CANCELLED_MARKER));
+            };
             xhr.send(bytes as unknown as BodyInit);
           } catch (e) {
             reject(e);
@@ -1340,8 +1381,9 @@ export default function CreateScreen() {
         key = pendingSession.key;
         uploadId = pendingSession.uploadId;
         if (existingParts.length > 0) {
-          const resumedPct = 10 + Math.round((existingParts.length / totalParts) * 40);
-          setUploadProgressSafe((prev) => Math.max(prev, resumedPct));
+          setUploadProgressSafe((prev) =>
+            Math.max(prev, mapVideoBytesRatioToGlobalPercent(existingParts.length / totalParts)),
+          );
         }
       } catch {
         await clearPendingMultipartSession();
@@ -1373,8 +1415,9 @@ export default function CreateScreen() {
         }
       }
       if (uploadedPartsCount > 0) {
-        const pct = 10 + Math.round((uploadedPartsCount / totalParts) * 40);
-        setUploadProgressSafe((prev) => Math.max(prev, pct));
+        setUploadProgressSafe((prev) =>
+          Math.max(prev, mapVideoBytesRatioToGlobalPercent(uploadedPartsCount / totalParts)),
+        );
       }
       for (let batchStart = 1; batchStart <= totalParts; batchStart += MULTIPART_PARALLEL_UPLOADS) {
         throwIfUploadCancelled();
@@ -1399,7 +1442,12 @@ export default function CreateScreen() {
             const chunkLen = Math.min(partSize, remaining);
             const partUrl = await requestMultipartPartUrl(key, uploadId, partNumber);
             const bytes = await readFileChunkAsBytes(fileUri, offset, chunkLen);
-            const etag = await uploadPartBytesWithXhr(partUrl, bytes, contentType);
+            const etag = await uploadPartBytesWithXhr(partUrl, bytes, contentType, (partRatio) => {
+              const virtualDone = partNumber - 1 + partRatio;
+              setUploadProgressSafe((prev) =>
+                Math.max(prev, mapVideoBytesRatioToGlobalPercent(virtualDone / totalParts)),
+              );
+            });
             return { PartNumber: partNumber, ETag: etag };
           }),
         );
@@ -1416,8 +1464,9 @@ export default function CreateScreen() {
           totalParts,
           updatedAt: Date.now(),
         });
-        const pct = 10 + Math.round((uploadedPartsCount / totalParts) * 40);
-        setUploadProgressSafe((prev) => Math.max(prev, pct));
+        setUploadProgressSafe((prev) =>
+          Math.max(prev, mapVideoBytesRatioToGlobalPercent(uploadedPartsCount / totalParts)),
+        );
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       parts.sort((a, b) => a.PartNumber - b.PartNumber);
@@ -1482,9 +1531,9 @@ export default function CreateScreen() {
         const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
         const filename = `mobile-video-${Date.now()}-${index}.${normalizedExt}`;
         const presign = await requestVideoPresign(filename, contentType);
-        const putRes = await uploadAsync(presign.uploadUrl, fileUri, {
+        const putRes = await FileSystem.uploadAsync(presign.uploadUrl, fileUri, {
           httpMethod: 'PUT',
-          uploadType: FileSystemUploadType.BINARY_CONTENT,
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
           headers: {
             'Content-Type': contentType,
           },
@@ -1536,19 +1585,42 @@ export default function CreateScreen() {
     if (!uploading) return;
     cancelUploadRef.current = true;
     activeUploadAbortRef.current?.abort();
+    for (const xhr of activeUploadXhrsRef.current) {
+      try {
+        xhr.abort();
+      } catch {
+        /* ignore */
+      }
+    }
+    activeUploadXhrsRef.current.clear();
     setUploadStatusSafe('cancelled');
+    void (async () => {
+      const session = await readPendingMultipartSession();
+      if (session?.key && session?.uploadId) {
+        await abortMultipart(session.key, session.uploadId);
+        await clearPendingMultipartSession();
+      }
+      await clearActiveVideoUploadLock();
+    })();
   };
 
   const flushPendingPublishIfAny = useCallback(async () => {
     if (!isAuthenticated || pendingPublishFlushRef.current) return;
+    if (publishInFlightRef.current || uploadingRef.current) return;
     pendingPublishFlushRef.current = true;
     try {
       const pending = await readPendingPublishJob();
       if (!pending) return;
-      await warmupBackend();
-      await postWithRetry(pending.path, pending.payload, pending.idempotencyKey);
-      await clearPendingPublishJob();
-      Alert.alert('Publication envoyée', 'Votre publication en attente a été envoyée avec succès.');
+      if (publishInFlightRef.current || uploadingRef.current) return;
+      publishInFlightRef.current = true;
+      try {
+        await warmupBackend();
+        await postWithRetry(pending.path, pending.payload, pending.idempotencyKey);
+        await clearPendingPublishJob();
+        Alert.alert('Publication envoyée', 'Votre publication en attente a été envoyée avec succès.');
+      } finally {
+        publishInFlightRef.current = false;
+      }
     } catch {
       // On garde la tâche en file pour une prochaine tentative.
     } finally {
@@ -1565,6 +1637,7 @@ export default function CreateScreen() {
 
   const handlePublish = async () => {
     if (!requireAuth('publier')) return;
+    if (publishInFlightRef.current || uploadingRef.current) return;
 
     if (contentType === 'text' || contentType === 'article') {
       if (!description.trim() && contentType === 'text') { Alert.alert('Contenu requis', 'Écrivez quelque chose'); return; }
@@ -1592,6 +1665,7 @@ export default function CreateScreen() {
       }
     }
 
+    publishInFlightRef.current = true;
     setUploadingSafe(true);
     setUploadProgressSafe(0);
     setUploadStatusSafe('uploading');
@@ -1623,7 +1697,9 @@ export default function CreateScreen() {
         }
       }
       // Réveille le backend avant les appels upload (Render cold start + réseaux instables).
+      setUploadProgressSafe(1);
       await warmupBackend();
+      setUploadProgressSafe(3);
       /** Jeton frais avant chaîne upload + POST (complète le refresh proportionnel au timeout dans `apiClient`). */
       await tryRefreshAccessToken();
 
@@ -1637,45 +1713,68 @@ export default function CreateScreen() {
         for (const media of selectedMedia) {
           await ensureSelectedMediaStillReadable(media);
         }
-        setUploadProgressSafe(10);
+        setUploadProgressSafe(5);
         for (let i = 0; i < selectedMedia.length; i++) {
           const media = selectedMedia[i];
           if (media.type === 'video') {
             const directR2Url = await tryDirectR2VideoUpload(media, i);
             if (directR2Url) {
               videoUrl = directR2Url;
+              setUploadProgressSafe(85);
             } else {
-              const uploadRes = await uploadMultipartWithRetry('/upload/video', async () => {
-                const formData = new FormData();
-                await appendUploadFile(formData, media, i);
-                return formData;
-              }, MOBILE_MEDIA_UPLOAD_TIMEOUT_MS);
+              const uploadRes = await uploadMultipartWithRetry(
+                '/upload/video',
+                async () => {
+                  const formData = new FormData();
+                  await appendUploadFile(formData, media, i);
+                  return formData;
+                },
+                MOBILE_MEDIA_UPLOAD_TIMEOUT_MS,
+                (loaded, total) => {
+                  const fileRatio = total > 0 ? loaded / total : 0;
+                  const sliceStart = i / selectedMedia.length;
+                  const sliceEnd = (i + 1) / selectedMedia.length;
+                  const globalRatio = sliceStart + fileRatio * (sliceEnd - sliceStart);
+                  setUploadProgressSafe((prev) =>
+                    Math.max(prev, mapVideoBytesRatioToGlobalPercent(globalRatio)),
+                  );
+                },
+              );
               const d = uploadRes.data?.data;
               videoUrl = d?.file_url || d?.url || '';
               videoThumb = d?.thumbnail_url || undefined;
+              setUploadProgressSafe(85);
             }
           } else {
-            const uploadRes = await uploadMultipartWithRetry('/upload/image', async () => {
-              const formData = new FormData();
-              await appendUploadFile(formData, media, i);
-              return formData;
-            }, STANDARD_UPLOAD_TIMEOUT_MS);
+            const uploadRes = await uploadMultipartWithRetry(
+              '/upload/image',
+              async () => {
+                const formData = new FormData();
+                await appendUploadFile(formData, media, i);
+                return formData;
+              },
+              STANDARD_UPLOAD_TIMEOUT_MS,
+              (loaded, total) => {
+                if (total <= 0) return;
+                const pct = 5 + Math.round((loaded / total) * 75);
+                setUploadProgressSafe((prev) => Math.max(prev, clampPublishUploadPercent(pct)));
+              },
+            );
             const d = uploadRes.data?.data;
             const fileUrl = d?.file_url || d?.url || '';
             mediaUrls.push(fileUrl);
+            setUploadProgressSafe(5 + Math.round(((i + 1) / selectedMedia.length) * 80));
           }
-
-          setUploadProgressSafe(10 + Math.round((i + 1) / selectedMedia.length * 40));
         }
       }
 
-      setUploadProgressSafe(60);
+      setUploadProgressSafe(88);
 
       let voiceOverRemoteUrl: string | null = null;
       if (contentType === 'video' && editorResult?.voiceOverUri) {
         const voiceUri = String(editorResult.voiceOverUri || '').trim();
         if (!voiceUri) throw new Error('Piste voix off invalide');
-        setUploadProgressSafe(55);
+        setUploadProgressSafe(86);
         const audioRes = await uploadMultipartWithRetry('/upload/audio', async () => {
           const audioForm = new FormData();
           await appendUploadVoice(audioForm, voiceUri, 0);
@@ -1685,7 +1784,7 @@ export default function CreateScreen() {
         if (!voiceOverRemoteUrl) {
           throw new Error('URL voix off manquante après upload');
         }
-        setUploadProgressSafe(59);
+        setUploadProgressSafe(90);
       }
 
       if (contentType === 'video') {
@@ -1745,6 +1844,7 @@ export default function CreateScreen() {
           idempotencyKey: stablePublishIdempotencyKey,
           createdAt: Date.now(),
         });
+        setUploadProgressSafe(96);
         await postWithRetry('/videos', videoPayload, stablePublishIdempotencyKey);
         await clearPendingPublishJob();
         await clearActiveVideoUploadLock();
@@ -1888,7 +1988,9 @@ export default function CreateScreen() {
         }
         if (nextAttempt < VIDEO_AUTO_RETRY_MAX_ATTEMPTS) {
           autoRetryTimeoutRef.current = setTimeout(() => {
-            if (uploading || cancelUploadRef.current || !isMountedRef.current) return;
+            if (uploadingRef.current || publishInFlightRef.current || cancelUploadRef.current || !isMountedRef.current) {
+              return;
+            }
             void handlePublish();
           }, retryDelayMs);
           Alert.alert(
@@ -1924,6 +2026,7 @@ export default function CreateScreen() {
       if (uploadPriorityActive) {
         endUploadNetworkPriority();
       }
+      publishInFlightRef.current = false;
       setUploadingSafe(false);
       setUploadProgressSafe(0);
       activeUploadAbortRef.current = null;
@@ -1931,31 +2034,6 @@ export default function CreateScreen() {
       setUploadRetryAttemptSafe(0);
     }
   };
-
-  useEffect(() => {
-    if (!pendingUploadRecovered || !pendingUploadAvailable) return;
-    if (!isAuthenticated || uploading) return;
-    if (autoResumeAttemptedRef.current) return;
-    if (contentType !== 'video' || selectedMedia.length === 0 || step !== 'details') return;
-    if (!title.trim()) return;
-
-    autoResumeAttemptedRef.current = true;
-    const tid = setTimeout(() => {
-      if (!uploading) {
-        void handlePublish();
-      }
-    }, 450);
-    return () => clearTimeout(tid);
-  }, [
-    pendingUploadRecovered,
-    pendingUploadAvailable,
-    isAuthenticated,
-    uploading,
-    contentType,
-    selectedMedia,
-    step,
-    title,
-  ]);
 
   useEffect(() => {
     if (uploadStatus !== 'success') return;
@@ -2366,29 +2444,31 @@ export default function CreateScreen() {
             )}
           </View>
 
-          {uploading && (
+          {uploading ? (
             <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
-              </View>
-              <Text style={styles.progressText}>
-                {uploadStatus === 'retrying'
-                  ? `Reconnexion… tentative ${Math.max(1, uploadRetryAttempt)}`
-                  : uploadStatus === 'cancelled'
-                    ? 'Upload annulé'
-                    : uploadProgress < 30
-                      ? 'Upload en cours...'
-                      : uploadProgress < 70
-                        ? 'Traitement...'
-                        : 'Finalisation...'}
+              <Text style={styles.progressPercentInline}>
+                {clampPublishUploadPercent(uploadProgress)}%
               </Text>
-              <TouchableOpacity style={styles.uploadCancelBtn} onPress={handleCancelUpload} accessibilityRole="button" accessibilityLabel="Annuler l’upload">
-                <Ionicons name="close-circle-outline" size={18} color="#fff" />
-                <Text style={styles.uploadCancelBtnText}>Annuler</Text>
-              </TouchableOpacity>
+              <Text style={styles.progressText}>
+                {getPublishUploadStatusLabel({
+                  percent: uploadProgress,
+                  status: uploadStatus,
+                  retryAttempt: uploadRetryAttempt,
+                  isVideo: contentType === 'video',
+                })}
+              </Text>
             </View>
-          )}
+          ) : null}
         </ScrollView>
+
+        <UploadProgressOverlay
+          visible={uploading}
+          percent={uploadProgress}
+          status={uploadStatus}
+          retryAttempt={uploadRetryAttempt}
+          isVideo={contentType === 'video'}
+          onCancel={handleCancelUpload}
+        />
 
         <Modal
           transparent
@@ -2797,7 +2877,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: Colors.primary,
   },
   tagChipText: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '500' },
-  progressContainer: { marginTop: Spacing.xl, alignItems: 'center' },
+  progressContainer: { marginTop: Spacing.xl, alignItems: 'center', paddingBottom: Spacing.md },
+  progressPercentInline: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.primary,
+    fontVariant: ['tabular-nums'],
+  },
   progressBar: { width: '100%', height: 6, backgroundColor: Colors.surface, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
   progressText: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: Spacing.sm },

@@ -25,14 +25,16 @@ npm run verify:delivery
 
 Par défaut, le script définit **`CI=true`** si la variable `CI` n’est pas déjà définie (aligné avec `vitest.config.js` : exclusion des smoke tests lourds). Pour forcer **tous** les tests front y compris smoke / `Landing.test`, lancer avec `CI=false` ou `CI=` vide selon votre shell.
 
-Sur une machine où la suite Vitest complète manque de mémoire (Windows / gros repo) :
+Sur une machine où la suite Jest backend + couverture manque de mémoire (Windows / gros repo) :
 
 ```bash
-set NODE_OPTIONS=--max-old-space-size=8192
+set NODE_OPTIONS=--max-old-space-size=12288
 npm run verify:delivery
 ```
 
-(PowerShell : `$env:NODE_OPTIONS="--max-old-space-size=8192"` puis `npm run verify:delivery`.)
+(PowerShell : `$env:NODE_OPTIONS="--max-old-space-size=12288"` puis `npm run verify:delivery`.)
+
+Si ça échoue encore avec `JavaScript heap out of memory` après ~80 suites backend : augmenter `BACKEND_COVERAGE_HEAP_MB=16384`, ou lancer uniquement le mobile (`npm run verify:delivery:expo`) et laisser la couverture backend à la CI (`SKIP_BACKEND_COVERAGE=1 npm run verify:delivery`).
 
 Cela enchaîne :
 

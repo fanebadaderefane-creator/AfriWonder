@@ -26,6 +26,7 @@ export function navigateToIncomingCallFromPush(data: Record<string, unknown> | u
       name: readStr(data.callerName) || 'Contact',
       avatar: readStr(data.callerAvatar),
       type: isVideo ? 'video' : 'audio',
+      callType: isVideo ? 'video' : 'audio',
       otherUserId: callerId,
       role: 'receiver',
       callId,

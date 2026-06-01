@@ -14,7 +14,7 @@ import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import apiClient from '../../src/api/client';
 import { Colors, Spacing } from '../../src/theme/colors';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';

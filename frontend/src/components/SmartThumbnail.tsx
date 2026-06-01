@@ -12,6 +12,8 @@ import {
   getFrameExtractCacheVersion,
   isExtractFailed,
 } from '../utils/videoFrameExtractCache';
+import { useDataSaverOptional } from '../dataSaver/DataSaverContext';
+import { shouldSkipDiscoverVideoPrefetch } from '../config/mobileDataPolicy';
 
 /**
  * URL média « flux » (MP4, etc.) — ne pas utiliser `includes('/videos/')` : les miniatures CDN
@@ -252,6 +254,10 @@ function ExtractedFrameThumbnail({
   tileHeight: number;
 }) {
   const [timedOut, setTimedOut] = useState(false);
+  const dataSaver = useDataSaverOptional();
+  const skipFrameDownload =
+    dataSaver != null &&
+    shouldSkipDiscoverVideoPrefetch(dataSaver.effectiveDataSaver, dataSaver.isOnCellular);
 
   const tick = useSyncExternalStore(
     subscribeFrameExtractCache,
@@ -268,11 +274,12 @@ function ExtractedFrameThumbnail({
   }, [videoSrc]);
 
   useEffect(() => {
+    if (skipFrameDownload) return;
     if (isHlsOrDashManifestUrl(videoSrc)) return;
     if (isExtractFailed(videoSrc)) return;
     if (getCachedExtractedFrameUri(videoSrc)) return;
     void ensureVideoFrameLocalUri(videoSrc);
-  }, [videoSrc]);
+  }, [videoSrc, skipFrameDownload]);
 
   if (fileUri) {
     const f = (fileUri || '').trim();
