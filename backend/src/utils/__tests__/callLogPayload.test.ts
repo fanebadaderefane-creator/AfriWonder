@@ -21,5 +21,6 @@ describe('callLogPayload', () => {
   it('preview label', () => {
     expect(callLogPreviewLabel('missed', 'audio')).toBe('Appel audio manqué');
     expect(callLogPreviewLabel('cancelled', 'video')).toBe('Appel vidéo annulé');
+    expect(callLogPreviewLabel('incoming', 'video')).toBe('Appel vidéo entrant');
   });
 });

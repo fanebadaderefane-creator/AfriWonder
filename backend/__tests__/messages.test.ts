@@ -60,4 +60,31 @@ describe('Messages API (chat)', () => {
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data?.conversations)).toBe(true);
   });
+
+  it('POST /api/messages/presence/batch returns presences map', async () => {
+    const peer = await prisma.user.create({
+      data: {
+        email: `peer${Date.now()}@example.com`,
+        password_hash: await bcrypt.hash('Peer123!@#', 10),
+        username: `peer${Date.now()}`,
+        full_name: 'Peer User',
+      },
+    });
+    await prisma.userPresence.create({
+      data: { id: crypto.randomUUID(), user_id: peer.id, is_online: true, last_seen: new Date() },
+    });
+
+    const res = await request(app)
+      .post('/api/messages/presence/batch')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userIds: [peer.id, 'missing-user-id'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data?.presences?.[peer.id]?.is_online).toBe(true);
+    expect(res.body.data?.presences?.['missing-user-id']?.is_online).toBe(false);
+
+    await prisma.userPresence.deleteMany({ where: { user_id: peer.id } }).catch(() => {});
+    await prisma.user.delete({ where: { id: peer.id } }).catch(() => {});
+  });
 });

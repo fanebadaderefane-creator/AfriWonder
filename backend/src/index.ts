@@ -516,6 +516,18 @@ io.on('connection', (socket) => {
       type: callType,
       callerName: payload.callerName,
     });
+    try {
+      await recordCallLogMessage({
+        callId,
+        callerId: payload.fromUserId,
+        receiverId: payload.toUserId,
+        media: callType,
+        outcome: 'incoming',
+        callerName: payload.callerName,
+      });
+    } catch (err) {
+      logger.warn('Incoming call log failed', { callId, err });
+    }
     pendingCallTimers.set(
       callId,
       setTimeout(async () => {

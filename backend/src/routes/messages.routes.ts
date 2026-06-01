@@ -1,6 +1,7 @@
 // AfriWonder full review PR - CodeRabbit
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import messageService from '../services/message.service.js';
@@ -56,6 +57,24 @@ const sendLimiter = rateLimit({
   max: 20,
   message: { success: false, error: 'Trop de messages. Réessayez dans 10 secondes.' },
   standardHeaders: true,
+});
+
+const presenceBatchBodySchema = z.object({
+  userIds: z.array(z.string().trim().min(1)).max(100),
+});
+
+// POST /api/messages/presence/batch — inbox : 1 requête au lieu de N (rate limit)
+router.post('/presence/batch', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const parsed = presenceBatchBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Liste userIds invalide (max 100).' });
+    }
+    const result = await messageService.getPresenceBatch(parsed.data.userIds);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
 });
 
 // GET /api/messages/presence/:userId

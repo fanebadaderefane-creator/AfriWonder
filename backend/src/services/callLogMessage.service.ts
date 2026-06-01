@@ -24,6 +24,12 @@ export type RecordCallLogInput = {
   callerName?: string;
 };
 
+const TERMINAL_OUTCOMES = new Set<CallLogOutcome>(['completed', 'missed', 'declined', 'cancelled']);
+
+function isTerminalOutcome(outcome: CallLogOutcome): boolean {
+  return TERMINAL_OUTCOMES.has(outcome);
+}
+
 async function findExistingCallLogMessage(callId: string) {
   const rows = await prisma.message.findMany({
     where: { type: 'call', content: { contains: `"callId":"${callId}"` } },
@@ -75,36 +81,164 @@ function notificationCopy(
   }
 }
 
-/** Idempotent — une seule ligne par callId dans la conversation. */
+async function sendTerminalNotifications(input: RecordCallLogInput, durationSec: number): Promise<void> {
+  const callId = input.callId;
+  const callerId = input.callerId;
+  const receiverId = input.receiverId;
+  const callerName = (input.callerName || '').trim();
+  const notifyCopy = notificationCopy(input.outcome, input.media, callerName, durationSec);
+
+  if (input.outcome === 'declined') {
+    await notificationService.create(callerId, {
+      type: 'call_declined',
+      title: 'Appel refusé',
+      message: `Votre appel ${input.media === 'video' ? 'vidéo' : 'audio'} a été refusé`,
+      reference_type: 'direct_call',
+      reference_id: callId,
+      data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
+    });
+  } else if (input.outcome === 'cancelled') {
+    await notificationService.create(receiverId, {
+      type: 'call_cancelled',
+      title: 'Appel annulé',
+      message: `${callerName || 'Un contact'} a annulé l’appel ${input.media === 'video' ? 'vidéo' : 'audio'}`,
+      reference_type: 'direct_call',
+      reference_id: callId,
+      data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
+    });
+  } else if (input.outcome === 'completed') {
+    for (const uid of [callerId, receiverId]) {
+      await notificationService.create(uid, {
+        type: 'call_ended',
+        title: notifyCopy.title,
+        message: notifyCopy.message,
+        reference_type: 'direct_call',
+        reference_id: callId,
+        data: { callId, callerId, callMediaType: input.media, outcome: input.outcome, durationSec },
+      });
+    }
+  } else if (input.outcome === 'missed') {
+    await notificationService.create(receiverId, {
+      type: 'call_missed',
+      title: 'Appel manqué',
+      message: `Appel ${input.media === 'video' ? 'vidéo' : 'audio'} manqué${callerName ? ` · ${callerName}` : ''}`,
+      reference_type: 'direct_call',
+      reference_id: callId,
+      data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
+    });
+    await notificationService.create(callerId, {
+      type: 'call_missed',
+      title: 'Appel sans réponse',
+      message: `${callerName ? '' : 'Votre contact '}n’a pas répondu`,
+      reference_type: 'direct_call',
+      reference_id: callId,
+      data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
+    });
+  }
+}
+
+const senderInclude = {
+  sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+} as const;
+
+/** Idempotent — une seule ligne par callId ; mise à jour incoming → état terminal. */
 export async function recordCallLogMessage(input: RecordCallLogInput): Promise<void> {
   const callId = String(input.callId || '').trim();
   const callerId = String(input.callerId || '').trim();
   const receiverId = String(input.receiverId || '').trim();
   if (!callId || !callerId || !receiverId || callerId === receiverId) return;
 
-  const existing = await findExistingCallLogMessage(callId);
-  if (existing) return;
-
+  const media = input.media === 'video' ? 'video' : 'audio';
   const durationSec = Math.max(0, Math.floor(input.durationSec ?? 0));
   const endedAt = input.endedAt ?? new Date();
   const startedAt =
     input.startedAt ??
     (durationSec > 0 ? new Date(endedAt.getTime() - durationSec * 1000) : null);
 
-  const content = buildCallLogContent({
-    callId,
-    media: input.media === 'video' ? 'video' : 'audio',
-    outcome: input.outcome,
-    callerId,
-    receiverId,
-    durationSec,
-    startedAt: startedAt ? startedAt.toISOString() : null,
-    endedAt: endedAt.toISOString(),
-  });
-
   try {
     const conversation = await messageService.getOrCreateConversation(callerId, receiverId);
-    const preview = callLogPreviewLabel(input.outcome, input.media === 'video' ? 'video' : 'audio');
+    if (!conversation) {
+      logger.warn('recordCallLogMessage: conversation introuvable', { callId, callerId, receiverId });
+      return;
+    }
+    const existing = await findExistingCallLogMessage(callId);
+
+    if (existing) {
+      const parsed = parseCallLogContent(existing.content);
+      if (!parsed) return;
+
+      if (input.outcome === 'incoming' && isTerminalOutcome(parsed.outcome)) return;
+      if (
+        isTerminalOutcome(parsed.outcome) &&
+        isTerminalOutcome(input.outcome) &&
+        parsed.outcome === input.outcome &&
+        input.outcome !== 'completed'
+      ) {
+        return;
+      }
+      if (
+        input.outcome === 'completed' &&
+        parsed.outcome === 'completed' &&
+        parsed.durationSec >= durationSec
+      ) {
+        return;
+      }
+
+      const nextContent = buildCallLogContent({
+        callId,
+        media,
+        outcome: input.outcome,
+        callerId,
+        receiverId,
+        durationSec:
+          input.outcome === 'completed'
+            ? Math.max(parsed.durationSec, durationSec)
+            : isTerminalOutcome(input.outcome)
+              ? durationSec
+              : parsed.durationSec,
+        startedAt:
+          (startedAt ? startedAt.toISOString() : null) ??
+          parsed.startedAt,
+        endedAt: isTerminalOutcome(input.outcome)
+          ? endedAt.toISOString()
+          : parsed.endedAt,
+      });
+
+      const message = await prisma.message.update({
+        where: { id: existing.id },
+        data: { content: nextContent },
+        include: senderInclude,
+      });
+
+      if (isTerminalOutcome(input.outcome)) {
+        const preview = callLogPreviewLabel(input.outcome, media);
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            last_message_id: message.id,
+            last_message_text: preview.slice(0, 200),
+            last_message_at: message.created_at,
+          },
+        });
+        await sendTerminalNotifications(input, durationSec);
+      }
+
+      emitToConversationRoom(conversation.id, 'message:new', message);
+      return;
+    }
+
+    const content = buildCallLogContent({
+      callId,
+      media,
+      outcome: input.outcome,
+      callerId,
+      receiverId,
+      durationSec,
+      startedAt: startedAt ? startedAt.toISOString() : null,
+      endedAt: isTerminalOutcome(input.outcome) ? endedAt.toISOString() : null,
+    });
+
+    const preview = callLogPreviewLabel(input.outcome, media);
 
     const message = await prisma.message.create({
       data: {
@@ -114,9 +248,7 @@ export async function recordCallLogMessage(input: RecordCallLogInput): Promise<v
         type: 'call',
         status: 'sent',
       },
-      include: {
-        sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
-      },
+      include: senderInclude,
     });
 
     const prevMap = (conversation.unread_count_map as Record<string, number>) || {};
@@ -133,56 +265,8 @@ export async function recordCallLogMessage(input: RecordCallLogInput): Promise<v
 
     emitToConversationRoom(conversation.id, 'message:new', message);
 
-    const callerName = (input.callerName || '').trim();
-    const notifyCaller = notificationCopy(input.outcome, input.media, callerName, durationSec);
-    const notifyReceiver = notificationCopy(input.outcome, input.media, callerName, durationSec);
-
-    if (input.outcome === 'declined') {
-      await notificationService.create(callerId, {
-        type: 'call_declined',
-        title: 'Appel refusé',
-        message: `Votre appel ${input.media === 'video' ? 'vidéo' : 'audio'} a été refusé`,
-        reference_type: 'direct_call',
-        reference_id: callId,
-        data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
-      });
-    } else if (input.outcome === 'cancelled') {
-      await notificationService.create(receiverId, {
-        type: 'call_cancelled',
-        title: 'Appel annulé',
-        message: `${callerName || 'Un contact'} a annulé l’appel ${input.media === 'video' ? 'vidéo' : 'audio'}`,
-        reference_type: 'direct_call',
-        reference_id: callId,
-        data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
-      });
-    } else if (input.outcome === 'completed') {
-      for (const uid of [callerId, receiverId]) {
-        await notificationService.create(uid, {
-          type: 'call_ended',
-          title: notifyCaller.title,
-          message: notifyCaller.message,
-          reference_type: 'direct_call',
-          reference_id: callId,
-          data: { callId, callerId, callMediaType: input.media, outcome: input.outcome, durationSec },
-        });
-      }
-    } else if (input.outcome === 'missed') {
-      await notificationService.create(receiverId, {
-        type: 'call_missed',
-        title: 'Appel manqué',
-        message: `Appel ${input.media === 'video' ? 'vidéo' : 'audio'} manqué${callerName ? ` · ${callerName}` : ''}`,
-        reference_type: 'direct_call',
-        reference_id: callId,
-        data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
-      });
-      await notificationService.create(callerId, {
-        type: 'call_missed',
-        title: 'Appel sans réponse',
-        message: `${callerName ? '' : 'Votre contact '}n’a pas répondu`,
-        reference_type: 'direct_call',
-        reference_id: callId,
-        data: { callId, callerId, callMediaType: input.media, outcome: input.outcome },
-      });
+    if (isTerminalOutcome(input.outcome)) {
+      await sendTerminalNotifications(input, durationSec);
     }
   } catch (err) {
     logger.warn('recordCallLogMessage failed', { callId, outcome: input.outcome, err });
@@ -196,6 +280,14 @@ export async function patchCallLogDuration(callId: string, durationSec: number):
   const parsed = parseCallLogContent(row.content);
   if (!parsed || parsed.outcome !== 'completed') return;
   if (parsed.durationSec >= durationSec) return;
-  const next = buildCallLogContent({ ...parsed, durationSec });
-  await prisma.message.update({ where: { id: row.id }, data: { content: next } });
+  await recordCallLogMessage({
+    callId,
+    callerId: parsed.callerId,
+    receiverId: parsed.receiverId,
+    media: parsed.media,
+    outcome: 'completed',
+    durationSec,
+    startedAt: parsed.startedAt ? new Date(parsed.startedAt) : null,
+    endedAt: parsed.endedAt ? new Date(parsed.endedAt) : new Date(),
+  });
 }

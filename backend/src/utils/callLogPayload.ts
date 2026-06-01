@@ -1,5 +1,5 @@
 /** Métadonnées JSON persistées dans Message.content pour type = call. */
-export type CallLogOutcome = 'completed' | 'missed' | 'declined' | 'cancelled';
+export type CallLogOutcome = 'incoming' | 'completed' | 'missed' | 'declined' | 'cancelled';
 
 export type CallLogContentV1 = {
   v: 1;
@@ -42,6 +42,8 @@ export function parseCallLogContent(raw: string | null | undefined): CallLogCont
 export function callLogPreviewLabel(outcome: CallLogOutcome, media: 'audio' | 'video'): string {
   const kind = media === 'video' ? 'Appel vidéo' : 'Appel audio';
   switch (outcome) {
+    case 'incoming':
+      return `${kind} entrant`;
     case 'completed':
       return kind;
     case 'missed':

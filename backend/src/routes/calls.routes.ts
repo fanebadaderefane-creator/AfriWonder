@@ -307,6 +307,7 @@ router.post('/:id/session-state', authenticate, validateBody(jsonObjectBodySchem
         media,
         outcome,
         durationSec: numericDuration ?? undefined,
+        callerName: typeof req.body?.callerName === 'string' ? req.body.callerName : undefined,
       });
     }
 

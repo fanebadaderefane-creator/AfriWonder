@@ -1773,6 +1773,28 @@ class MessageService {
     return { is_online: p?.is_online ?? false, last_seen: p?.last_seen ?? null };
   }
 
+  /** Présence de plusieurs peers en une requête (inbox — évite N× GET /presence/:id → 429). */
+  async getPresenceBatch(userIds: string[]) {
+    const unique = [...new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean))].slice(0, 100);
+    const presences: Record<string, { is_online: boolean; last_seen: Date | null }> = {};
+    for (const id of unique) {
+      presences[id] = { is_online: false, last_seen: null };
+    }
+    if (unique.length === 0) return { presences };
+
+    const rows = await prisma.userPresence.findMany({
+      where: { user_id: { in: unique } },
+      select: { user_id: true, is_online: true, last_seen: true },
+    });
+    for (const row of rows) {
+      presences[row.user_id] = {
+        is_online: row.is_online ?? false,
+        last_seen: row.last_seen ?? null,
+      };
+    }
+    return { presences };
+  }
+
   async setPresenceOnline(userId: string) {
     await broadcastPresence(userId, true);
   }
