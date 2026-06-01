@@ -190,6 +190,9 @@ const corsOrigins: (string | RegExp)[] = [
     .map((s) => s.trim())
     .filter((s) => s && s !== '*'),
   'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
   'http://localhost:8081',
   'http://localhost:8082',
   'http://localhost:19000',
