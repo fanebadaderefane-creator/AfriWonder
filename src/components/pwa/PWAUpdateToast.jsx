@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
+import { shouldDeferServiceWorkerReload } from '@/lib/swReloadGuard.js';
 
 /**
  * Écoute les mises à jour du Service Worker et affiche une bannière en haut + toast.
@@ -22,7 +23,12 @@ export default function PWAUpdateToast() {
         reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
       await new Promise(resolve => setTimeout(resolve, 500));
-      window.location.reload();
+      if (!shouldDeferServiceWorkerReload()) {
+        window.location.reload();
+      } else {
+        toast.info('Mise à jour prête — elle s’appliquera quand vous quitterez l’appel ou la vidéo.');
+        setIsUpdating(false);
+      }
     } catch (error) {
       console.error('Erreur lors de la mise à jour:', error);
       setIsUpdating(false);
@@ -90,7 +96,7 @@ export default function PWAUpdateToast() {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     const handleControllerChange = () => {
-      if (navigator.serviceWorker.controller) {
+      if (navigator.serviceWorker.controller && !shouldDeferServiceWorkerReload()) {
         window.location.reload();
       }
     };

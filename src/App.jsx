@@ -7,7 +7,7 @@ import { queryClientInstance, queryPersister } from '@/lib/query-client'
 import { shouldDehydrateQueryForOfflinePersist } from '@/lib/query-persist-dehydrate.js'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig, preloadPages } from './pages.config.glob'
-import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { useEffect, Suspense, useRef, useState } from 'react';
 import { readGuestExplore, GUEST_EXPLORE_EVENT } from '@/lib/guestExplore';
 import { getAccessToken, getRefreshToken } from '@/lib/secureTokenStorage';
@@ -37,6 +37,14 @@ const SECONDARY_ROUTE_PRELOADS = ['Marketplace', 'News', 'Wallet', 'Lives'];
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
+
+/** Lien partagé mobile `/watch/:id` → page vidéo PWA existante. */
+function WatchToVideoViewRedirect() {
+  const { id } = useParams();
+  const videoId = String(id || '').trim();
+  if (!videoId) return <Navigate to="/" replace />;
+  return <Navigate to={`/VideoView?id=${encodeURIComponent(videoId)}`} replace />;
+}
 
 const MessageSocketBridge = ({ children }) => {
   const { user } = useAuth();
@@ -94,6 +102,7 @@ const AuthenticatedApp = () => {
     '/features',
     '/Crowdfunding',
     '/CampaignDetails',
+    '/VideoView',
   ];
 
   // Redirect to Landing ONLY if not authenticated AND on a non-public page
@@ -109,7 +118,8 @@ const AuthenticatedApp = () => {
           const path = location.pathname;
           const isPublicPath =
             publicPaths.includes(path) ||
-            path.toLowerCase().startsWith('/verify-certificate/');
+            path.toLowerCase().startsWith('/verify-certificate/') ||
+            path.toLowerCase().startsWith('/watch/');
           if (!guestAccessEnabled && !isPublicPath) {
             navigate('/Landing', { replace: true });
           }
@@ -178,6 +188,10 @@ const AuthenticatedApp = () => {
         ) : null}
         {DiscoverPage ? <Route path="/Discover" element={renderPublicRoute(DiscoverPage)} errorElement={<PageErrorFallback />} /> : null}
         {FAQPage ? <Route path="/FAQ" element={renderPublicRoute(FAQPage)} errorElement={<PageErrorFallback />} /> : null}
+        {Pages['VideoView'] ? (
+          <Route path="/VideoView" element={renderPublicRoute(Pages['VideoView'])} errorElement={<PageErrorFallback />} />
+        ) : null}
+        <Route path="/watch/:id" element={<WatchToVideoViewRedirect />} />
         <Route path="*" element={<Navigate to="/Landing" replace />} />
       </Routes>
     );
@@ -207,6 +221,7 @@ const AuthenticatedApp = () => {
       <Route path="/articles" element={<Navigate to="/News" replace />} />
       <Route path="/dashboard" element={<Navigate to="/Profile" replace />} />
       <Route path="/features" element={<Navigate to="/Discover" replace />} />
+      <Route path="/watch/:id" element={<WatchToVideoViewRedirect />} />
       <Route
         path="/child-safety"
         element={(() => {

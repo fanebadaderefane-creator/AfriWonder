@@ -1,0 +1,26 @@
+---
+description: Anti-crash natif appels vocal/vidéo — RTCView / teardown WebRTC
+alwaysApply: true
+---
+
+# ⛔ Appels natifs — anti-crash RTCView VERROUILLÉ
+
+Périmètre : **Expo mobile** (`frontend/` — APK/IPA + Expo web RN Web). Ce n’est **pas** la PWA Vite (`src/pages/DirectCall.jsx`).
+
+Crash Android/iOS (« l'application s'est fermée car elle comporte un bug ») = **fermeture PC / pistes pendant que RTCView est encore monté** (natif uniquement ; Expo web utilise `<video>` / `<audio>`).
+
+## Règles strictes
+
+- **Ne jamais** appeler `pc.close()` / `track.stop()` **avant** démontage de tous les `SafeNativeRtcView` sur natif.
+- `finishCall` : `pcTearingDownRef` + `nativeRtcUnmounting` + vider `localStreamUrl`/`remoteStreamUrl` **puis** `scheduleStopAllMedia()` (délai `NATIVE_RTC_UNMOUNT_DELAY_MS` dans `callNativeTeardown.ts`).
+- **Pas de `RTCView` brut** — uniquement `SafeNativeRtcView` + `isValidNativeRtcStreamUrl`.
+- `showNativeRemoteRtc` : `callState === 'connected'` **et** `!nativeRtcUnmounting`.
+- Retries `bindNativeStreamUrlWithRetry` : garde `shouldBlockNativeRtcUrlUpdate` / `shouldApplyNativeRtcUrl`.
+- Logique pure : `callNativeTeardown.ts`, `callRtcStreamUrl.ts` — tests obligatoires.
+
+## Vérification
+
+```bash
+cd frontend && node scripts/verify-mobile-call-native.cjs
+cd frontend && node scripts/verify-call-media-readiness.cjs
+```

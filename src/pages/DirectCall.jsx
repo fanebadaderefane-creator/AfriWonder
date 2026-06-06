@@ -26,6 +26,12 @@ import { motion } from 'framer-motion';
 import { useCallSocket } from '@/hooks/useCallSocket';
 import { getWebRtcConfiguration, setTemporaryTurnCredentials } from '@/lib/webrtcIceServers';
 import { loadPreferences } from '@/lib/preferences';
+import {
+  callIdsEqual,
+  callUserIdsEqual,
+  normalizeInboundCallSignal,
+  pickOutboundCallSdp,
+} from '@/lib/callSignalingPayload';
 
 export default function DirectCallPage() {
   const navigate = useNavigate();
@@ -101,6 +107,7 @@ export default function DirectCallPage() {
   const activePersistedRef = useRef(false);
   const terminalPersistedRef = useRef(false);
   const autoAcceptedRef = useRef(false);
+  const receiverAcceptSentRef = useRef(false);
   const technicalQualitySentRef = useRef(false);
   const qosSnapshotRef = useRef({ level: 'unknown', rttMs: null, jitterMs: null, packetLossPct: null });
   const poorQualityStreakRef = useRef(0);
@@ -219,12 +226,15 @@ export default function DirectCallPage() {
     peerRef.current = pc;
 
     pc.onicecandidate = (event) => {
-      if (!event.candidate || !myUserId || !remoteId) return;
+      if (!myUserId || !remoteId) return;
       emitFn('call:signal', {
         toUserId: remoteId,
         fromUserId: myUserId,
         callId,
-        signal: { kind: 'candidate', candidate: event.candidate },
+        signal: {
+          kind: 'ice',
+          candidate: event.candidate ? event.candidate.toJSON() : null,
+        },
       });
     };
 
@@ -289,22 +299,19 @@ export default function DirectCallPage() {
     userId: user?.id,
     onAccept: async (payload) => {
       if (mode !== 'outgoing') return;
-      if (payload?.fromUserId !== targetUserId || payload?.callId !== callId) return;
+      if (!callUserIdsEqual(payload?.fromUserId, targetUserId) || !callIdsEqual(payload?.callId, callId)) return;
       const pc = await ensurePeerConnection(emit, user.id, targetUserId);
-      const offer = await pc.createOffer();
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callType === 'video' });
       await pc.setLocalDescription(offer);
+      const outbound = pickOutboundCallSdp(pc, offer);
+      if (!outbound) return;
       emit('call:signal', {
         toUserId: targetUserId,
         fromUserId: user.id,
         callId,
-        signal: { kind: 'offer', sdp: pc.localDescription },
+        signal: { kind: 'sdp', sdp: outbound },
       });
-      setCallStatus('active');
-      setCallStartTime(Date.now());
-      if (!activePersistedRef.current) {
-        activePersistedRef.current = true;
-        persistSessionState('active');
-      }
+      setLinkStatusLabel('Connexion en cours…');
       toast.success('Appel accepte');
     },
     onDecline: (payload) => {
@@ -340,33 +347,51 @@ export default function DirectCallPage() {
     },
     onSignal: async (payload) => {
       if (!user?.id || !targetUserId) return;
-      if (payload?.callId !== callId || payload?.fromUserId !== targetUserId) return;
+      if (!callIdsEqual(payload?.callId, callId) || !callUserIdsEqual(payload?.fromUserId, targetUserId)) return;
 
       const signal = payload.signal;
       if (!signal?.kind) return;
 
       const pc = await ensurePeerConnection(emit, user.id, targetUserId);
-      if (signal.kind === 'offer') {
-        await pc.setRemoteDescription(signal.sdp);
+      const normalized = normalizeInboundCallSignal(signal, pc.signalingState);
+      if (!normalized) return;
+
+      if (normalized.kind === 'sdp') {
+        const remoteSdp = normalized.sdp;
+        try {
+          await pc.setRemoteDescription(remoteSdp);
+        } catch (firstErr) {
+          if (remoteSdp.type === 'offer' && pc.signalingState === 'have-local-offer') {
+            await pc.setLocalDescription({ type: 'rollback' });
+            await pc.setRemoteDescription(remoteSdp);
+          } else {
+            throw firstErr;
+          }
+        }
         await applyPendingCandidates(pc);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        emit('call:signal', {
-          toUserId: targetUserId,
-          fromUserId: user.id,
-          callId,
-          signal: { kind: 'answer', sdp: pc.localDescription },
-        });
-        setCallStatus('active');
-        if (!callStartTime) setCallStartTime(Date.now());
-      } else if (signal.kind === 'answer') {
-        await pc.setRemoteDescription(signal.sdp);
-        await applyPendingCandidates(pc);
-      } else if (signal.kind === 'candidate') {
+        if (remoteSdp.type === 'offer') {
+          const answer = await pc.createAnswer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: callType === 'video',
+          });
+          await pc.setLocalDescription(answer);
+          const outbound = pickOutboundCallSdp(pc, answer);
+          if (outbound) {
+            emit('call:signal', {
+              toUserId: targetUserId,
+              fromUserId: user.id,
+              callId,
+              signal: { kind: 'sdp', sdp: outbound },
+            });
+          }
+        }
+        setLinkStatusLabel('Connexion en cours…');
+      } else if (normalized.kind === 'ice') {
+        if (normalized.candidate === null) return;
         if (pc.remoteDescription) {
-          await pc.addIceCandidate(signal.candidate);
+          await pc.addIceCandidate(normalized.candidate);
         } else {
-          pendingCandidatesRef.current.push(signal.candidate);
+          pendingCandidatesRef.current.push(normalized.candidate);
         }
       }
     },
@@ -386,19 +411,6 @@ export default function DirectCallPage() {
         // Non bloquant pour garder le flux d'appel fluide.
       });
   }, [user?.id, targetUserId, callId, mode]);
-
-  useEffect(() => {
-    if (!autoAccept || mode !== 'incoming' || autoAcceptedRef.current) return;
-    if (!user?.id || !targetUserId || !callId) return;
-    autoAcceptedRef.current = true;
-    emit('call:accept', {
-      toUserId: targetUserId,
-      fromUserId: user.id,
-      callId,
-      type: callType,
-    });
-    setLinkStatusLabel('Connexion en cours…');
-  }, [autoAccept, mode, user?.id, targetUserId, callId, emit, callType]);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -471,6 +483,18 @@ export default function DirectCallPage() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        if (autoAccept && mode === 'incoming' && !receiverAcceptSentRef.current && user?.id && targetUserId) {
+          receiverAcceptSentRef.current = true;
+          autoAcceptedRef.current = true;
+          await ensurePeerConnection(emit, user.id, targetUserId);
+          emit('call:accept', {
+            toUserId: targetUserId,
+            fromUserId: user.id,
+            callId,
+            type: callType,
+          });
+          setLinkStatusLabel('Connexion en cours…');
+        }
       } catch (_e) {
         if (!mediaErrorShownRef.current) {
           mediaErrorShownRef.current = true;

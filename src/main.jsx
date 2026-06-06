@@ -4,6 +4,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { initExpressClientRuntime } from '@/api/expressClient.js'
 import { initPosthog } from '@/lib/posthogClient.js'
 import '@/index.css'
+import { shouldDeferServiceWorkerReload } from '@/lib/swReloadGuard.js'
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
 const isDev = import.meta.env.DEV
@@ -186,7 +187,10 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
               // En PWA mobile/WebView, un reload forcé en pleine session vidéo peut provoquer un flash noir
               // ou couper le feed. On préfère laisser la nouvelle version prendre effet au prochain cycle.
               console.log('✅ Nouveau Service Worker activé');
-              if (!isStandaloneMobile() || document.visibilityState === 'hidden') {
+              if (
+                (!isStandaloneMobile() || document.visibilityState === 'hidden') &&
+                !shouldDeferServiceWorkerReload()
+              ) {
                 window.location.reload();
               }
             }

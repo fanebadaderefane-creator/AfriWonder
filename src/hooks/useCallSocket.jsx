@@ -49,12 +49,25 @@ export function useCallSocket({
         });
       }
     });
-    socket.on('call:invite', (payload) => inviteRef.current?.(payload));
-    socket.on('call:accept', (payload) => acceptRef.current?.(payload));
-    socket.on('call:decline', (payload) => declineRef.current?.(payload));
-    socket.on('call:missed', (payload) => missedRef.current?.(payload));
-    socket.on('call:end', (payload) => endRef.current?.(payload));
-    socket.on('call:signal', (payload) => signalRef.current?.(payload));
+    const invokeSafe = (fn, payload, eventName) => {
+      if (!fn) return;
+      try {
+        const result = fn(payload);
+        if (result && typeof result.then === 'function') {
+          void result.catch((err) => {
+            console.error(`[useCallSocket] ${eventName}`, err);
+          });
+        }
+      } catch (err) {
+        console.error(`[useCallSocket] ${eventName}`, err);
+      }
+    };
+    socket.on('call:invite', (payload) => invokeSafe(inviteRef.current, payload, 'call:invite'));
+    socket.on('call:accept', (payload) => invokeSafe(acceptRef.current, payload, 'call:accept'));
+    socket.on('call:decline', (payload) => invokeSafe(declineRef.current, payload, 'call:decline'));
+    socket.on('call:missed', (payload) => invokeSafe(missedRef.current, payload, 'call:missed'));
+    socket.on('call:end', (payload) => invokeSafe(endRef.current, payload, 'call:end'));
+    socket.on('call:signal', (payload) => invokeSafe(signalRef.current, payload, 'call:signal'));
     socket.on('group:call-invite', (payload) => groupCallInviteRef.current?.(payload));
     socket.on('user:group-call-ended', (payload) => groupCallEndedRef.current?.(payload));
 

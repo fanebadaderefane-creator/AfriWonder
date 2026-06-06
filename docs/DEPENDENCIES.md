@@ -23,6 +23,7 @@ Toute **nouvelle** librairie npm doit avoir une **justification** dans la PR (al
 | `expo-sqlite` | Persistance locale (hors-ligne partiel) |
 | `expo-secure-store` | Secrets / tokens hors stockage AsyncStorage en clair |
 | `react-native-iap` | Conformité Play Store pour biens numériques (coins) |
+| `sp-react-native-in-app-updates` | Google Play In-App Updates (Flexible / Immediate) — MAJ in-app sans quitter AfriWonder. Choisi vs ouverture manuelle Play Store seule : expérience type WhatsApp/Instagram. Import dynamique (comme IAP) pour ne pas crasher Expo Go. iOS : redirection App Store via react-native-siren intégré. |
 | `react-native-device-info` | Détection `hasGms()` avant FCM / Play Billing — évite le dialogue système « Google Play » au boot sur appareils sans GMS (Huawei, émulateurs) |
 | `socket.io-client` | Temps réel (messages, présence) |
 | `@peculiar/webcrypto` / `react-native-quick-crypto` | Crypto côté client (E2EE, flux sensibles) |

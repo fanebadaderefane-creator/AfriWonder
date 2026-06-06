@@ -1,0 +1,57 @@
+---
+description: ⛔ Signalisation appels WebRTC verrouillée — ne pas casser (web + Android + iOS)
+alwaysApply: true
+---
+
+# ⛔ Appels audio/vidéo — signalisation WebRTC VERROUILLÉE
+
+La connexion appel a **cassé en prod web** (juin 2026) : appelant bloqué sans `sdp_remote`, receveur connecté. **Ne pas modifier** la signalisation SDP/socket **sans demande explicite** utilisateur ou ticket + tests terrain.
+
+## Fichiers concernés
+
+| Fichier | Rôle |
+|---------|------|
+| `frontend/app/messages/call.tsx` | PeerConnection, envoi/réception SDP, ICE, watchdog |
+| `frontend/src/call/callSignalingPayload.ts` | Normalisation offer/answer/ICE (type manquant, legacy) |
+| `frontend/src/call/callAcceptLifecycle.ts` | Ordre accept / watchdog / réémission offre |
+| `frontend/src/call/callSignalingPayload.test.ts` | Tests de régression obligatoires |
+| `frontend/src/components/call/IncomingCallOverlay.*` | **Pas** de `call:accept` avant PC |
+| `frontend/scripts/verify-call-media-readiness.cjs` | Gate livraison |
+| `frontend/scripts/verify-mobile-call-native.cjs` | Gate Android/iOS |
+| `src/pages/DirectCall.jsx` | PWA — parité `kind:sdp` / `kind:ice` avec mobile |
+| `src/lib/callSignalingPayload.js` | Copie PWA du module TS (ne pas diverger) |
+
+Repères dans `call.tsx` : **`⛔ ZONE SIGNALISATION VERROUILLÉE — DÉBUT`** … **`FIN`**.
+
+## Règle stricte
+
+- **Ne pas** remplacer `sendSdpFromPeerConnection` par un `sendSignal({ kind: 'sdp', sdp: { type, sdp } })` direct sur l’objet `createOffer`/`createAnswer` — utiliser **`pickOutboundCallSdp(pc, fallback)`** après `setLocalDescription`.
+- **Ne pas** appeler `setRemoteDescription` sans passer par **`normalizeInboundCallSignal`** (évite `Missing required 'type' member` Firefox / natif).
+- **Ne pas** émettre **`call:accept`** depuis l’overlay entrant, CallKit handler ou notification — uniquement depuis **`call.tsx`** après setup PeerConnection + `getUserMedia`.
+- **Ne pas** envoyer l’offre SDP côté appelant **avant** `call:accept` du receveur (`handlePeerAccepted` + `callerOfferSentRef`).
+- **Ne pas** supprimer **`enqueueSignal`**, **`flushPendingSignals`**, **`pendingSignalsRef`**, **`callIdsEqual`**, **`callUserIdsEqual`**.
+- **Ne pas** supprimer **`shouldResendCallerOffer`** / log `sdp_resend_offer` (filet socket perdu).
+- **Natif** : garder **`RTCSessionDescriptionImpl`** / **`RTCIceCandidateImpl`** pour SDP/ICE distants (pas d’objet brut seul).
+- **Web** : ne pas remettre `addTransceiver`+`replaceTrack` comme chemin principal — `addTrack` après `getUserMedia` (voir commentaires dans `call.tsx`).
+
+## Invariants produit (sacrés)
+
+1. **Ordre socket** : invite → (receveur monte PC) → `call:accept` → offre SDP appelant → réponse SDP receveur → ICE.
+2. **SDP sortant** : toujours `{ kind: 'sdp', sdp: { type, sdp } }` avec `type` ∈ `offer|answer|…` et `sdp` commençant par `v=`.
+3. **SDP entrant sans type** : déduire via `signalingState` (`have-local-offer` → `answer`).
+4. **Chronomètre « connecté »** : `shouldMarkCallConnected` exige `hasRemoteDescription` côté appelant + `peerAccepted`.
+5. **Régression** : toute modif de `callSignalingPayload.ts` ou zone verrouillée → lancer :
+   - `cd frontend && npm run test -- src/call/callSignalingPayload.test.ts src/call/callAcceptLifecycle.test.ts`
+   - `node scripts/verify-call-media-readiness.cjs`
+   - `node scripts/verify-mobile-call-native.cjs`
+
+## Symptômes de régression
+
+- Appelant : `sdp_local` offer OK, **pas** de `sdp_remote` → « Connexion lente ou bloquée… »
+- `signal handling failed` + `Missing required 'type' member`
+- Receveur connecté, appelant non (asymétrie)
+- Silence audio natif après « accepter » (accept trop tôt ou transceiver cassé)
+
+## Si l’utilisateur demande un changement
+
+Modifier en conservant les invariants ci-dessus ; ajouter un test dans `callSignalingPayload.test.ts` ou `callAcceptLifecycle.test.ts` pour chaque bug corrigé.
