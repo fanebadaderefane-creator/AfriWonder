@@ -4,7 +4,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const appRoot = path.resolve(__dirname, '..');
-const expoArgs = ['start', '--web', '--port', '3001', ...process.argv.slice(2)];
+const expoArgs = ['start', '--web', '--host', 'lan', '--port', '3001', ...process.argv.slice(2)];
 
 process.env.EXPO_NO_TELEMETRY = '1';
 

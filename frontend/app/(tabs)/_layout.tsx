@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { View, StyleSheet, Text, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MIN_TOUCH_TARGET } from '../../src/theme/designSystem';
@@ -42,13 +42,16 @@ function useInboxUnreadTotal() {
     }
   }, [token]);
 
-  /** Pas de `refresh` ici : évite double appel au montage (useFocusEffect suffit) + moins de charge sur le thread JS. */
+  const tabsFocused = useIsFocused();
+
+  /** Pas de poll inbox hors onglets (Menu+, stack) — moins de charge JS en arrière-plan. */
   useEffect(() => {
+    if (!tabsFocused) return undefined;
     const id = setInterval(() => {
       void refresh();
     }, inboxPollMs);
     return () => clearInterval(id);
-  }, [refresh, inboxPollMs]);
+  }, [refresh, inboxPollMs, tabsFocused]);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,7 +75,7 @@ export default function TabsLayout() {
   const tabScreenOptions = useMemo(
     () => ({
       lazy: true,
-      /** Gèle les onglets inactifs (feed vidéo, discover…) → moins de lecteurs / timers en arrière-plan (OOM ~10 min). */
+      /** Gèle les onglets inactifs (feed vidéo, discover…) → moins de lecteurs / timers en arrière-plan. */
       freezeOnBlur: true,
       detachInactiveScreens: true,
       headerShown: false,

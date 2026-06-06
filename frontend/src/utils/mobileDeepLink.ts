@@ -35,6 +35,14 @@ export function toAfriwonderResolveUrl(normalized: string): string | null {
   if (m) return `afriwonder://video/${m[1]}`;
   m = n.match(/^\/?video\/([^/?#]+)\/?$/i);
   if (m) return `afriwonder://video/${m[1]}`;
+  if (/^\/?VideoView/i.test(n)) {
+    const qIdx = n.indexOf('?');
+    if (qIdx !== -1) {
+      const params = new URLSearchParams(n.slice(qIdx + 1));
+      const id = params.get('id') || params.get('_videoId');
+      if (id) return `afriwonder://video/${id}`;
+    }
+  }
 
   try {
     const u = new URL(n);
@@ -44,6 +52,11 @@ export function toAfriwonderResolveUrl(normalized: string): string | null {
     const path = u.pathname || '';
     const pathMatch = path.match(/\/(?:watch|video)\/([^/?#]+)\/?$/i);
     if (pathMatch) return `afriwonder://video/${pathMatch[1]}`;
+
+    if (/\/VideoView\/?$/i.test(path)) {
+      const legacyId = u.searchParams.get('id') || u.searchParams.get('_videoId');
+      if (legacyId) return `afriwonder://video/${legacyId}`;
+    }
 
     const userMatch = path.match(/\/(?:user|u|profile)\/([^/?#]+)\/?$/i);
     if (userMatch) return `afriwonder://user/${userMatch[1]}`;

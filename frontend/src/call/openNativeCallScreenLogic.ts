@@ -18,6 +18,35 @@ export function getNativeCallLaunchBlockReason(input: {
   return null;
 }
 
+export type ReceiverCallScreenInput = {
+  callId?: string;
+  peerUserId: string;
+  peerName: string;
+  peerAvatar?: string;
+  type: 'audio' | 'video';
+};
+
+/** Params Expo Router — rétro-compat `peerId` / `callType` + forme canonique `otherUserId` / `type`. */
+export function buildReceiverCallRouteParams(input: ReceiverCallScreenInput): Record<string, string> {
+  const peerUserId = String(input.peerUserId || '').trim();
+  const peerName = String(input.peerName || 'Contact').trim() || 'Contact';
+  const peerAvatar = String(input.peerAvatar || '').trim();
+  const isVideo = input.type === 'video';
+  const media = isVideo ? 'video' : 'audio';
+  return {
+    callId: String(input.callId || '').trim(),
+    otherUserId: peerUserId,
+    peerId: peerUserId,
+    name: peerName,
+    peerName,
+    avatar: peerAvatar,
+    peerAvatar,
+    type: media,
+    callType: media,
+    role: 'receiver',
+  };
+}
+
 export function nativeCallLaunchBlockedMessage(reason: NativeCallLaunchBlockReason): string {
   switch (reason) {
     case 'web_no_webrtc':

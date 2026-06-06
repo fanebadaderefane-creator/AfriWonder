@@ -1,7 +1,7 @@
 import { RING_PULSE_MS, type CallRingPreset } from './callRingtoneTiming';
 
-const INCOMING_WAV = require('../../assets/sounds/incoming_call.wav');
-const OUTGOING_WAV = require('../../assets/sounds/outgoing_ringback.wav');
+import INCOMING_WAV from '../../assets/sounds/incoming_call.wav';
+import OUTGOING_WAV from '../../assets/sounds/outgoing_ringback.wav';
 
 /** Résout l’URL servie par Metro / Expo web pour un asset WAV. */
 export function resolveWebBundledSoundUri(moduleRef: unknown): string {
@@ -12,6 +12,15 @@ export function resolveWebBundledSoundUri(moduleRef: unknown): string {
     if (record.default != null) return resolveWebBundledSoundUri(record.default);
   }
   return String(moduleRef ?? '').trim();
+}
+
+const activeWebRingStops = new Set<() => Promise<void>>();
+
+/** Coupe toutes les sonneries web actives (overlay entrant, ringback orphelin). */
+export async function stopAllWebCallRings(): Promise<void> {
+  const stops = [...activeWebRingStops];
+  activeWebRingStops.clear();
+  await Promise.all(stops.map((stop) => stop().catch(() => {})));
 }
 
 /**
@@ -47,7 +56,8 @@ export function startPulsedCallRingWeb(
     } catch {
       /* ignore */
     }
-    active.src = '';
+    active.removeAttribute('src');
+    active.srcObject = null;
     active = null;
   };
 
@@ -80,9 +90,17 @@ export function startPulsedCallRingWeb(
 
   playBurst();
 
-  return async () => {
+  const stop = async () => {
     cancelled = true;
     clearTimers();
     stopActive();
   };
+
+  const trackedStop = async () => {
+    activeWebRingStops.delete(trackedStop);
+    await stop();
+  };
+
+  activeWebRingStops.add(trackedStop);
+  return trackedStop;
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateAppUpdate, resolvePlatformPolicy } from './appUpdateCheck';
+import {
+  DEFAULT_SOFT_UPDATE_MESSAGE,
+  evaluateAppUpdate,
+  resolvePlatformPolicy,
+  resolveUpdateMessage,
+  shouldUsePlayInAppUpdate,
+} from './appUpdateCheck';
 
 describe('appUpdateCheck', () => {
   const policy = {
@@ -25,5 +31,18 @@ describe('appUpdateCheck', () => {
     expect(
       resolvePlatformPolicy({ android: { ...policy, latest_version_code: 0 }, ios: policy }, 'android'),
     ).toBeNull();
+  });
+
+  it('resolveUpdateMessage uses server copy when provided', () => {
+    expect(resolveUpdateMessage('soft', { ...policy, update_message: 'Custom soft' })).toBe('Custom soft');
+    expect(resolveUpdateMessage('force', null)).not.toBe(DEFAULT_SOFT_UPDATE_MESSAGE);
+  });
+
+  it('shouldUsePlayInAppUpdate defaults true on Android', () => {
+    expect(shouldUsePlayInAppUpdate('android', policy)).toBe(true);
+    expect(shouldUsePlayInAppUpdate('android', { ...policy, use_play_in_app_update: false })).toBe(
+      false,
+    );
+    expect(shouldUsePlayInAppUpdate('ios', policy)).toBe(false);
   });
 });

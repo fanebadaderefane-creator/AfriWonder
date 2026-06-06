@@ -74,6 +74,7 @@ export default function AdminSettingsScreen() {
   const flags = snapshot?.featureFlags;
   const flagsLen = Array.isArray(flags) ? flags.length : flags && typeof flags === 'object' ? Object.keys(flags).length : 0;
   const minW = snapshot?.min_withdrawal_fcfa;
+  const mobileUpdate = snapshot?.mobile_app_update as Record<string, unknown> | undefined;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -146,6 +147,16 @@ export default function AdminSettingsScreen() {
                 {JSON.stringify(snapshot.promotion_banner ?? null)}
               </Text>
             </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Mises à jour application mobile</Text>
+              <Text style={styles.cardHint}>
+                Version min. (obligatoire) · dernière version · messages · Play In-App Update (Android).
+              </Text>
+              <Text style={styles.cardValue} numberOfLines={16}>
+                {JSON.stringify(mobileUpdate ?? {}, null, 2)}
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -177,6 +188,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   cardTitle: { fontSize: FontSizes.sm, fontWeight: '700', color: Colors.textSecondary, marginBottom: 6 },
+  cardHint: { fontSize: FontSizes.xs, color: Colors.textMuted, marginBottom: 6, lineHeight: 16 },
   cardValue: { fontSize: FontSizes.sm, color: Colors.text, fontFamily: 'monospace' },
   empty: { color: Colors.textMuted, textAlign: 'center', marginTop: 40 },
 });

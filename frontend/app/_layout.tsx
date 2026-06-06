@@ -45,6 +45,8 @@ import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavi
 import { isExpoGoApp } from '../src/config/expoRuntime';
 import { devLog } from '../src/utils/devLog';
 import { safeRouterPush } from '../src/utils/safeRouter';
+import { registerMobileQueryClient } from '../src/lib/mobileMemoryMaintenance';
+import { MobileNavigationStability } from '../src/components/common/MobileNavigationStability';
 
 initMobileSentry();
 installMobileRuntimeGuards();
@@ -86,10 +88,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
+      /** Libère les requêtes inactives — limite la RAM après navigation (Menu+, modules…). */
+      gcTime: 5 * 60 * 1000,
     },
   },
 });
+
+registerMobileQueryClient(queryClient);
 
 function RootLayoutContent() {
   const { colors, mode } = useAppTheme();
@@ -234,9 +240,11 @@ function RootLayoutContent() {
     void notificationService
       .onNotificationReceived((notif) => {
         const data = (notif?.request?.content?.data || {}) as Record<string, unknown>;
-        if (data?.type !== 'incoming_call') return;
+        if (data?.type !== 'incoming_call' && data?.type !== 'call_incoming') return;
         const callId = String(data.callId || data.call_id || '');
         if (!callId) return;
+        /** App au premier plan : overlay socket gère déjà l’UI — évite double Notifee/CallKit. */
+        if (AppState.currentState === 'active') return;
         void displayIncomingCall({
           callId,
           callerName: String(data.callerName || data.caller_name || 'Contact'),
@@ -374,6 +382,27 @@ function RootLayoutContent() {
     };
   }, [isAuthenticated, accessToken, user?.id, user?.username]);
 
+  /** Socket : rejoin room au retour au premier plan (appels entrants manqués après veille / transport close). */
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken || !user?.id) return;
+    const userName = user.username ?? undefined;
+    const rejoin = () => {
+      socketService.ensureUserRoomJoined(user.id, userName);
+    };
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') rejoin();
+    });
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', rejoin);
+    }
+    return () => {
+      sub.remove();
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', rejoin);
+      }
+    };
+  }, [isAuthenticated, accessToken, user?.id, user?.username]);
+
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
     void import('../src/services/e2eeMobileService')
@@ -405,6 +434,7 @@ function RootLayoutContent() {
             <OfflineBanner />
             <AppUpdatePrompt />
             <IncomingCallOverlay />
+            <MobileNavigationStability />
             <Stack
               screenOptions={{
                 headerShown: false,

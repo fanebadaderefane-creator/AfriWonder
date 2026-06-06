@@ -6,10 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import socketService from '../../services/socketService';
 import { useAuthStore } from '../../store/authStore';
 import { featureFlags } from '../../config/featureFlags';
-import { buildCallDeclinePayload } from '../../call/callSignalingPayload';
+import { buildCallDeclinePayload, callUserIdsEqual } from '../../call/callSignalingPayload';
 import { INCOMING_CALL_RING_VOLUME } from '../../call/callIncomingAlerts';
-import { startLoopingCallRing } from '../../call/callRingtone';
+import { startLoopingCallRing, stopAllCallRings } from '../../call/callRingtone';
 import { profileAvatarUri } from '../../utils/avatarFallback';
+import { primeWebCallMediaCapture } from '../../call/webCallMediaSession';
+import { devWarn } from '../../utils/devLog';
 
 type IncomingCall = {
   callId: string;
@@ -22,6 +24,7 @@ type IncomingCall = {
 
 /**
  * Web : overlay simple (sans Reanimated/RNGH) pour accepter ou refuser un appel entrant.
+ * ⛔ Ne pas émettre `call:accept` ici — voir `.cursor/rules/call-signaling-locked.mdc`
  */
 export function IncomingCallOverlay() {
   const myUserId = useAuthStore((s) => s.user?.id);
@@ -29,13 +32,30 @@ export function IncomingCallOverlay() {
   const incomingRef = useRef<IncomingCall | null>(null);
   incomingRef.current = incoming;
   const acceptingRef = useRef(false);
+  const stopRingRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!myUserId || !featureFlags.callsOnNative) return;
 
     const onInvite = (payload: IncomingCall) => {
-      if (!payload || payload.toUserId !== myUserId) return;
+      if (!payload || !callUserIdsEqual(payload.toUserId, myUserId)) return;
+      devWarn('[Call] incoming invite (web overlay)', payload.callId, payload.fromUserId);
       setIncoming(payload);
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          const n = new Notification(payload.callerName || 'Appel entrant', {
+            body: payload.type === 'video' ? 'Appel vidéo entrant' : 'Appel audio entrant',
+            tag: `call-${payload.callId}`,
+            requireInteraction: true,
+          });
+          n.onclick = () => {
+            window.focus();
+            n.close();
+          };
+        } catch {
+          /* ignore */
+        }
+      }
     };
     const clearIfSameCall = (payload: { callId?: string }) => {
       const cur = incomingRef.current;
@@ -54,15 +74,34 @@ export function IncomingCallOverlay() {
   }, [myUserId]);
 
   useEffect(() => {
-    if (!incoming) return;
-    let stopRing: (() => Promise<void>) | null = null;
-    void (async () => {
-      stopRing = await startLoopingCallRing(INCOMING_CALL_RING_VOLUME, { preset: 'incoming' });
-    })();
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
+    void Notification.requestPermission().catch(() => {});
+  }, []);
+
+  const stopIncomingRing = useCallback(async () => {
+    await stopRingRef.current?.();
+    stopRingRef.current = null;
+    await stopAllCallRings();
+  }, []);
+
+  useEffect(() => {
+    if (!incoming?.callId) {
+      void stopIncomingRing();
+      return;
+    }
+    let disposed = false;
+    void startLoopingCallRing(INCOMING_CALL_RING_VOLUME, { preset: 'incoming' }).then((stop) => {
+      if (disposed) {
+        void stop();
+        return;
+      }
+      stopRingRef.current = stop;
+    });
     return () => {
-      void stopRing?.();
+      disposed = true;
+      void stopIncomingRing();
     };
-  }, [incoming?.callId]);
+  }, [incoming?.callId, stopIncomingRing]);
 
   const dismiss = useCallback(() => setIncoming(null), []);
 
@@ -72,7 +111,9 @@ export function IncomingCallOverlay() {
     if (!c || !myUserId) return;
     acceptingRef.current = true;
     try {
+      await stopIncomingRing();
       dismiss();
+      primeWebCallMediaCapture(c.type === 'video');
       router.push({
         pathname: '/messages/call' as never,
         params: {
@@ -87,10 +128,11 @@ export function IncomingCallOverlay() {
     } finally {
       acceptingRef.current = false;
     }
-  }, [dismiss, myUserId]);
+  }, [dismiss, myUserId, stopIncomingRing]);
 
   const decline = useCallback(async () => {
     const c = incomingRef.current;
+    await stopIncomingRing();
     dismiss();
     if (c && myUserId) {
       await socketService.ensureConnectedEmit(
@@ -104,7 +146,7 @@ export function IncomingCallOverlay() {
         8_000,
       );
     }
-  }, [dismiss, myUserId]);
+  }, [dismiss, myUserId, stopIncomingRing]);
 
   if (!incoming) return null;
 

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { navigateToReceiverCallScreen } from './openNativeCallScreen';
 
 function readStr(v: unknown): string {
   if (v == null) return '';
@@ -20,17 +20,12 @@ export function navigateToIncomingCallFromPush(data: Record<string, unknown> | u
   const rawMedia = readStr(data.callMediaType).toLowerCase();
   const isVideo = rawMedia === 'video';
 
-  router.push({
-    pathname: '/messages/call',
-    params: {
-      name: readStr(data.callerName) || 'Contact',
-      avatar: readStr(data.callerAvatar),
-      type: isVideo ? 'video' : 'audio',
-      callType: isVideo ? 'video' : 'audio',
-      otherUserId: callerId,
-      role: 'receiver',
-      callId,
-    },
+  navigateToReceiverCallScreen({
+    callId,
+    peerUserId: callerId,
+    peerName: readStr(data.callerName) || 'Contact',
+    peerAvatar: readStr(data.callerAvatar),
+    type: isVideo ? 'video' : 'audio',
   });
   return true;
 }

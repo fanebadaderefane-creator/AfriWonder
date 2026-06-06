@@ -26,15 +26,27 @@ function isIceServerEntry(value: unknown): value is RTCIceServer {
   return row.urls != null;
 }
 
+function isTurnIceServer(entry: RTCIceServer): boolean {
+  const urls = Array.isArray(entry.urls) ? entry.urls : [entry.urls];
+  return urls.some((u) => {
+    const s = String(u).toLowerCase();
+    return s.startsWith('turn:') || s.startsWith('turns:');
+  });
+}
+
 /** Priorité : `iceServers` complet (Metered API) → legacy urls/username/credential. */
 export function parseTurnCredentialsResponse(data: unknown): ParsedTurnCredentials {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   const serverStun = readPublicStun(d);
 
-  if (d.turnConfigured === true && Array.isArray(d.iceServers) && d.iceServers.length > 0) {
+  if (Array.isArray(d.iceServers) && d.iceServers.length > 0) {
     const iceServers = d.iceServers.filter(isIceServerEntry);
     if (iceServers.length > 0) {
-      return { iceServers, turnConfigured: true };
+      const hasTurn = iceServers.some(isTurnIceServer);
+      if (d.turnConfigured === true || hasTurn) {
+        return { iceServers, turnConfigured: hasTurn };
+      }
+      return { iceServers, turnConfigured: false };
     }
   }
 

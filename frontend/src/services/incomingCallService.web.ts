@@ -22,3 +22,8 @@ export async function dismissIncomingCall(_callId: string): Promise<void> {
 export function wireIncomingCallSocket(): () => void {
   return () => {};
 }
+
+/** Android-only foreground service — no-op on web. */
+export async function startActiveCallForeground(_peerName: string, _isVideo: boolean): Promise<void> {}
+
+export async function stopActiveCallForeground(): Promise<void> {}

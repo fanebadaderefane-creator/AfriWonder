@@ -25,13 +25,14 @@ export function formatCallStatusLine(input: {
   if (!input.hasWebRtcSupport) {
     return 'Appel indisponible sur cet appareil.';
   }
-  if (input.errorMsg) return input.errorMsg;
   if (input.callState === 'ended') return 'Appel terminé';
 
   /** Chronomètre uniquement quand le média WebRTC est établi — pas au simple « décrochage » socket. */
   if (input.callState === 'connected') {
     return formatCallDurationMmSs(input.durationSeconds);
   }
+
+  if (input.errorMsg) return input.errorMsg;
 
   if (input.answered && input.callState === 'connecting') {
     return 'Connexion média…';

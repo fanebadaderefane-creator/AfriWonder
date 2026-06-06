@@ -35,4 +35,11 @@ describe('mobileDeepLink', () => {
       'afriwonder://hashtag/AfriWonder'
     );
   });
+
+  it('toAfriwonderResolveUrl maps legacy VideoView?id= links', () => {
+    expect(toAfriwonderResolveUrl('https://afri-wonder.vercel.app/VideoView?id=legacy-1')).toBe(
+      'afriwonder://video/legacy-1'
+    );
+    expect(toAfriwonderResolveUrl('/VideoView?id=legacy-2')).toBe('afriwonder://video/legacy-2');
+  });
 });

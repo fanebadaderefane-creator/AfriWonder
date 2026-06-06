@@ -2,8 +2,8 @@ import { getBackendOrigin } from './backendBase';
 import { stripTrailingSlash, stripApiSuffix } from '../utils/urlNormalize';
 
 /**
- * Si l’API est sur Render et la PWA sur Vercel, définir `EXPO_PUBLIC_PUBLIC_WEB_ORIGIN`
- * pour que les liens partagés ouvrent la vraie page web (même format que la PWA : `/VideoView?id=`).
+ * Liens partagés depuis l’app mobile → origine **PWA** (pas l’API Render seule).
+ * Définir `EXPO_PUBLIC_PUBLIC_WEB_ORIGIN` en build EAS si le domaine public diffère.
  */
 const DEFAULT_SHARE_WEB_ORIGIN_FALLBACK = 'https://afri-wonder.vercel.app';
 
@@ -18,13 +18,24 @@ function isLocalDevOrigin(origin: string): boolean {
   return false;
 }
 
+/** Hôte API sans interface web (ex. Render) — ne doit jamais servir de lien de partage. */
+export function isApiOnlyShareHost(origin: string): boolean {
+  try {
+    const host = new URL(normalizeWebOrigin(origin)).hostname.toLowerCase();
+    return host.endsWith('.onrender.com') || host === 'onrender.com';
+  } catch {
+    return false;
+  }
+}
+
 export function getPublicWebOrigin(): string {
   const explicit = process.env.EXPO_PUBLIC_PUBLIC_WEB_ORIGIN?.trim();
   if (explicit) return normalizeWebOrigin(explicit);
 
   const api = (getBackendOrigin() || '').trim();
-  if (api && !isLocalDevOrigin(api)) {
-    return normalizeWebOrigin(api);
+  const apiOrigin = api ? normalizeWebOrigin(api) : '';
+  if (apiOrigin && !isLocalDevOrigin(apiOrigin) && !isApiOnlyShareHost(apiOrigin)) {
+    return apiOrigin;
   }
 
   const fallbackEnv = process.env.EXPO_PUBLIC_SHARE_FALLBACK_ORIGIN?.trim();
@@ -33,13 +44,15 @@ export function getPublicWebOrigin(): string {
   return normalizeWebOrigin(DEFAULT_SHARE_WEB_ORIGIN_FALLBACK);
 }
 
-/** Lien page vidéo web (équivalent PWA `createPageUrl('VideoView') + ?id=`). */
+/** Lien canonique partage vidéo — `/watch/:id` (deep link mobile + PWA). */
 export function getVideoSharePageUrl(videoId: string): string {
   const base = getPublicWebOrigin();
-  return `${base}/VideoView?id=${encodeURIComponent(videoId)}`;
+  const id = encodeURIComponent(String(videoId || '').trim());
+  return `${base}/watch/${id}`;
 }
 
 /** Utilitaire testable : origine déjà connue. */
 export function buildVideoSharePageUrl(origin: string, videoId: string): string {
-  return `${normalizeWebOrigin(origin)}/VideoView?id=${encodeURIComponent(videoId)}`;
+  const id = encodeURIComponent(String(videoId || '').trim());
+  return `${normalizeWebOrigin(origin)}/watch/${id}`;
 }

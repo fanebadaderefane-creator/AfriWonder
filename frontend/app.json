@@ -27,12 +27,15 @@
           "remote-notification",
           "voip"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "itms-apps"
+        ]
       }
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 22,
+      "versionCode": 24,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -56,6 +59,8 @@
         "USE_FULL_SCREEN_INTENT",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_PHONE_CALL",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "FOREGROUND_SERVICE_CAMERA",
         "DISABLE_KEYGUARD",
         "TURN_SCREEN_ON",
         "MANAGE_OWN_CALLS"

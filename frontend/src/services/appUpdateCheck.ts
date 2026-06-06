@@ -1,10 +1,19 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+export const DEFAULT_SOFT_UPDATE_MESSAGE =
+  "Une nouvelle version d'AfriWonder est disponible. Veuillez mettre à jour l'application pour bénéficier des dernières fonctionnalités et améliorations.";
+
+export const DEFAULT_FORCE_UPDATE_MESSAGE =
+  "Cette version d'AfriWonder n'est plus supportée. Veuillez mettre à jour l'application pour continuer.";
+
 export type PlatformVersionPolicy = {
   min_version_code: number;
   latest_version_code: number;
   store_url: string;
+  update_message?: string;
+  force_update_message?: string;
+  use_play_in_app_update?: boolean;
 };
 
 export type AppVersionPolicyResponse = {
@@ -91,4 +100,22 @@ export function evaluateAppUpdate(
 export function nativePlatformForUpdate(): 'android' | 'ios' | null {
   if (Platform.OS === 'android' || Platform.OS === 'ios') return Platform.OS;
   return null;
+}
+
+export function resolveUpdateMessage(
+  kind: Exclude<AppUpdateKind, 'none'>,
+  policy: PlatformVersionPolicy | null,
+): string {
+  if (kind === 'force') {
+    return policy?.force_update_message?.trim() || DEFAULT_FORCE_UPDATE_MESSAGE;
+  }
+  return policy?.update_message?.trim() || DEFAULT_SOFT_UPDATE_MESSAGE;
+}
+
+export function shouldUsePlayInAppUpdate(
+  platform: 'android' | 'ios',
+  policy: PlatformVersionPolicy | null,
+): boolean {
+  if (platform !== 'android') return false;
+  return policy?.use_play_in_app_update !== false;
 }

@@ -17,9 +17,15 @@
  *    qui réveille la JS thread via headless task — à câbler avec votre backend Render.
  */
 import { Platform, AppState } from 'react-native';
-import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility, EventType } from '@notifee/react-native';
-import { router } from 'expo-router';
+import notifee, {
+  AndroidImportance,
+  AndroidCategory,
+  AndroidVisibility,
+  AndroidForegroundServiceType,
+  EventType,
+} from '@notifee/react-native';
 import { getCallKeep } from './callKeepIos';
+import { navigateToReceiverCallScreen } from '../call/openNativeCallScreen';
 import socketService from './socketService';
 import { devLog, devWarn } from '../utils/devLog';
 import { useAuthStore } from '../store/authStore';
@@ -28,6 +34,8 @@ import { buildCallDeclinePayload } from '../call/callSignalingPayload';
 
 const ANDROID_CHANNEL_ID = 'afriwonder-incoming-call';
 const ANDROID_CHANNEL_NAME = 'Appels entrants AfriWonder';
+const ANDROID_ACTIVE_CALL_CHANNEL_ID = 'afriwonder-active-call';
+const ANDROID_ACTIVE_CALL_NOTIF_ID = 'afriwonder-active-call-session';
 
 const IOS_CALLKEEP_OPTIONS = {
   ios: {
@@ -240,7 +248,7 @@ async function handleNotifeeEvent(type: EventType, detail: { notification?: any;
   if (type === EventType.ACTION_PRESS && actionId === 'decline_call') {
     await dismissIncomingCall(callId);
     if (myUserId && callerUserId) {
-      socketService.emit?.(
+      void socketService.ensureConnectedEmit(
         'call:decline',
         buildCallDeclinePayload({
           callId,
@@ -257,21 +265,13 @@ async function handleNotifeeEvent(type: EventType, detail: { notification?: any;
     type === EventType.PRESS
   ) {
     await dismissIncomingCall(callId);
-    try {
-      router.push({
-        pathname: '/messages/call',
-        params: {
-          callId,
-          peerId: callerUserId,
-          peerName: callerName,
-          peerAvatar: callerAvatar,
-          callType,
-          role: 'receiver',
-        },
-      } as never);
-    } catch {
-      /* router pas prêt */
-    }
+    navigateToReceiverCallScreen({
+      callId,
+      peerUserId: callerUserId,
+      peerName: callerName,
+      peerAvatar: callerAvatar,
+      type: callType,
+    });
   }
 }
 
@@ -280,21 +280,13 @@ function onCallKeepAnswer(callUUID: string) {
   pendingCalls.delete(callUUID);
   activeCallIds.delete(callUUID);
   if (!payload) return;
-  try {
-    router.push({
-      pathname: '/messages/call',
-      params: {
-        callId: callUUID,
-        peerId: payload.fromUserId,
-        peerName: payload.callerName,
-        peerAvatar: payload.callerAvatar || '',
-        callType: payload.type,
-        role: 'receiver',
-      },
-    } as never);
-  } catch {
-    /* ignore */
-  }
+  navigateToReceiverCallScreen({
+    callId: callUUID,
+    peerUserId: payload.fromUserId,
+    peerName: payload.callerName,
+    peerAvatar: payload.callerAvatar || '',
+    type: payload.type,
+  });
 }
 
 function onCallKeepEnd(callUUID: string) {
@@ -305,7 +297,7 @@ function onCallKeepEnd(callUUID: string) {
   const myUserId = String(useAuthStore.getState().user?.id || '');
   const callerUserId = String(payload.fromUserId || '');
   if (myUserId && callerUserId) {
-    socketService.emit?.(
+    void socketService.ensureConnectedEmit(
       'call:decline',
       buildCallDeclinePayload({
         callId: callUUID,
@@ -342,4 +334,49 @@ export function wireIncomingCallSocket(): () => void {
     });
   });
   return () => off?.();
+}
+
+/**
+ * Foreground service Android 14+ — garde le micro (et la caméra) actifs en arrière-plan.
+ */
+export async function startActiveCallForeground(peerName: string, isVideo: boolean): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await notifee.createChannel({
+      id: ANDROID_ACTIVE_CALL_CHANNEL_ID,
+      name: 'Appel en cours',
+      importance: AndroidImportance.LOW,
+    });
+    const fgTypes = isVideo
+      ? [
+          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
+        ]
+      : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE];
+    await notifee.displayNotification({
+      id: ANDROID_ACTIVE_CALL_NOTIF_ID,
+      title: 'Appel en cours',
+      body: peerName ? `Avec ${peerName}` : 'AfriWonder',
+      android: {
+        channelId: ANDROID_ACTIVE_CALL_CHANNEL_ID,
+        ongoing: true,
+        asForegroundService: true,
+        foregroundServiceTypes: fgTypes,
+        pressAction: { id: 'default' },
+        smallIcon: 'ic_notification',
+      },
+    });
+  } catch (e) {
+    devWarn('[IncomingCall] Active call foreground failed', e);
+  }
+}
+
+export async function stopActiveCallForeground(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await notifee.stopForegroundService();
+    await notifee.cancelNotification(ANDROID_ACTIVE_CALL_NOTIF_ID);
+  } catch {
+    /* ignore */
+  }
 }

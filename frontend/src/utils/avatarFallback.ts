@@ -35,8 +35,11 @@ export function uiAvatarFromSeed(seed: string): string {
 
 /** URL d’avatar profil : absolu si chemin relatif / URL, sinon initiales. */
 export function profileAvatarUri(raw: string | null | undefined, fallbackSeed?: string): string {
-  const abs = toAbsoluteMediaUrl(String(raw ?? '').trim()).trim();
-  if (abs) return abs;
+  const trimmed = String(raw ?? '').trim();
+  if (trimmed && !looksLikeUuid(trimmed)) {
+    const abs = toAbsoluteMediaUrl(trimmed).trim();
+    if (abs) return abs;
+  }
   const seed = String(fallbackSeed || 'User').trim();
   const safe = looksLikeUuid(seed) ? 'User' : seed;
   return uiAvatarFromSeed(safe);

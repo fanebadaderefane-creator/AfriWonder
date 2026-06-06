@@ -1,7 +1,7 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import { Platform } from 'react-native';
 import { RING_PULSE_MS, type CallRingPreset } from './callRingtoneTiming';
-import { startPulsedCallRingWeb } from './callRingtoneWeb';
+import { startPulsedCallRingWeb, stopAllWebCallRings } from './callRingtoneWeb';
 
 /** Sonnerie entrante WhatsApp : double chime (B5 → F#5), ~2 s. */
 const INCOMING_WAV = require('../../assets/sounds/incoming_call.wav');
@@ -134,4 +134,11 @@ export async function startLoopingCallRing(
  */
 export async function startOutgoingRingbackPattern(volume = 0.58): Promise<() => Promise<void>> {
   return startPulsedCallRing(volume, 'outgoing');
+}
+
+/** Arrête toutes les sonneries actives (web : overlay entrant + ringback). */
+export async function stopAllCallRings(): Promise<void> {
+  if (Platform.OS === 'web') {
+    await stopAllWebCallRings();
+  }
 }

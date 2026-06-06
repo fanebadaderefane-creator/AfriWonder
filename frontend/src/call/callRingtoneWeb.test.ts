@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveWebBundledSoundUri, startPulsedCallRingWeb } from './callRingtoneWeb';
+import {
+  resolveWebBundledSoundUri,
+  startPulsedCallRingWeb,
+  stopAllWebCallRings,
+} from './callRingtoneWeb';
 
 describe('resolveWebBundledSoundUri', () => {
   it('returns string modules as-is', () => {
@@ -27,8 +31,10 @@ describe('startPulsedCallRingWeb', () => {
       volume = 1;
       src = '';
       currentTime = 0;
+      srcObject: unknown = null;
       play = play;
       pause = pause;
+      removeAttribute = vi.fn();
       constructor(public uri: string) {
         this.src = uri;
       }
@@ -43,5 +49,28 @@ describe('startPulsedCallRingWeb', () => {
 
     await stop();
     expect(pause).toHaveBeenCalled();
+  });
+
+  it('stopAllWebCallRings stops every active ring', async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn();
+    class MockAudio {
+      volume = 1;
+      src = '';
+      currentTime = 0;
+      srcObject: unknown = null;
+      play = play;
+      pause = pause;
+      removeAttribute = vi.fn();
+      constructor(public uri: string) {
+        this.src = uri;
+      }
+    }
+    vi.stubGlobal('Audio', MockAudio as unknown as typeof Audio);
+
+    startPulsedCallRingWeb(0.5, 'incoming');
+    startPulsedCallRingWeb(0.5, 'outgoing');
+    await stopAllWebCallRings();
+    expect(pause.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildReceiverCallRouteParams,
   getNativeCallLaunchBlockReason,
   nativeCallLaunchBlockedMessage,
 } from './openNativeCallScreenLogic';
@@ -49,5 +50,21 @@ describe('openNativeCallScreen', () => {
   it('nativeCallLaunchBlockedMessage mentions Expo Go for missing module', () => {
     const msg = nativeCallLaunchBlockedMessage('no_webrtc_module');
     expect(msg.toLowerCase()).toContain('expo go');
+  });
+
+  it('buildReceiverCallRouteParams unifie peerId et otherUserId', () => {
+    const params = buildReceiverCallRouteParams({
+      callId: 'call-1',
+      peerUserId: 'user-b',
+      peerName: 'Ada',
+      peerAvatar: 'https://cdn/ava.jpg',
+      type: 'video',
+    });
+    expect(params.role).toBe('receiver');
+    expect(params.otherUserId).toBe('user-b');
+    expect(params.peerId).toBe('user-b');
+    expect(params.type).toBe('video');
+    expect(params.callType).toBe('video');
+    expect(params.name).toBe('Ada');
   });
 });

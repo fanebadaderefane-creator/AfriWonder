@@ -1,11 +1,21 @@
 import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo';
 import { featureFlags } from '../config/featureFlags';
+import { prepareCallSessionMemory } from './callSessionStability';
 import { isWebRtcRuntimeAvailable } from './tryLoadReactNativeWebRtc';
 import {
+  outboundVideoDowngradeMessage,
+  resolveOutboundCallTypeForNetwork,
+  type NetworkSnapshot,
+} from './callNetworkConfig';
+import {
+  buildReceiverCallRouteParams,
   getNativeCallLaunchBlockReason,
   nativeCallLaunchBlockedMessage,
+  type ReceiverCallScreenInput,
 } from './openNativeCallScreenLogic';
+import { primeWebCallMediaCapture } from './webCallMediaSession';
 
 export type { NativeCallLaunchBlockReason } from './openNativeCallScreenLogic';
 export { getNativeCallLaunchBlockReason, nativeCallLaunchBlockedMessage } from './openNativeCallScreenLogic';
@@ -16,6 +26,32 @@ export type OpenNativeCallScreenParams = {
   peerAvatar?: string;
   type: 'audio' | 'video';
 };
+
+async function fetchCallNetworkSnapshot(): Promise<NetworkSnapshot | null> {
+  try {
+    const st = await NetInfo.fetch();
+    const details = (st.details || {}) as { cellularGeneration?: string | null };
+    return { type: st.type, cellularGeneration: details.cellularGeneration };
+  } catch {
+    return null;
+  }
+}
+
+function pushCallerCallScreen(params: OpenNativeCallScreenParams, callType: 'audio' | 'video'): void {
+  if (Platform.OS === 'web') {
+    primeWebCallMediaCapture(callType === 'video');
+  }
+  router.push({
+    pathname: '/messages/call',
+    params: {
+      name: params.peerName,
+      avatar: params.peerAvatar || '',
+      type: callType,
+      otherUserId: String(params.peerUserId),
+      role: 'caller',
+    },
+  } as never);
+}
 
 /** Ouvre `/messages/call` ou affiche une alerte si l’appareil ne peut pas passer d’appel natif. */
 export function openNativeCallScreen(params: OpenNativeCallScreenParams): boolean {
@@ -29,15 +65,52 @@ export function openNativeCallScreen(params: OpenNativeCallScreenParams): boolea
     Alert.alert('Appel', nativeCallLaunchBlockedMessage(block));
     return false;
   }
-  router.push({
-    pathname: '/messages/call',
-    params: {
-      name: params.peerName,
-      avatar: params.peerAvatar || '',
-      type: params.type,
-      otherUserId: String(params.peerUserId),
-      role: 'caller',
-    },
-  } as never);
+  prepareCallSessionMemory();
+  void (async () => {
+    let callType = params.type;
+    if (params.type === 'video') {
+      const net = await fetchCallNetworkSnapshot();
+      const resolved = resolveOutboundCallTypeForNetwork('video', net);
+      callType = resolved.type;
+      const downgradeMsg = resolved.downgradedFromVideo ? outboundVideoDowngradeMessage(net) : null;
+      if (downgradeMsg) {
+        Alert.alert('Appel', downgradeMsg);
+      }
+    }
+    pushCallerCallScreen(params, callType);
+  })();
   return true;
+}
+
+export type { ReceiverCallScreenInput };
+
+/**
+ * Ouvre l’écran d’appel en tant que destinataire (overlay, CallKit, Notifee, push).
+ * Prépare la mémoire et pré-capture le micro web pendant le geste utilisateur.
+ */
+export function navigateToReceiverCallScreen(input: ReceiverCallScreenInput): void {
+  prepareCallSessionMemory();
+  void (async () => {
+    let callType = input.type;
+    if (input.type === 'video') {
+      const net = await fetchCallNetworkSnapshot();
+      const resolved = resolveOutboundCallTypeForNetwork('video', net);
+      callType = resolved.type;
+      const downgradeMsg = resolved.downgradedFromVideo ? outboundVideoDowngradeMessage(net) : null;
+      if (downgradeMsg) {
+        Alert.alert('Appel entrant', downgradeMsg);
+      }
+    }
+    if (Platform.OS === 'web') {
+      primeWebCallMediaCapture(callType === 'video');
+    }
+    try {
+      router.push({
+        pathname: '/messages/call',
+        params: buildReceiverCallRouteParams({ ...input, type: callType }),
+      } as never);
+    } catch {
+      /* router pas prêt (cold start push) */
+    }
+  })();
 }

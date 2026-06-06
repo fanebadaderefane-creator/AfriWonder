@@ -4,6 +4,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MessageBubbleMenuChevron } from '../components/messages/MessageContextMenu';
 import { FontSizes, Spacing } from '../theme/colors';
 import {
   callLogIconDirection,
@@ -20,6 +21,11 @@ export type CallLogBubbleProps = {
   viewerUserId: string;
   showTail?: boolean;
   onPress?: () => void;
+  onMenuPress?: () => void;
+  showMenuChevron?: boolean;
+  onHighlight?: () => void;
+  /** Sortie du survol (web) — le parent applique un délai avant de masquer le chevron. */
+  onHoverLeave?: () => void;
 };
 
 function CallLogIconBadge({
@@ -71,51 +77,74 @@ export function CallLogBubble({
   viewerUserId,
   showTail,
   onPress,
+  onMenuPress,
+  showMenuChevron = false,
+  onHighlight,
+  onHoverLeave,
 }: CallLogBubbleProps) {
   const titleIsAlert = callLogTitleIsAlert(callLog, viewerUserId);
   const canCallBack = titleIsAlert;
 
   return (
     <Pressable
-      onPress={onPress}
       style={[styles.messageRow, isMine && styles.messageRowMine]}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}${subtitle ? `. ${subtitle}` : ''}`}
+      onHoverIn={onHighlight}
+      onHoverOut={onHoverLeave}
     >
-      <View
-        style={[
-          styles.messageBubble,
-          styles.callLogBubble,
-          isMine ? styles.bubbleMine : styles.bubbleTheirs,
-          showTail && (isMine ? styles.tailMine : styles.tailTheirs),
-        ]}
-      >
-        <View style={styles.callLogBubbleInner}>
-          <CallLogIconBadge callLog={callLog} viewerUserId={viewerUserId} isMine={isMine} />
-          <View style={styles.callLogTextWrap}>
-            <Text
-              style={[
-                styles.callLogTitle,
-                titleIsAlert && styles.callLogTitleAlert,
-              ]}
-            >
-              {title}
-            </Text>
-            {subtitle ? (
+      {/* Conteneur positionné : le chevron est un FRÈRE de la bulle (pas un <button> imbriqué). */}
+      <View style={styles.callLogBubbleWrap}>
+        <Pressable
+          style={[
+            styles.messageBubble,
+            styles.callLogBubble,
+            isMine ? styles.bubbleMine : styles.bubbleTheirs,
+            showTail && (isMine ? styles.tailMine : styles.tailTheirs),
+            showMenuChevron && styles.callLogBubbleMenuActive,
+          ]}
+          onPress={() => {
+            onHighlight?.();
+            onPress?.();
+          }}
+          onLongPress={onMenuPress}
+          delayLongPress={300}
+          accessibilityRole="button"
+          accessibilityLabel={`${title}${subtitle ? `. ${subtitle}` : ''}`}
+        >
+          <View style={styles.callLogBubbleInner}>
+            <CallLogIconBadge callLog={callLog} viewerUserId={viewerUserId} isMine={isMine} />
+            <View style={styles.callLogTextWrap}>
               <Text
                 style={[
-                  styles.callLogSubtitle,
-                  canCallBack && styles.callLogSubtitleAction,
+                  styles.callLogTitle,
+                  titleIsAlert && styles.callLogTitleAlert,
                 ]}
               >
-                {subtitle}
+                {title}
               </Text>
-            ) : null}
+              {subtitle ? (
+                <Text
+                  style={[
+                    styles.callLogSubtitle,
+                    canCallBack && styles.callLogSubtitleAction,
+                  ]}
+                >
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
-        <View style={styles.msgTimeRow}>
-          <Text style={styles.msgTimeText}>{time}</Text>
-        </View>
+          <View style={styles.msgTimeRow}>
+            <Text style={styles.msgTimeText}>{time}</Text>
+          </View>
+        </Pressable>
+        {onMenuPress ? (
+          <MessageBubbleMenuChevron
+            isMine={isMine}
+            visible={showMenuChevron}
+            onPress={onMenuPress}
+            onPointerDown={onHighlight}
+          />
+        ) : null}
       </View>
     </Pressable>
   );
@@ -124,18 +153,21 @@ export function CallLogBubble({
 const styles = StyleSheet.create({
   messageRow: { flexDirection: 'row', marginBottom: 2 },
   messageRowMine: { justifyContent: 'flex-end' },
+  callLogBubbleWrap: { position: 'relative', maxWidth: '80%' },
   messageBubble: {
     maxWidth: '80%',
     borderRadius: 8,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
     paddingBottom: 4,
+    position: 'relative',
   },
   bubbleMine: { backgroundColor: '#005C4B', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   bubbleTheirs: { backgroundColor: '#1F2C34', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   tailMine: { borderTopRightRadius: 0 },
   tailTheirs: { borderTopLeftRadius: 0 },
   callLogBubble: { minWidth: 188, paddingBottom: 6 },
+  callLogBubbleMenuActive: { paddingRight: 28 },
   callLogBubbleInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconCircle: {
     width: 44,

@@ -30,7 +30,7 @@ describe('formatCallStatusLine', () => {
     ).toBe('Appel indisponible sur cet appareil.');
   });
 
-  it('priorise le message d’erreur', () => {
+  it('priorise le message d’erreur sauf une fois connecté', () => {
     expect(
       formatCallStatusLine({
         ...base,
@@ -38,6 +38,14 @@ describe('formatCallStatusLine', () => {
         callState: 'ringing',
       }),
     ).toBe('Pas de réponse.');
+    expect(
+      formatCallStatusLine({
+        ...base,
+        errorMsg: 'Connexion lente…',
+        callState: 'connected',
+        durationSeconds: 79,
+      }),
+    ).toBe('01:19');
   });
 
   it('sonnerie : en ligne → Appel en cours, hors ligne → Appel', () => {

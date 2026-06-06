@@ -33,6 +33,74 @@ export function isCellularNetwork(net: NetworkSnapshot | null | undefined): bool
   return String(net?.type || '').toLowerCase() === 'cellular';
 }
 
+/** 2G ou 3G opérateur — profils bas débit et délais ICE plus longs. */
+export function isSlowCellularNetwork(net: NetworkSnapshot | null | undefined): boolean {
+  if (!isCellularNetwork(net)) return false;
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  return gen === '2g' || gen === '3g';
+}
+
+/** Bitrate Opus vocal (bps) — 2G très bas, 3G intermédiaire, sinon standard VoIP. */
+export const VOICE_OPUS_BITRATE_2G = 16_000;
+export const VOICE_OPUS_BITRATE_3G = 24_000;
+export const VOICE_OPUS_BITRATE_DEFAULT = 32_000;
+
+export function pickVoiceOpusBitrateForNetwork(net: NetworkSnapshot | null | undefined): number {
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(net) && gen === '2g') return VOICE_OPUS_BITRATE_2G;
+  if (isCellularNetwork(net) && gen === '3g') return VOICE_OPUS_BITRATE_3G;
+  return VOICE_OPUS_BITRATE_DEFAULT;
+}
+
+/** Watchdog « connexion média » — TURN + 2G/3G nécessitent plus de temps qu’en Wi‑Fi. */
+export function callConnectionWatchdogMs(net: NetworkSnapshot | null | undefined): number {
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(net) && gen === '2g') return 90_000;
+  if (isCellularNetwork(net) && gen === '3g') return 75_000;
+  return 60_000;
+}
+
+/** Délai avant message « connexion lente » après acceptation. */
+export function callMediaReadyHintMs(net: NetworkSnapshot | null | undefined): number {
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(net) && gen === '2g') return 35_000;
+  if (isCellularNetwork(net) && gen === '3g') return 28_000;
+  return 20_000;
+}
+
+/**
+ * Appel sortant vidéo sur 2G → vocal automatique (vidéo instable / échec fréquent).
+ * 3G conserve la vidéo avec profil basse qualité (`pickVideoProfileForNetwork`).
+ */
+export function resolveOutboundCallTypeForNetwork(
+  requested: 'audio' | 'video',
+  net: NetworkSnapshot | null | undefined,
+): { type: 'audio' | 'video'; downgradedFromVideo: boolean } {
+  if (requested !== 'video') return { type: requested, downgradedFromVideo: false };
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(net) && gen === '2g') {
+    return { type: 'audio', downgradedFromVideo: true };
+  }
+  return { type: 'video', downgradedFromVideo: false };
+}
+
+export function outboundVideoDowngradeMessage(net: NetworkSnapshot | null | undefined): string | null {
+  const gen = String(net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(net) && gen === '2g') {
+    return 'Réseau 2G détecté : l’appel démarre en mode vocal pour une meilleure stabilité.';
+  }
+  return null;
+}
+
+/** Sans TURN, le cellulaire Afrique (CGNAT) ne passe presque jamais l’audio — web inclus. */
+export function shouldBlockCellularWithoutTurn(input: {
+  turnConfigured: boolean;
+  net: NetworkSnapshot | null | undefined;
+}): boolean {
+  if (input.turnConfigured) return false;
+  return isCellularNetwork(input.net);
+}
+
 /**
  * Qualité vidéo selon le réseau. 2G/3G → basse, 4G → moyenne, Wi‑Fi/Ethernet → HD.
  * Cellulaire de génération inconnue → moyenne (prudent). Tout le reste → moyenne.
@@ -53,19 +121,17 @@ export function pickVideoProfileForNetwork(net: NetworkSnapshot | null | undefin
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
- * - Web : jamais (le navigateur gère bien le P2P + relais auto).
- * - Mobile + TURN configuré + **cellulaire** : OUI — sur CGNAT mobile, tenter le direct
- *   gaspille un temps précieux (et de la data 2G/3G) avant de retomber sur TURN.
- * - Mobile + TURN configuré + Wi‑Fi : non (le direct fonctionne, TURN reste candidat de secours).
- * - TURN non configuré : impossible de forcer le relais (aucun relais disponible).
+ * **Natif** : relais obligatoire si TURN configuré (CGNAT opérateurs Afrique).
+ * **Web Wi‑Fi** : ICE direct + STUN (dev local / Firefox).
+ * **Web cellulaire** : relais TURN si configuré (même contrainte CGNAT qu’en natif).
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
   isWeb: boolean;
-  net: NetworkSnapshot | null | undefined;
+  net?: NetworkSnapshot | null | undefined;
 }): boolean {
-  if (input.isWeb) return false;
   if (!input.turnConfigured) return false;
+  if (!input.isWeb) return true;
   return isCellularNetwork(input.net);
 }
 
@@ -76,6 +142,25 @@ export function buildCallIceConfig(input: {
   isWeb: boolean;
   net: NetworkSnapshot | null | undefined;
 }): RTCConfiguration {
+  if (input.isWeb) {
+    const webConfig: RTCConfiguration = {
+      iceServers: input.iceServers.slice(0, 4),
+      iceCandidatePoolSize: 4,
+      bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+      rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+    };
+    if (
+      shouldForceTurnRelay({
+        turnConfigured: input.turnConfigured,
+        isWeb: true,
+        net: input.net,
+      })
+    ) {
+      webConfig.iceTransportPolicy = 'relay';
+    }
+    return webConfig;
+  }
+
   const config: RTCConfiguration = {
     iceServers: input.iceServers,
     iceCandidatePoolSize: 8,

@@ -31,11 +31,13 @@ import {
   loadInboxConversationsCache,
   saveInboxConversationsCache,
 } from '../../src/messages/inboxConversationsCache';
+import { shouldApplyServerInboxList } from '../../src/messages/dmInboxPersistence';
 import { alertDmAccessDenied, isDmAccessDeniedError } from '../../src/messages/dmAccess';
 import { mapApiGroupToInboxRow, mergeInboxDmAndGroups } from '../../src/messages/mergeInboxGroups';
 import { isGroupSocketEnvelope } from '../../src/messages/dmThreadApi';
 import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
 import { fetchPeerPresenceOnlineMap } from '../../src/messages/fetchPeerPresenceBatch';
+import { openNativeCallScreen } from '../../src/call/openNativeCallScreen';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
@@ -289,10 +291,17 @@ export default function MessagesListScreen() {
       const groupRows = apiGroups.map((g: Record<string, unknown>) =>
         mapApiGroupToInboxRow(g as Parameters<typeof mapApiGroupToInboxRow>[0], formatTimeAgo, currentUser?.id),
       );
-      setConversations(sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows)));
-      void saveInboxConversationsCache(
-        sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows)),
-      );
+      const merged = sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows));
+      const cached = await loadInboxConversationsCache();
+      if (shouldApplyServerInboxList(merged.length, cached.length)) {
+        setConversations(merged);
+        void saveInboxConversationsCache(merged);
+      } else {
+        devLog('[inbox] API conversations vide — conservation du cache local', {
+          cached: cached.length,
+        });
+        setConversations(cached);
+      }
 
       /** Présence peers 1-1 en une requête batch (évite N× GET → 429). */
       const peerIds = transformed
@@ -928,16 +937,12 @@ export default function MessagesListScreen() {
                   activeOpacity={0.7}
                   onPress={() => {
                     if (!item.peer.id) return;
-                    router.push({
-                      pathname: '/messages/call',
-                      params: {
-                        peerId: item.peer.id,
-                        peerName: item.peer.name,
-                        peerAvatar: item.peer.avatar || '',
-                        callType: item.type,
-                        role: 'caller',
-                      },
-                    } as never);
+                    openNativeCallScreen({
+                      peerUserId: item.peer.id,
+                      peerName: item.peer.name,
+                      peerAvatar: item.peer.avatar || '',
+                      type: item.type,
+                    });
                   }}
                 >
                   <Image source={{ uri: avatar }} style={styles.callAvatar} />
@@ -959,16 +964,12 @@ export default function MessagesListScreen() {
                     onPress={(e) => {
                       e.stopPropagation();
                       if (!item.peer.id) return;
-                      router.push({
-                        pathname: '/messages/call',
-                        params: {
-                          peerId: item.peer.id,
-                          peerName: item.peer.name,
-                          peerAvatar: item.peer.avatar || '',
-                          callType: item.type,
-                          role: 'caller',
-                        },
-                      } as never);
+                      openNativeCallScreen({
+                        peerUserId: item.peer.id,
+                        peerName: item.peer.name,
+                        peerAvatar: item.peer.avatar || '',
+                        type: item.type,
+                      });
                     }}
                   >
                     <Ionicons

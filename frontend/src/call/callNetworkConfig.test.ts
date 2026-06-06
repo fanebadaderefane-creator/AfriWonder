@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   VIDEO_PROFILES,
+  VOICE_OPUS_BITRATE_2G,
+  VOICE_OPUS_BITRATE_3G,
+  VOICE_OPUS_BITRATE_DEFAULT,
   buildCallIceConfig,
+  callConnectionWatchdogMs,
+  callMediaReadyHintMs,
   isCellularNetwork,
+  isSlowCellularNetwork,
+  outboundVideoDowngradeMessage,
   pickVideoProfileForNetwork,
+  pickVoiceOpusBitrateForNetwork,
+  resolveOutboundCallTypeForNetwork,
+  shouldBlockCellularWithoutTurn,
   shouldForceTurnRelay,
 } from './callNetworkConfig';
 
@@ -65,47 +75,105 @@ describe('pickVideoProfileForNetwork — Afrique 2G/3G/4G', () => {
   });
 });
 
-describe('shouldForceTurnRelay — CGNAT mobile Afrique', () => {
-  it('cellulaire (2G/3G/4G) + TURN → force le relais', () => {
-    for (const gen of ['2g', '3g', '4g']) {
-      expect(
-        shouldForceTurnRelay({
-          turnConfigured: true,
-          isWeb: false,
-          net: { type: 'cellular', cellularGeneration: gen },
-        }),
-      ).toBe(true);
-    }
+describe('shouldForceTurnRelay — CGNAT Afrique', () => {
+  it('TURN configuré → relais forcé sur natif et web cellulaire', () => {
+    expect(
+      shouldForceTurnRelay({
+        turnConfigured: true,
+        isWeb: false,
+        net: { type: 'cellular', cellularGeneration: '3g' },
+      }),
+    ).toBe(true);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
+    ).toBe(true);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
+    ).toBe(true);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'wifi' } }),
+    ).toBe(false);
   });
-  it('cellulaire SANS TURN → ne force pas (aucun relais disponible)', () => {
+  it('sans TURN → pas de relais forcé', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: false, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(false);
   });
-  it('Wi‑Fi + TURN → ne force pas (direct fonctionne)', () => {
-    expect(
-      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
-    ).toBe(false);
+});
+
+describe('réseaux lents 2G/3G — vocal et délais', () => {
+  it('isSlowCellularNetwork', () => {
+    expect(isSlowCellularNetwork({ type: 'cellular', cellularGeneration: '2g' })).toBe(true);
+    expect(isSlowCellularNetwork({ type: 'cellular', cellularGeneration: '3g' })).toBe(true);
+    expect(isSlowCellularNetwork({ type: 'cellular', cellularGeneration: '4g' })).toBe(false);
+    expect(isSlowCellularNetwork({ type: 'wifi' })).toBe(false);
   });
-  it('web → jamais de relais forcé', () => {
+  it('pickVoiceOpusBitrateForNetwork', () => {
+    expect(pickVoiceOpusBitrateForNetwork({ type: 'cellular', cellularGeneration: '2g' })).toBe(
+      VOICE_OPUS_BITRATE_2G,
+    );
+    expect(pickVoiceOpusBitrateForNetwork({ type: 'cellular', cellularGeneration: '3g' })).toBe(
+      VOICE_OPUS_BITRATE_3G,
+    );
+    expect(pickVoiceOpusBitrateForNetwork({ type: 'wifi' })).toBe(VOICE_OPUS_BITRATE_DEFAULT);
+  });
+  it('délais ICE plus longs sur 2G/3G', () => {
+    expect(callConnectionWatchdogMs({ type: 'cellular', cellularGeneration: '2g' })).toBe(90_000);
+    expect(callConnectionWatchdogMs({ type: 'cellular', cellularGeneration: '3g' })).toBe(75_000);
+    expect(callConnectionWatchdogMs({ type: 'wifi' })).toBe(60_000);
+    expect(callMediaReadyHintMs({ type: 'cellular', cellularGeneration: '2g' })).toBe(35_000);
+    expect(callMediaReadyHintMs({ type: 'cellular', cellularGeneration: '3g' })).toBe(28_000);
+  });
+  it('resolveOutboundCallTypeForNetwork — 2G vidéo → vocal', () => {
     expect(
-      shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
+      resolveOutboundCallTypeForNetwork('video', { type: 'cellular', cellularGeneration: '2g' }),
+    ).toEqual({ type: 'audio', downgradedFromVideo: true });
+    expect(
+      resolveOutboundCallTypeForNetwork('video', { type: 'cellular', cellularGeneration: '3g' }),
+    ).toEqual({ type: 'video', downgradedFromVideo: false });
+    expect(resolveOutboundCallTypeForNetwork('audio', { type: 'cellular', cellularGeneration: '2g' })).toEqual({
+      type: 'audio',
+      downgradedFromVideo: false,
+    });
+  });
+  it('outboundVideoDowngradeMessage sur 2G uniquement', () => {
+    expect(outboundVideoDowngradeMessage({ type: 'cellular', cellularGeneration: '2g' })).toContain('2G');
+    expect(outboundVideoDowngradeMessage({ type: 'cellular', cellularGeneration: '3g' })).toBeNull();
+  });
+  it('shouldBlockCellularWithoutTurn — web et natif', () => {
+    expect(
+      shouldBlockCellularWithoutTurn({
+        turnConfigured: false,
+        net: { type: 'cellular', cellularGeneration: '3g' },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockCellularWithoutTurn({ turnConfigured: true, net: { type: 'cellular' } }),
     ).toBe(false);
+    expect(shouldBlockCellularWithoutTurn({ turnConfigured: false, net: { type: 'wifi' } })).toBe(false);
   });
 });
 
 describe('buildCallIceConfig', () => {
-  it('cellulaire + TURN → iceTransportPolicy relay + serveurs TURN', () => {
-    const cfg = buildCallIceConfig({
+  it('TURN configuré → relay sur natif, ICE léger sur web', () => {
+    const mobile = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: false,
       net: { type: 'cellular', cellularGeneration: '3g' },
     });
-    expect(cfg.iceTransportPolicy).toBe('relay');
-    expect(cfg.iceServers).toBe(TURN);
-    expect(cfg.bundlePolicy).toBe('max-bundle');
-    expect(cfg.rtcpMuxPolicy).toBe('require');
+    expect(mobile.iceTransportPolicy).toBe('relay');
+
+    const web = buildCallIceConfig({
+      iceServers: TURN,
+      turnConfigured: true,
+      isWeb: true,
+      net: { type: 'wifi' },
+    });
+    expect(web.iceTransportPolicy).toBeUndefined();
+    expect(web.iceCandidatePoolSize).toBe(4);
+    expect(web.bundlePolicy).toBe('max-bundle');
+    expect(web.rtcpMuxPolicy).toBe('require');
   });
 
   it('cellulaire SANS TURN → pas de relay forcé (STUN seul, tente tout)', () => {
@@ -118,22 +186,32 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
-  it('Wi‑Fi + TURN → pas de relay forcé (TURN reste candidat de secours)', () => {
+  it('Wi‑Fi + TURN → relay forcé aussi', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: false,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBeUndefined();
+    expect(cfg.iceTransportPolicy).toBe('relay');
   });
 
-  it('web → jamais de relay forcé', () => {
+  it('web + TURN + cellulaire → relay forcé', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: true,
-      net: { type: 'cellular' },
+      net: { type: 'cellular', cellularGeneration: '3g' },
+    });
+    expect(cfg.iceTransportPolicy).toBe('relay');
+  });
+
+  it('web + TURN + Wi‑Fi → pas de relay forcé', () => {
+    const cfg = buildCallIceConfig({
+      iceServers: TURN,
+      turnConfigured: true,
+      isWeb: true,
+      net: { type: 'wifi' },
     });
     expect(cfg.iceTransportPolicy).toBeUndefined();
   });

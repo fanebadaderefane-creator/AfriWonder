@@ -146,6 +146,12 @@ function checkStaticModulesAndFiles() {
 
 function checkStaticInvariants() {
   section('3/6 Invariants signalisation / DM / WebRTC');
+  const signalingRule = path.join(FRONTEND_ROOT, '..', '.cursor', 'rules', 'call-signaling-locked.mdc');
+  if (fs.existsSync(signalingRule)) {
+    pass('invariants', 'Règle Cursor call-signaling-locked.mdc présente');
+  } else {
+    fail('invariants', 'Règle Cursor call-signaling-locked.mdc manquante');
+  }
 
   const overlay = read('src/components/call/IncomingCallOverlay.native.tsx');
   if (/ensureConnectedEmit\s*\(\s*['"]call:accept['"]/.test(overlay)) {
@@ -175,22 +181,70 @@ function checkStaticInvariants() {
     fail('invariants', 'shouldMarkCallConnected manquant — risque faux « connecté »');
   }
 
-  if (callTsx.includes('remoteStreamUrl && RTCViewNative') && callTsx.includes('remote-video-${remoteStreamKey}')) {
-    pass('invariants', 'Vidéo native : RTCView distant monté + remoteStreamKey');
+  if (
+    callTsx.includes('SafeNativeRtcView')
+    && callTsx.includes('remote-video-${remoteStreamKey}')
+    && callTsx.includes('showNativeRemoteRtc')
+  ) {
+    pass('invariants', 'Vidéo native : SafeNativeRtcView distant + remoteStreamKey');
   } else {
-    fail('invariants', 'RTCView vidéo distant / remoteStreamKey incomplet');
+    fail('invariants', 'SafeNativeRtcView vidéo distant / remoteStreamKey incomplet');
   }
 
-  if (callTsx.includes('hiddenRemoteRtc') && callTsx.includes('RTCViewNative')) {
-    pass('invariants', 'Appel audio natif : RTCView caché présent');
+  if (
+    callTsx.includes('hiddenRemoteRtc')
+    && callTsx.includes('SafeNativeRtcView')
+    && callTsx.includes('remote-audio-${remoteStreamKey}')
+  ) {
+    pass('invariants', 'Appel audio natif : SafeNativeRtcView caché présent');
   } else {
-    fail('invariants', 'RTCView caché manquant pour audio natif');
+    fail('invariants', 'SafeNativeRtcView caché manquant pour audio natif');
   }
 
   if (callTsx.includes('handlePeerAccepted') && callTsx.includes('callerOfferSentRef')) {
     pass('invariants', 'Appelant attend call:accept avant offre SDP');
   } else {
     fail('invariants', 'Ordre signalisation appelant incorrect');
+  }
+
+  if (
+    callTsx.includes('pickOutboundCallSdp')
+    && callTsx.includes('sendSdpFromPeerConnection')
+    && callTsx.includes('normalizeInboundCallSignal')
+    && callTsx.includes('enqueueSignal')
+  ) {
+    pass('invariants', 'Signalisation SDP robuste (web + Android + iOS)');
+  } else {
+    fail('invariants', 'Signalisation SDP robuste incomplète');
+  }
+
+  if (callTsx.includes('shouldResendCallerOffer') && callTsx.includes('sdp_resend_offer')) {
+    pass('invariants', 'Réémission offre si réponse SDP perdue');
+  } else {
+    fail('invariants', 'Réémission offre SDP manquante');
+  }
+
+  const crashRule = path.join(FRONTEND_ROOT, '..', '.cursor', 'rules', 'call-native-crash-locked.mdc');
+  if (fs.existsSync(crashRule)) {
+    pass('invariants', 'Règle Cursor call-native-crash-locked.mdc présente');
+  } else {
+    fail('invariants', 'Règle Cursor call-native-crash-locked.mdc manquante');
+  }
+
+  if (
+    callTsx.includes('scheduleStopAllMedia')
+    && callTsx.includes('nativeRtcUnmounting')
+    && callTsx.includes('shouldBlockNativeRtcUrlUpdate')
+  ) {
+    pass('invariants', 'Anti-crash RTCView : teardown différé + démontage avant PC.close');
+  } else {
+    fail('invariants', 'Anti-crash RTCView incomplet (scheduleStopAllMedia / nativeRtcUnmounting)');
+  }
+
+  if (callTsx.includes('CallScreenErrorBoundary')) {
+    pass('invariants', 'CallScreenErrorBoundary enveloppe l’écran d’appel');
+  } else {
+    fail('invariants', 'CallScreenErrorBoundary manquant sur call.tsx');
   }
 
   const dmR2 = read('src/messages/dmDirectR2Upload.ts');
@@ -215,6 +269,12 @@ function checkStaticInvariants() {
     pass('invariants', 'DM media : validation persistance serveur');
   } else {
     fail('invariants', 'sendDmOutboundMedia : validations persistance manquantes');
+  }
+
+  if (fs.existsSync(path.join(FRONTEND_ROOT, 'src', 'messages', 'dmInboxPersistence.ts'))) {
+    pass('invariants', 'dmInboxPersistence — garde cache si API vide');
+  } else {
+    fail('invariants', 'dmInboxPersistence manquant');
   }
 
   if (
@@ -266,6 +326,11 @@ function checkScripts() {
     pass('scripts', 'verify-expo-filesystem-imports');
   } else {
     fail('scripts', 'verify-expo-filesystem-imports');
+  }
+  if (run('node', [path.join(__dirname, 'verify-prod-crash-safety.cjs')])) {
+    pass('scripts', 'verify-prod-crash-safety');
+  } else {
+    fail('scripts', 'verify-prod-crash-safety');
   }
 }
 

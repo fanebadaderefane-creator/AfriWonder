@@ -40,9 +40,19 @@ export async function loadInboxConversationsCache(): Promise<CachedInboxConversa
   }
 }
 
-export async function saveInboxConversationsCache(list: CachedInboxConversation[]): Promise<void> {
+export type SaveInboxCacheOptions = {
+  /** true seulement si l’utilisateur a vraiment zéro discussion (pas une réponse API vide erronée). */
+  allowClear?: boolean;
+};
+
+export async function saveInboxConversationsCache(
+  list: CachedInboxConversation[],
+  options?: SaveInboxCacheOptions,
+): Promise<void> {
   if (list.length === 0) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    if (options?.allowClear) {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    }
     return;
   }
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_CONVERSATIONS)));

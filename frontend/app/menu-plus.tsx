@@ -1,13 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Pressable,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +17,8 @@ import { useAuthStore } from '../src/store/authStore';
 import { goBackOrFallback } from '../src/utils/goBack';
 import { featureFlags } from '../src/config/featureFlags';
 import { safeRouterPush } from '../src/utils/safeRouter';
+import { trimMobileAppCaches } from '../src/lib/mobileMemoryMaintenance';
+import { MenuPlusErrorBoundary } from '../src/components/menu/MenuPlusErrorBoundary';
 
 const SUPER_ADMIN_EMAIL = (
   process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
@@ -142,10 +145,16 @@ const MENU_SECTIONS: MenuSection[] = [
   },
 ];
 
-export default function MenuPlusScreen() {
+function MenuPlusScreenInner() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const showAdmin = isAdminUser(user);
+
+  useFocusEffect(
+    useCallback(() => {
+      trimMobileAppCaches('menu-plus-focus');
+    }, []),
+  );
 
   const sections = useMemo(
     () =>
@@ -189,7 +198,7 @@ export default function MenuPlusScreen() {
             <View style={styles.profileRow}>
               <View style={styles.avatarRing}>
                 {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                  <Image source={{ uri: avatarUri }} style={styles.avatar} cachePolicy="memory-disk" recyclingKey={avatarUri} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarFallback]}>
                     <Text style={styles.avatarLetter}>{displayName[0]?.toUpperCase() || 'U'}</Text>
@@ -261,6 +270,14 @@ export default function MenuPlusScreen() {
         <Text style={styles.footerMuted}>Made in Mali</Text>
       </ScrollView>
     </View>
+  );
+}
+
+export default function MenuPlusScreen() {
+  return (
+    <MenuPlusErrorBoundary>
+      <MenuPlusScreenInner />
+    </MenuPlusErrorBoundary>
   );
 }
 

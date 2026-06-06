@@ -11,7 +11,6 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AnimatedRe, {
@@ -24,14 +23,15 @@ import socketService from '../../services/socketService';
 import { useAuthStore } from '../../store/authStore';
 import { featureFlags } from '../../config/featureFlags';
 import { INCOMING_CALL_RING_VOLUME, startIncomingCallVibration } from '../../call/callIncomingAlerts';
-import { startLoopingCallRing } from '../../call/callRingtone';
-import { buildCallDeclinePayload } from '../../call/callSignalingPayload';
+import { startLoopingCallRing, stopAllCallRings } from '../../call/callRingtone';
+import { buildCallDeclinePayload, callUserIdsEqual } from '../../call/callSignalingPayload';
 import { dismissIncomingCall } from '../../services/incomingCallService';
 import { profileAvatarUri } from '../../utils/avatarFallback';
 import apiClient from '../../api/client';
 import { getAlertMessageForCaughtError } from '../../utils/userFacingError';
 import { useToast } from '../common/ToastProvider';
 import { IncomingCallQuickReplyPanel } from './IncomingCallQuickReplyPanel';
+import { navigateToReceiverCallScreen } from '../../call/openNativeCallScreen';
 
 /**
  * Appel entrant plein écran (Refuser · balayer pour accepter · Message avec réponses rapides).
@@ -65,6 +65,16 @@ export function IncomingCallOverlay() {
   const dragY = useSharedValue(0);
   const pulse = useRef(new Animated.Value(1)).current;
   const acceptingRef = useRef(false);
+  const stopRingRef = useRef<(() => Promise<void>) | null>(null);
+  const stopVibrationRef = useRef<(() => void) | null>(null);
+
+  const stopIncomingRing = useCallback(async () => {
+    await stopRingRef.current?.();
+    stopRingRef.current = null;
+    stopVibrationRef.current?.();
+    stopVibrationRef.current = null;
+    await stopAllCallRings();
+  }, []);
 
   const dismissIncomingUi = useCallback(() => {
     setIncoming(null);
@@ -78,7 +88,7 @@ export function IncomingCallOverlay() {
     if (!featureFlags.callsOnNative) return;
 
     const onInvite = (payload: IncomingCall) => {
-      if (!payload || payload.toUserId !== myUserId) return;
+      if (!payload || !callUserIdsEqual(payload.toUserId, myUserId)) return;
       setIncoming(payload);
       setShowQuickReplies(false);
       setShowCustomMessage(false);
@@ -119,17 +129,24 @@ export function IncomingCallOverlay() {
   }, [incoming?.callId]);
 
   useEffect(() => {
-    if (!incoming?.callId) return;
-    let stopRing: (() => Promise<void>) | null = null;
-    const stopVibration = startIncomingCallVibration();
-    void (async () => {
-      stopRing = await startLoopingCallRing(INCOMING_CALL_RING_VOLUME, { preset: 'incoming' });
-    })();
+    if (!incoming?.callId) {
+      void stopIncomingRing();
+      return;
+    }
+    let disposed = false;
+    stopVibrationRef.current = startIncomingCallVibration();
+    void startLoopingCallRing(INCOMING_CALL_RING_VOLUME, { preset: 'incoming' }).then((stop) => {
+      if (disposed) {
+        void stop();
+        return;
+      }
+      stopRingRef.current = stop;
+    });
     return () => {
-      void stopRing?.();
-      stopVibration();
+      disposed = true;
+      void stopIncomingRing();
     };
-  }, [incoming?.callId]);
+  }, [incoming?.callId, stopIncomingRing]);
 
   const accept = useCallback(async () => {
     if (acceptingRef.current) return;
@@ -138,29 +155,29 @@ export function IncomingCallOverlay() {
     acceptingRef.current = true;
     try {
       /**
-       * Ne pas émettre `call:accept` ici : l’offre SDP part côté appelant dès l’accept.
-       * L’écran `/messages/call` monte d’abord la PeerConnection puis envoie l’accept (évite perte SDP / silence audio).
+       * ⛔ VERROUILLÉ — Ne pas émettre `call:accept` ici (régression silence + SDP perdu).
+       * L’appelant envoie l’offre dès accept : le receveur doit avoir monté sa PeerConnection avant.
+       * `call:accept` est émis uniquement dans `call.tsx` après getUserMedia.
+       * Règle : `.cursor/rules/call-signaling-locked.mdc`
        */
+      await stopIncomingRing();
       dismissIncomingUi();
       void dismissIncomingCall(c.callId);
-      router.push({
-        pathname: '/messages/call' as never,
-        params: {
-          callId: c.callId,
-          peerId: c.fromUserId,
-          peerName: c.callerName || 'Contact',
-          peerAvatar: c.callerAvatar || '',
-          callType: c.type,
-          role: 'receiver',
-        } as never,
+      navigateToReceiverCallScreen({
+        callId: c.callId,
+        peerUserId: c.fromUserId,
+        peerName: c.callerName || 'Contact',
+        peerAvatar: c.callerAvatar || '',
+        type: c.type,
       });
     } finally {
       acceptingRef.current = false;
     }
-  }, [dismissIncomingUi, myUserId]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing]);
 
   const decline = useCallback(async () => {
     const c = incomingRef.current;
+    await stopIncomingRing();
     dismissIncomingUi();
     if (c) void dismissIncomingCall(c.callId);
     if (c && myUserId) {
@@ -175,7 +192,7 @@ export function IncomingCallOverlay() {
         8_000,
       );
     }
-  }, [dismissIncomingUi, myUserId]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing]);
 
   const sendTextToCaller = useCallback(
     async (text: string) => {

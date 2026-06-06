@@ -17,7 +17,7 @@ export type ChatUiMessage = {
   isMine: boolean;
   time: string;
   status: 'read' | 'delivered' | 'sent' | 'failed' | 'sending';
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'location' | 'contact' | 'call';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'document' | 'location' | 'contact' | 'call';
   imageUri?: string;
   thumbnailUri?: string;
   replyTo?: { id: string; name: string; text: string };
@@ -67,6 +67,23 @@ function mapLocationFields(m: Record<string, unknown>) {
 }
 
 export type ThreadMessageWithDate = ChatUiMessage & { date?: string };
+
+/** État UI après suppression pour tous (y compris journal d’appels). */
+export function applyDeletedForAllUi<T extends ChatUiMessage>(msg: T): T {
+  return {
+    ...msg,
+    text: 'Ce message a été supprimé',
+    deleted: true,
+    type: msg.type === 'call' ? 'text' : msg.type,
+    callLog: undefined,
+    callLogTitle: undefined,
+    callLogSubtitle: undefined,
+    callLogIcon: undefined,
+    callLogTint: undefined,
+    imageUri: undefined,
+    thumbnailUri: undefined,
+  };
+}
 
 /** Liste API → bulles UI avec séparateurs de date (DM ou groupe). */
 export function buildThreadMessageList(

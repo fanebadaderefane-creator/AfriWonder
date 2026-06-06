@@ -98,6 +98,18 @@ class SocketService {
    * Indispensable quand l’utilisateur ouvre l’écran d’appel depuis une notification (cold start).
    */
   async ensureConnectedEmit(event: string, data?: unknown, timeoutMs = 22000): Promise<boolean> {
+    if (!this.socket && this.currentToken) {
+      this.connect(this.currentToken);
+    }
+    if (!this.socket && !this.currentToken) {
+      try {
+        const { useAuthStore } = await import('../store/authStore');
+        const token = useAuthStore.getState().accessToken;
+        if (token) this.connect(token);
+      } catch {
+        /* ignore */
+      }
+    }
     const sock = this.socket;
     if (!sock) return false;
     if (sock.connected) {
@@ -160,10 +172,23 @@ class SocketService {
    * refuse `user:join` (pas de room privée) → messages / notifications inaccessibles.
    */
   connect(token?: string) {
+    const nextToken = token?.trim() || this.currentToken;
+    if (nextToken) this.currentToken = nextToken;
+
     if (this.socket?.connected) return;
 
+    if (this.socket) {
+      if (this.currentToken) {
+        this.socket.auth = { token: this.currentToken };
+      }
+      this.loggedUnauthorizedOnce = false;
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
+      return;
+    }
+
     this.loggedUnauthorizedOnce = false;
-    this.currentToken = token?.trim() || null;
 
     const url = resolveSocketUrl();
     this.socket = io(url, {
@@ -193,6 +218,9 @@ class SocketService {
 
     this.socket.on('connect', () => {
       devLog('[Socket] Connected:', this.socket?.id);
+      if (this.userContext?.id) {
+        this.socket?.emit('user:join', this.userContext.id);
+      }
       // Pas de handshake applicatif côté backend — la connexion vaut auth.
       // On synthétise `authenticated` pour préserver le contrat avec `_layout.tsx`.
       this.notifyListeners('authenticated', { id: this.socket?.id });
@@ -273,6 +301,28 @@ class SocketService {
     if (!userId) return;
     this.setUserContext(userId, name);
     this.socket?.emit('user:join', userId);
+  }
+
+  /**
+   * Reconnexion + rejoin room privée (appel entrant manqué après veille / perte transport).
+   * Appelé au retour au premier plan depuis `_layout.tsx`.
+   */
+  ensureUserRoomJoined(userId: string, name?: string): void {
+    if (!userId) return;
+    this.setUserContext(userId, name);
+    if (this.currentToken && !this.socket) {
+      this.connect(this.currentToken);
+    }
+    if (this.socket && !this.socket.connected) {
+      try {
+        this.socket.connect();
+      } catch {
+        /* ignore */
+      }
+    }
+    if (this.socket?.connected) {
+      this.socket.emit('user:join', userId);
+    }
   }
 
   leaveUserRoom(userId: string) {

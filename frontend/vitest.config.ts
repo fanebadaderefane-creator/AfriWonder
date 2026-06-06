@@ -8,6 +8,19 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   root: __dirname,
+  define: {
+    __DEV__: 'true',
+  },
+  plugins: [
+    {
+      name: 'vitest-wav-stub',
+      load(id) {
+        if (id.endsWith('.wav')) {
+          return 'export default "test-stub.wav";';
+        }
+      },
+    },
+  ],
   resolve: {
     alias: {
       'react-native': path.resolve(__dirname, 'test/stubs/react-native.ts'),

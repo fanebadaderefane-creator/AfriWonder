@@ -41,9 +41,14 @@ import {
   isGroupSocketEnvelope,
   parseThreadKind,
 } from '../../src/messages/dmThreadApi';
-import { buildThreadMessageList, mapApiMessageToChatUi } from '../../src/messages/dmChatMessageMapper';
+import {
+  applyDeletedForAllUi,
+  buildThreadMessageList,
+  mapApiMessageToChatUi,
+} from '../../src/messages/dmChatMessageMapper';
 import { callLogTapToRedial, type CallLogMeta } from '../../src/messages/callLogDisplay';
 import { CallLogBubble } from '../../src/messages/CallLogBubble';
+import { createMessageHighlightDelayedRelease } from '../../src/messages/messageBubbleHighlightTiming';
 import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
 import { formatPeerPresenceLabel } from '../../src/messages/dmPeerPresence';
 import { markThreadOpened } from '../../src/messages/dmThreadRuntime';
@@ -64,10 +69,16 @@ import {
   mergeThreadWithLocalOutbound,
   saveThreadMessageCache,
 } from '../../src/messages/dmThreadMessageCache';
-import { openNativeCallScreen } from '../../src/call/openNativeCallScreen';
+import { pickThreadMessageSource } from '../../src/messages/dmInboxPersistence';
+import { navigateToReceiverCallScreen, openNativeCallScreen } from '../../src/call/openNativeCallScreen';
+import { callUserIdsEqual } from '../../src/call/callSignalingPayload';
 import { safeRouterBack, safeRouterPush } from '../../src/utils/safeRouter';
 import { MediaViewerModal, type MediaViewerItem } from '../../src/components/messages/MediaViewerModal';
 import { MediaCaptionComposer, type MediaComposerDraft } from '../../src/components/messages/MediaCaptionComposer';
+import {
+  MessageBubbleMenuChevron,
+  MessageContextMenu,
+} from '../../src/components/messages/MessageContextMenu';
 
 const { width } = Dimensions.get('window');
 
@@ -112,8 +123,6 @@ interface Message {
   callLogIcon?: 'call' | 'videocam' | 'call-outline' | 'arrow-redo';
   callLogTint?: string;
 }
-
-const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 /** Langues supportées par GPT-5.2 pour la traduction des transcriptions vocales. */
 const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; flag: string }[] = [
@@ -268,12 +277,23 @@ export default function ChatScreen() {
   const [showAttach, setShowAttach] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   /** Même appelant que l’onglet courant : pastille type WhatsApp « Ça sonne » dans le fil. */
-  const [peerIncomingCall, setPeerIncomingCall] = useState<{ callId: string; media: 'audio' | 'video' } | null>(null);
+  const [peerIncomingCall, setPeerIncomingCall] = useState<{
+    callId: string;
+    media: 'audio' | 'video';
+    fromUserId: string;
+    callerName?: string;
+    callerAvatar?: string;
+  } | null>(null);
 
   // Context menu state
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  /** Bulle survolée / pressée — affiche le chevron menu sans recouvrir le texte au repos. */
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const highlightDelayedReleaseRef = useRef(createMessageHighlightDelayedRelease());
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Forward modal
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
@@ -389,23 +409,29 @@ export default function ChatScreen() {
       const data = response.data?.data || response.data;
       const backendMsgs = (data?.messages || []) as Record<string, unknown>[];
       const peerName = String(contact.name || 'Contact');
-      if (backendMsgs.length > 0) {
-        const transformed = buildThreadMessageList(
-          backendMsgs,
-          currentUserId,
-          peerName,
-          formatDateLabel,
-          { isGroup: isGroupThread },
-        ) as Message[];
-        const merged = await mergeThreadWithOutboundLocal(transformed);
-        setMessages(merged);
+      const transformed =
+        backendMsgs.length > 0
+          ? (buildThreadMessageList(
+              backendMsgs,
+              currentUserId,
+              peerName,
+              formatDateLabel,
+              { isGroup: isGroupThread },
+            ) as Message[])
+          : [];
+      const source = pickThreadMessageSource(transformed, cached, messagesRef.current);
+      if (backendMsgs.length === 0 && source.length > 0) {
+        devLog('[dm] API messages vide — conservation cache / UI', {
+          conversationId,
+          sourceCount: source.length,
+        });
+      }
+      const merged = await mergeThreadWithOutboundLocal(source as Message[]);
+      setMessages(merged);
+      if (transformed.length > 0) {
         void saveThreadMessageCache(conversationId, merged);
-      } else {
-        const localOnly = await mergeThreadWithOutboundLocal([]);
-        setMessages(localOnly);
-        if (localOnly.length > 0) {
-          void saveThreadMessageCache(conversationId, localOnly);
-        }
+      } else if (merged.length > 0) {
+        void saveThreadMessageCache(conversationId, merged);
       }
     } catch (err) {
       devLog('Error loading messages:', err);
@@ -599,17 +625,7 @@ export default function ChatScreen() {
 
     const applyDeletedForAll = (messageId: string) => {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? {
-                ...m,
-                text: 'Ce message a été supprimé',
-                deleted: true,
-                imageUri: undefined,
-                thumbnailUri: undefined,
-              }
-            : m,
-        ),
+        prev.map((m) => (m.id === messageId ? applyDeletedForAllUi(m) : m)),
       );
     };
 
@@ -726,10 +742,23 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (isGroupThread || !currentUserId || !recipientUserId) return;
-    const onInvite = (p: { callId?: string; fromUserId?: string; toUserId?: string; type?: string }) => {
-      if (p?.toUserId !== currentUserId || p?.fromUserId !== recipientUserId) return;
+    const onInvite = (p: {
+      callId?: string;
+      fromUserId?: string;
+      toUserId?: string;
+      type?: string;
+      callerName?: string;
+      callerAvatar?: string;
+    }) => {
+      if (!callUserIdsEqual(p?.toUserId, currentUserId) || !callUserIdsEqual(p?.fromUserId, recipientUserId)) return;
       if (!p?.callId) return;
-      setPeerIncomingCall({ callId: String(p.callId), media: p.type === 'video' ? 'video' : 'audio' });
+      setPeerIncomingCall({
+        callId: String(p.callId),
+        media: p.type === 'video' ? 'video' : 'audio',
+        fromUserId: String(p.fromUserId || recipientUserId),
+        callerName: p.callerName,
+        callerAvatar: p.callerAvatar,
+      });
       void loadMessages();
     };
     const clearSame = (p: { callId?: string }) => {
@@ -747,15 +776,20 @@ export default function ChatScreen() {
       void loadMessages();
     };
     const offInvite = socketService.on('call:invite', onInvite);
-    const offEnd = socketService.on('call:end', (p) => {
+    type CallSocketPayload = {
+      callId?: string;
+      fromUserId?: string;
+      toUserId?: string;
+    };
+    const offEnd = socketService.on('call:end', (p: CallSocketPayload) => {
       clearSame(p);
       refreshCallLog(p);
     });
-    const offDecline = socketService.on('call:decline', (p) => {
+    const offDecline = socketService.on('call:decline', (p: CallSocketPayload) => {
       clearSame(p);
       refreshCallLog(p);
     });
-    const offMissed = socketService.on('call:missed', (p) => {
+    const offMissed = socketService.on('call:missed', (p: CallSocketPayload) => {
       clearSame(p);
       refreshCallLog(p);
     });
@@ -1497,6 +1531,19 @@ export default function ChatScreen() {
     }
   }, [ensureAuthenticated, resolveOutboundRecipient, conversationId, isGroupThread, applyOutboundSuccess, markOutboundFailed]);
 
+  const acceptPeerIncomingCall = useCallback(() => {
+    const c = peerIncomingCall;
+    if (!c) return;
+    setPeerIncomingCall(null);
+    navigateToReceiverCallScreen({
+      callId: c.callId,
+      peerUserId: c.fromUserId,
+      peerName: c.callerName || contact.name,
+      peerAvatar: c.callerAvatar || contact.avatar || '',
+      type: c.media,
+    });
+  }, [peerIncomingCall, contact.name, contact.avatar]);
+
   const openCallScreen = useCallback(
     (type: 'audio' | 'video') => {
       if (!contact.otherUserId) return;
@@ -1521,10 +1568,90 @@ export default function ChatScreen() {
 
   // ===== CONTEXT MENU ACTIONS =====
 
-  const onLongPress = (msg: Message) => {
-    if (msg.date || msg.deleted) return;
+  const openMessageMenu = (msg: Message) => {
+    if (msg.date) return;
+    if (selectionMode) {
+      toggleMessageSelection(msg.id);
+      return;
+    }
+    highlightDelayedReleaseRef.current.cancel();
+    setHighlightedMessageId(msg.id);
     setSelectedMessage(msg);
     setContextMenuVisible(true);
+  };
+
+  const closeMessageMenu = () => {
+    setContextMenuVisible(false);
+    highlightDelayedReleaseRef.current.cancel();
+    setHighlightedMessageId(null);
+  };
+
+  const showMessageMenuChevron = useCallback(
+    (messageId: string) =>
+      highlightedMessageId === messageId ||
+      (contextMenuVisible && selectedMessage?.id === messageId),
+    [contextMenuVisible, highlightedMessageId, selectedMessage?.id],
+  );
+
+  const releaseMessageHighlight = useCallback(
+    (messageId: string) => {
+      if (contextMenuVisible && selectedMessage?.id === messageId) return;
+      setHighlightedMessageId((cur) => (cur === messageId ? null : cur));
+    },
+    [contextMenuVisible, selectedMessage?.id],
+  );
+
+  const highlightMessage = useCallback((messageId: string) => {
+    highlightDelayedReleaseRef.current.cancel();
+    setHighlightedMessageId(messageId);
+  }, []);
+
+  const scheduleHoverReleaseHighlight = useCallback(
+    (messageId: string) => {
+      highlightDelayedReleaseRef.current.schedule(messageId, releaseMessageHighlight);
+    },
+    [releaseMessageHighlight],
+  );
+
+  const clearMessageHighlight = useCallback(() => {
+    highlightDelayedReleaseRef.current.cancel();
+    if (!contextMenuVisible) setHighlightedMessageId(null);
+  }, [contextMenuVisible]);
+
+  useEffect(() => () => highlightDelayedReleaseRef.current.cancel(), []);
+
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      if (next.size === 0) setSelectionMode(false);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleSelectMessages = () => {
+    if (!selectedMessage) return;
+    setSelectionMode(true);
+    setSelectedIds(new Set([selectedMessage.id]));
+    setSelectedMessage(null);
+  };
+
+  const deleteSelectedMessages = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    for (const id of ids) {
+      const msg = messages.find((m) => m.id === id);
+      if (!msg) continue;
+      await doDelete('me', msg);
+    }
+    exitSelectionMode();
+    setSelectedMessage(null);
   };
 
   const handleReply = () => {
@@ -1547,6 +1674,7 @@ export default function ChatScreen() {
 
   const handleEmojiReaction = async (emoji: string) => {
     if (!selectedMessage) return;
+    setContextMenuVisible(false);
     setEmojiPickerVisible(false);
     // Optimistic update
     setMessages(prev => prev.map(m => {
@@ -1568,25 +1696,19 @@ export default function ChatScreen() {
     } catch {}
   };
 
-  const handleDelete = () => {
+  const handleDeleteForMe = () => {
     if (!selectedMessage) return;
-    setContextMenuVisible(false);
-    const options = selectedMessage.isMine
-      ? [
-          { text: 'Annuler', style: 'cancel' as const },
-          { text: 'Pour moi', onPress: () => doDelete('me') },
-          { text: 'Pour tout le monde', style: 'destructive' as const, onPress: () => doDelete('everyone') },
-        ]
-      : [
-          { text: 'Annuler', style: 'cancel' as const },
-          { text: 'Pour moi', onPress: () => doDelete('me') },
-        ];
-    Alert.alert('Supprimer le message ?', '', options);
+    void doDelete('me');
   };
 
-  const doDelete = async (deleteFor: string) => {
+  const handleDeleteForEveryone = () => {
     if (!selectedMessage) return;
-    const target = selectedMessage;
+    void doDelete('everyone');
+  };
+
+  const doDelete = async (deleteFor: string, targetMsg?: Message) => {
+    const target = targetMsg ?? selectedMessage;
+    if (!target) return;
     const localOnly = isLocalOnlyMessageId(target.id) || target.status === 'failed';
     try {
       if (localOnly) {
@@ -1601,9 +1723,7 @@ export default function ChatScreen() {
           await apiClient.post(threadApi.messageDeleteForAllPath(target.id), {});
         }
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === target.id ? { ...m, text: 'Ce message a été supprimé', deleted: true } : m,
-          ),
+          prev.map((m) => (m.id === target.id ? applyDeletedForAllUi(m) : m)),
         );
       } else {
         await apiClient.post(threadApi.messageHideForMePath(target.id), {});
@@ -1697,7 +1817,7 @@ export default function ChatScreen() {
       if (!target) return;
       setViewerItem(null);
       setSelectedMessage(target);
-      setTimeout(() => handleDelete(), 50);
+      setTimeout(() => void doDelete('me', target), 50);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -1839,9 +1959,9 @@ export default function ChatScreen() {
       );
     }
 
-    if (item.type === 'call') {
+    if (item.type === 'call' && !item.deleted) {
       const prevMsg = index > 0 ? messages[index - 1] : null;
-      const showTail = !prevMsg || prevMsg.isMine !== item.isMine || prevMsg.date || prevMsg.type === 'call';
+      const showTail = !prevMsg || prevMsg.isMine !== item.isMine || Boolean(prevMsg.date) || prevMsg.type === 'call';
 
       if (!item.callLog) return null;
 
@@ -1855,6 +1975,10 @@ export default function ChatScreen() {
           viewerUserId={currentUserId}
           showTail={showTail}
           onPress={() => onCallLogPress(item)}
+          onMenuPress={() => openMessageMenu(item)}
+          showMenuChevron={showMessageMenuChevron(item.id)}
+          onHighlight={() => highlightMessage(item.id)}
+          onHoverLeave={() => scheduleHoverReleaseHighlight(item.id)}
         />
       );
     }
@@ -1862,18 +1986,53 @@ export default function ChatScreen() {
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showTail = !prevMsg || prevMsg.isMine !== item.isMine || prevMsg.date;
 
+    const isSelected = selectedIds.has(item.id);
+
     return (
-      <Pressable
-        onLongPress={() => onLongPress(item)}
-        delayLongPress={300}
-        style={[styles.messageRow, item.isMine && styles.messageRowMine]}
-      >
-        <View style={[
-          styles.messageBubble,
-          item.isMine ? styles.bubbleMine : styles.bubbleTheirs,
-          showTail && (item.isMine ? styles.tailMine : styles.tailTheirs),
-          item.deleted && styles.deletedBubble,
-        ]}>
+      <View style={[styles.messageRow, item.isMine && styles.messageRowMine]}>
+        {selectionMode ? (
+          <TouchableOpacity
+            style={styles.selectionCheckWrap}
+            onPress={() => toggleMessageSelection(item.id)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isSelected }}
+          >
+            <Ionicons
+              name={isSelected ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={isSelected ? Colors.primary : 'rgba(255,255,255,0.45)'}
+            />
+          </TouchableOpacity>
+        ) : null}
+        <Pressable
+          onHoverIn={!selectionMode ? () => highlightMessage(item.id) : undefined}
+          onHoverOut={!selectionMode ? () => scheduleHoverReleaseHighlight(item.id) : undefined}
+        >
+          <Pressable
+            style={[
+              styles.messageBubble,
+              item.isMine ? styles.bubbleMine : styles.bubbleTheirs,
+              showTail && (item.isMine ? styles.tailMine : styles.tailTheirs),
+              item.deleted && styles.deletedBubble,
+              isSelected && styles.messageBubbleSelected,
+              !selectionMode && showMessageMenuChevron(item.id) && styles.messageBubbleMenuActive,
+            ]}
+            onPress={
+              selectionMode
+                ? () => toggleMessageSelection(item.id)
+                : () => highlightMessage(item.id)
+            }
+            onLongPress={!selectionMode ? () => openMessageMenu(item) : undefined}
+            delayLongPress={300}
+          >
+            {!selectionMode ? (
+              <MessageBubbleMenuChevron
+                isMine={item.isMine}
+                visible={showMessageMenuChevron(item.id)}
+                onPress={() => openMessageMenu(item)}
+                onPointerDown={() => highlightMessage(item.id)}
+              />
+            ) : null}
           {!item.isMine && item.senderLabel ? (
             <Text style={styles.groupSenderLabel}>{item.senderLabel}</Text>
           ) : null}
@@ -2071,8 +2230,9 @@ export default function ChatScreen() {
 
           {/* Reactions */}
           {renderReactions(item.reactions)}
-        </View>
-      </Pressable>
+          </Pressable>
+        </Pressable>
+      </View>
     );
   };
 
@@ -2098,34 +2258,33 @@ export default function ChatScreen() {
     isGroupThread,
   ]);
 
-  const CONTEXT_MENU_ITEMS = useMemo(() => {
-    const isVoice = !!selectedMessage && (selectedMessage.type === 'voice' || selectedMessage.type === 'audio');
-    const items: { icon: string; label: string; action: () => void; destructive?: boolean }[] = [
-      { icon: 'arrow-undo', label: 'Repondre', action: handleReply },
-      { icon: 'happy-outline', label: 'Reagir', action: handleReact },
-    ];
-    if (isVoice) {
-      items.push({
-        icon: 'sparkles-outline',
-        label: selectedMessage?.transcription ? 'Voir la transcription' : 'Transcrire (IA)',
-        action: handleTranscribe,
-      });
-    } else {
-      items.push({ icon: 'copy-outline', label: 'Copier', action: handleCopy });
-    }
-    items.push(
-      { icon: 'arrow-redo', label: 'Transferer', action: handleForward },
-      { icon: 'pin', label: 'Epingler', action: handlePin },
-      { icon: 'star-outline', label: 'Important', action: handleStar },
-      { icon: 'trash-outline', label: 'Supprimer', action: handleDelete, destructive: true },
-    );
-    return items;
-  }, [selectedMessage]);
-
   return (
     <KeyboardAvoidingView style={[styles.container, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Header */}
       <View style={styles.header}>
+        {selectionMode ? (
+          <>
+            <TouchableOpacity
+              onPress={exitSelectionMode}
+              style={styles.backBtn}
+              accessibilityLabel="Annuler la sélection"
+            >
+              <Ionicons name="close" size={24} color={Colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.selectionHeaderTitle}>
+              {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+            </Text>
+            <TouchableOpacity
+              style={styles.headerAction}
+              onPress={() => void deleteSelectedMessages()}
+              disabled={selectedIds.size === 0}
+              accessibilityLabel="Supprimer la sélection"
+            >
+              <Ionicons name="trash-outline" size={22} color={Colors.error} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
         <TouchableOpacity onPress={() => safeRouterBack('/messages')} style={styles.backBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
@@ -2165,6 +2324,8 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </>
         ) : null}
+          </>
+        )}
       </View>
 
       {!isGroupThread &&
@@ -2254,19 +2415,26 @@ export default function ChatScreen() {
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.messagesList}
+            onScrollBeginDrag={clearMessageHighlight}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
             ListHeaderComponent={
               peerIncomingCall ? (
-                <View style={styles.peerIncomingBanner} accessibilityLiveRegion="polite">
+                <Pressable
+                  style={styles.peerIncomingBanner}
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole="button"
+                  accessibilityLabel="Accepter l'appel entrant"
+                  onPress={acceptPeerIncomingCall}
+                >
                   <Ionicons
                     name={peerIncomingCall.media === 'video' ? 'videocam' : 'call'}
                     size={18}
                     color={Colors.primary}
                   />
                   <Text style={styles.peerIncomingText}>
-                    {peerIncomingCall.media === 'video' ? 'Appel vidéo' : 'Appel audio'} · Ça sonne
+                    {peerIncomingCall.media === 'video' ? 'Appel vidéo entrant' : 'Appel audio entrant'} · Touchez pour répondre
                   </Text>
-                </View>
+                </Pressable>
               ) : null
             }
           />
@@ -2305,7 +2473,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input Bar */}
-      {!dmRequest?.pending_for_viewer ? (
+      {!dmRequest?.pending_for_viewer && !selectionMode ? (
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + Spacing.xs }]}>
         {isRecording ? (
           /* Recording Mode */
@@ -2339,6 +2507,7 @@ export default function ChatScreen() {
                 placeholder="Message"
                 placeholderTextColor={Colors.textMuted}
                 value={newMessage}
+                onFocus={clearMessageHighlight}
                 onChangeText={(text) => {
                   setNewMessage(text);
                   setShowAttach(false);
@@ -2423,32 +2592,31 @@ export default function ChatScreen() {
 
       <ReportModal visible={reportOpen} onClose={() => setReportOpen(false)} targetType="user" targetId={recipientUserId || ''} />
 
-      {/* ===== CONTEXT MENU MODAL ===== */}
-      <Modal visible={contextMenuVisible} transparent animationType="fade" onRequestClose={() => setContextMenuVisible(false)}>
-        <Pressable style={styles.contextOverlay} onPress={() => setContextMenuVisible(false)}>
-          <View style={styles.contextMenu}>
-            {/* Quick emoji reactions */}
-            <View style={styles.quickReactions}>
-              {EMOJI_REACTIONS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={styles.quickReactionBtn} onPress={() => { setContextMenuVisible(false); handleEmojiReaction(emoji); }}>
-                  <Text style={styles.quickReactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={styles.quickReactionBtn} onPress={handleReact}>
-                <Ionicons name="add" size={20} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Context menu items */}
-            {CONTEXT_MENU_ITEMS.map((item, i) => (
-              <TouchableOpacity key={i} style={styles.contextMenuItem} onPress={item.action}>
-                <Ionicons name={item.icon as any} size={20} color={item.destructive ? Colors.error : Colors.text} />
-                <Text style={[styles.contextMenuText, item.destructive && { color: Colors.error }]}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+      <MessageContextMenu
+        visible={contextMenuVisible}
+        message={selectedMessage}
+        onClose={closeMessageMenu}
+        onEmoji={handleEmojiReaction}
+        onMoreEmojis={handleReact}
+        onReply={handleReply}
+        onPin={handlePin}
+        onStar={handleStar}
+        onSelect={handleSelectMessages}
+        onDeleteForMe={handleDeleteForMe}
+        onDeleteForEveryone={selectedMessage?.isMine ? handleDeleteForEveryone : undefined}
+        onCopy={
+          selectedMessage && selectedMessage.type !== 'voice' && selectedMessage.type !== 'audio'
+            ? handleCopy
+            : undefined
+        }
+        onForward={handleForward}
+        onTranscribe={
+          selectedMessage &&
+          (selectedMessage.type === 'voice' || selectedMessage.type === 'audio')
+            ? handleTranscribe
+            : undefined
+        }
+      />
 
       {/* ===== EMOJI PICKER MODAL ===== */}
       <Modal visible={emojiPickerVisible} transparent animationType="fade" onRequestClose={() => setEmojiPickerVisible(false)}>
@@ -2622,7 +2790,29 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     marginLeft: 4,
   },
-  messageBubble: { maxWidth: '80%', borderRadius: 8, paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
+  messageBubble: {
+    maxWidth: '80%',
+    borderRadius: 8,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: 4,
+    position: 'relative',
+  },
+  messageBubbleSelected: { borderWidth: 1.5, borderColor: Colors.primary },
+  messageBubbleMenuActive: { paddingRight: 28 },
+  selectionCheckWrap: {
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+    marginBottom: 2,
+  },
+  selectionHeaderTitle: {
+    flex: 1,
+    color: Colors.text,
+    fontSize: FontSizes.lg,
+    fontWeight: '600',
+  },
   bubbleMine: { backgroundColor: '#005C4B', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   bubbleTheirs: { backgroundColor: '#1F2C34', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   tailMine: { borderTopRightRadius: 0 },

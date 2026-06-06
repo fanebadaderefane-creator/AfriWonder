@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectTrackIds,
   countLocalTracks,
+  dedupeRemoteReceiverTracks,
+  isTrackFromLocalCapture,
+  mergeRemoteTrackIntoStream,
+  type RemoteStreamUnified,
+  canPromoteCallToConnected,
+  remoteStreamReadyForConnectedUi,
   shouldMarkCallConnected,
   streamHasLiveAudio,
+  streamHasLiveVideo,
 } from './callRemoteMedia';
 
 describe('callRemoteMedia', () => {
@@ -19,7 +27,38 @@ describe('callRemoteMedia', () => {
     ).toBe(false);
   });
 
-  it('shouldMarkCallConnected exige une piste audio distante', () => {
+  it('streamHasLiveVideo détecte une piste vidéo active', () => {
+    expect(
+      streamHasLiveVideo({
+        getVideoTracks: () => [{ enabled: true, readyState: 'live' }],
+      }),
+    ).toBe(true);
+    expect(
+      streamHasLiveVideo({
+        getVideoTracks: () => [{ enabled: true, readyState: 'ended' }],
+      }),
+    ).toBe(false);
+  });
+
+  it('shouldMarkCallConnected exige audio/vidéo live et pas de faux positif `new`', () => {
+    expect(shouldMarkCallConnected({ stream: null })).toBe(false);
+    expect(shouldMarkCallConnected({ stream: undefined })).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        role: 'caller',
+        peerAccepted: false,
+        hasRemoteDescription: true,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        role: 'caller',
+        peerAccepted: true,
+        hasRemoteDescription: false,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(false);
     expect(
       shouldMarkCallConnected({
         trackKind: 'video',
@@ -28,12 +67,125 @@ describe('callRemoteMedia', () => {
     ).toBe(false);
     expect(
       shouldMarkCallConnected({
-        trackKind: 'audio',
-        stream: { getAudioTracks: () => [] },
+        isVideo: true,
+        peerConnectionState: 'connected',
+        hasRemoteDescription: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'new' }],
+          getVideoTracks: () => [{ enabled: true, readyState: 'new' }],
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
+          getVideoTracks: () => [],
+        },
       }),
     ).toBe(true);
     expect(
       shouldMarkCallConnected({
+        isVideo: true,
+        stream: {
+          getAudioTracks: () => [],
+          getVideoTracks: () => [{ enabled: true, readyState: 'live' }],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldMarkCallConnected({
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(true);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        peerConnectionState: 'connected',
+        hasRemoteDescription: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'new' }],
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
+          getVideoTracks: () => [{ enabled: true, readyState: 'live' }],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('mergeRemoteTrackIntoStream fusionne audio et vidéo sans écraser', () => {
+    const tracks: Array<{ id: string; kind: string }> = [];
+    const stream = {
+      getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+      getVideoTracks: () => tracks.filter((t) => t.kind === 'video'),
+      addTrack: (t: { id: string; kind: string }) => {
+        tracks.push(t);
+      },
+    };
+    expect(mergeRemoteTrackIntoStream(stream as RemoteStreamUnified, { id: 'a1', kind: 'audio' })).toBe(true);
+    expect(mergeRemoteTrackIntoStream(stream as RemoteStreamUnified, { id: 'v1', kind: 'video' })).toBe(true);
+    expect(mergeRemoteTrackIntoStream(stream as RemoteStreamUnified, { id: 'a1', kind: 'audio' })).toBe(false);
+    expect(stream.getAudioTracks()).toHaveLength(1);
+    expect(stream.getVideoTracks()).toHaveLength(1);
+  });
+
+  it('isTrackFromLocalCapture ignore le micro/caméra local', () => {
+    const localIds = collectTrackIds({
+      getAudioTracks: () => [{ id: 'mic-1' }],
+      getVideoTracks: () => [{ id: 'cam-1' }],
+    });
+    expect(isTrackFromLocalCapture({ id: 'mic-1' }, localIds)).toBe(true);
+    expect(isTrackFromLocalCapture({ id: 'peer-a1' }, localIds)).toBe(false);
+  });
+
+  it('canPromoteCallToConnected exige live + règles shouldMark', () => {
+    expect(
+      canPromoteCallToConnected({
+        isVideo: false,
+        role: 'caller',
+        peerAccepted: true,
+        hasRemoteDescription: true,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(true);
+    expect(
+      canPromoteCallToConnected({
+        isVideo: false,
+        role: 'caller',
+        peerAccepted: true,
+        hasRemoteDescription: true,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(false);
+    expect(
+      canPromoteCallToConnected({
+        isVideo: true,
+        hasRemoteDescription: true,
+        stream: {
+          getAudioTracks: () => [],
+          getVideoTracks: () => [{ enabled: true, readyState: 'live' }],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('remoteStreamReadyForConnectedUi exige piste live distante', () => {
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(false);
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
         stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
       }),
     ).toBe(true);
@@ -46,5 +198,14 @@ describe('callRemoteMedia', () => {
         getVideoTracks: () => [{}, {}],
       }),
     ).toEqual({ audio: 1, video: 2 });
+  });
+
+  it('dedupeRemoteReceiverTracks garde une seule piste audio live', () => {
+    expect(
+      dedupeRemoteReceiverTracks([
+        { id: 'a1', kind: 'audio', readyState: 'live' },
+        { id: 'a2', kind: 'audio', readyState: 'live' },
+      ]).map((t) => t.id),
+    ).toEqual(['a1']);
   });
 });

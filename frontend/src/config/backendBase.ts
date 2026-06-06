@@ -5,6 +5,7 @@ import { NativeModules, Platform } from 'react-native';
 import { stripApiSuffix, stripTrailingSlash } from '../utils/urlNormalize';
 import {
   isLikelyEphemeralDevBackendOrigin,
+  isPrivateUseIpv4,
   orderedPrivateLanHostsFromStrings,
   preferLocalhostBackendWhenWebDevOnLocalhost,
 } from './devBackendHostUtils';
@@ -465,6 +466,13 @@ export function getBackendOrigin(): string {
 
   if (Platform.OS === 'web') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      /** PC ami sur le même Wi‑Fi : page en `http://192.168.x.x:3001` → API sur `:3000` du même hôte. */
+      if (typeof window !== 'undefined') {
+        const pageHost = window.location.hostname.replace(/^\[|\]$/g, '');
+        if (isPrivateUseIpv4(pageHost)) {
+          return `http://${pageHost}:3000`;
+        }
+      }
       return DEFAULT_BACKEND_ORIGIN;
     }
     return '';

@@ -16,36 +16,116 @@ import {
 import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { safeRouterBack } from '../../src/utils/safeRouter';
 import socketService from '../../src/services/socketService';
-import { buildCallAcceptPayload } from '../../src/call/callSignalingPayload';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
-import { startOutgoingRingbackPattern } from '../../src/call/callRingtone';
+import { startOutgoingRingbackPattern, stopAllCallRings } from '../../src/call/callRingtone';
 import { tryLoadReactNativeWebRtc } from '../../src/call/tryLoadReactNativeWebRtc';
+import { consumeWebCallMediaCapture } from '../../src/call/webCallMediaSession';
 import {
+  buildCameraVideoConstraints,
+  executeCameraFlip,
+  nativeLocalVideoMirror,
+  pickNextCameraSelection,
+  readVideoDeviceIdFromStream,
+  switchNativeVideoCameraFacing,
+  type FacingMode,
+} from '../../src/call/callCameraSwitch';
+import {
+  acquireCallLocalMedia,
+  beginWebCallMediaCapture,
+  applyCallAudioProcessingToTrack,
   applyNativeCallSpeakerRoute,
+  buildCallVideoConstraints,
+  callMediaErrorMessage,
+  enableRemoteAudioTracks,
+  probeWebCallAudioInputs,
   releaseExpoAvForWebRtcCall,
   requestNativeCallPermissions,
   resolveWebRtcMediaDevices,
   startNativeCallAudioSession,
   stopNativeCallAudioSession,
   stopNativeOutgoingRingback,
+  streamHasActiveMediaTracks,
+  streamHasPlayableMediaTracks,
+  webCallAudioProbeHint,
+  type WebCallAudioProbe,
 } from '../../src/call/callNativeMedia';
 import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
 import {
   buildCallIceConfig,
+  callConnectionWatchdogMs,
+  callMediaReadyHintMs,
   pickVideoProfileForNetwork,
+  pickVoiceOpusBitrateForNetwork,
+  shouldBlockCellularWithoutTurn,
+  type NetworkSnapshot,
   type VideoQualityProfile as NetVideoQualityProfile,
 } from '../../src/call/callNetworkConfig';
 import { parseTurnCredentialsResponse } from '../../src/call/parseTurnCredentialsResponse';
 import { formatCallStatusLine } from '../../src/call/callStatusLine';
+import {
+  shouldArmMediaConnectionWatchdog,
+  shouldClearCallerRingTimeoutOnAccept,
+  shouldFinishCallAsMissed,
+  shouldDowngradeVideoInviteToAudioAnswer,
+  shouldResendCallerOffer,
+} from '../../src/call/callAcceptLifecycle';
+import {
+  buildCallAcceptPayload,
+  callIdsEqual,
+  callSdpNegotiationOptions,
+  callUserIdsEqual,
+  countSdpMediaSections,
+  normalizeInboundCallSignal,
+  pickOutboundCallSdp,
+  type CallSignalSdpPayload,
+} from '../../src/call/callSignalingPayload';
+import {
+  optimizeCallAudioPipeline,
+  pruneRedundantCallTransceivers,
+  setTunedLocalDescription,
+  withTunedVoiceSdp,
+} from '../../src/call/callAudioQuality';
 import { logCallPhase, sdpContainsMedia } from '../../src/call/callDebug';
-import { countLocalTracks, shouldMarkCallConnected, streamHasLiveAudio } from '../../src/call/callRemoteMedia';
+import {
+  bindWebRtcMediaElement,
+  clearWebRtcMediaElement,
+  startRemoteWebAudioPlayback,
+} from '../../src/call/callWebAudioPlayback';
+import {
+  canPromoteCallToConnected,
+  collectTrackIds,
+  countLocalTracks,
+  dedupeRemoteReceiverTracks,
+  mediaStreamBindingKey,
+  isTrackFromLocalCapture,
+  mergeRemoteTrackIntoStream,
+  type RemoteStreamUnified,
+  remoteStreamReadyForConnectedUi,
+  shouldMarkCallConnected,
+  streamHasLiveAudio,
+  streamHasLiveVideo,
+} from '../../src/call/callRemoteMedia';
+import {
+  prepareCallSessionMemory,
+  releaseCallSessionMemory,
+} from '../../src/call/callSessionStability';
+import {
+  nativeRtcTeardownDelayMs,
+  shouldBlockNativeRtcUrlUpdate,
+} from '../../src/call/callNativeTeardown';
+import { captureSentryException } from '../../src/lib/sentryMobile';
 import { devWarn } from '../../src/utils/devLog';
 import { CallDuringMessageModal, CallMoreOptionsSheet } from '../../src/components/call/CallMoreMenu';
+import { startActiveCallForeground, stopActiveCallForeground } from '../../src/services/incomingCallService';
+import { SafeNativeRtcView } from '../../src/components/call/SafeNativeRtcView';
+import { CallScreenErrorBoundary } from '../../src/components/call/CallScreenErrorBoundary';
+import { isValidNativeRtcStreamUrl } from '../../src/call/callRtcStreamUrl';
 import NetInfo from '@react-native-community/netinfo';
 
 /**
@@ -62,33 +142,6 @@ async function detectVideoProfile(): Promise<NetVideoQualityProfile> {
     });
   } catch {
     return pickVideoProfileForNetwork(null);
-  }
-}
-
-/** Web : attache un MediaStream via `srcObject` uniquement — pas de `src` ni `autoPlay` au montage (Firefox : « URI invalide »). */
-function bindWebRtcMediaElement(
-  el: HTMLVideoElement | HTMLAudioElement | null,
-  stream: MediaStream | null | undefined,
-): void {
-  if (!el) return;
-  try {
-    const next = stream ?? null;
-    if (el.src) el.removeAttribute('src');
-    if (el.srcObject !== next) el.srcObject = next;
-    if (next) void el.play().catch(() => {});
-  } catch {
-    /* ignore */
-  }
-}
-
-function clearWebRtcMediaElement(el: HTMLVideoElement | HTMLAudioElement | null | undefined): void {
-  if (!el) return;
-  try {
-    el.pause();
-    if (el.src) el.removeAttribute('src');
-    el.srcObject = null;
-  } catch {
-    /* ignore */
   }
 }
 
@@ -181,9 +234,6 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 const CALL_RING_MS = 30_000;
-const CALL_CONNECTING_WATCHDOG_MS = 15_000;
-/** Délai sans piste distante après accept — message réseau / TURN. */
-const CALL_MEDIA_READY_HINT_MS = 12_000;
 const isWebRuntime = Platform.OS === 'web';
 
 /** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
@@ -196,19 +246,63 @@ const nativeWebRTC: any = tryLoadReactNativeWebRtc();
 const RTCPeerConnectionImpl: any = isWebRuntime ? RTCPeerConnection : nativeWebRTC?.RTCPeerConnection;
 const RTCIceCandidateImpl: any = isWebRuntime ? RTCIceCandidate : nativeWebRTC?.RTCIceCandidate;
 const RTCSessionDescriptionImpl: any = isWebRuntime ? RTCSessionDescription : nativeWebRTC?.RTCSessionDescription;
-const RTCViewNative: any = nativeWebRTC?.RTCView;
-
 function newCallId(): string {
   return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export default function CallScreen() {
+/** Natif : `toURL()` peut être vide au premier frame — retenter avant d’afficher l’avatar. */
+function bindNativeStreamUrlWithRetry(
+  stream: MediaStream | null | undefined,
+  setUrl: (url: string) => void,
+  bumpKey: () => void,
+  attemptsLeft = 10,
+  shouldApply?: () => boolean,
+): void {
+  if (!stream || (shouldApply && !shouldApply())) return;
+  const url = (stream as { toURL?: () => string })?.toURL?.();
+  if (url) {
+    if (shouldApply && !shouldApply()) return;
+    setUrl(url);
+    bumpKey();
+    return;
+  }
+  if (attemptsLeft <= 0) return;
+  setTimeout(
+    () => bindNativeStreamUrlWithRetry(stream, setUrl, bumpKey, attemptsLeft - 1, shouldApply),
+    200,
+  );
+}
+
+async function attachLocalTracksToPeerConnection(
+  pc: RTCPeerConnection,
+  local: MediaStream,
+  senders: { audio?: RTCRtpSender | null; video?: RTCRtpSender | null },
+): Promise<void> {
+  for (const track of local.getTracks()) {
+    const sender = track.kind === 'video' ? senders.video : senders.audio;
+    if (sender) {
+      try {
+        await sender.replaceTrack(track);
+      } catch {
+        /** Firefox web : replaceTrack après addTransceiver → « object can not be found here ». */
+        pc.addTrack(track, local);
+      }
+    } else {
+      pc.addTrack(track, local);
+    }
+  }
+}
+
+function CallScreenInner() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   // Rétro-compatibilité : accepte aussi peerId/peerName/peerAvatar/callType (inbox call history → call screen).
   const name = String(params.peerName || params.name || 'Contact');
   const avatar = String(params.peerAvatar || params.avatar || '');
-  const isVideo = String(params.callType || params.type) === 'video';
+  const startedAsVideo = String(params.callType || params.type) === 'video';
+  const [isVideoCall, setIsVideoCall] = useState(startedAsVideo);
+  const isVideoCallRef = useRef(startedAsVideo);
+  const [videoUpgradeLoading, setVideoUpgradeLoading] = useState(false);
   const otherUserId = String(params.peerId || params.otherUserId || '').trim();
   const peerAvatarUri = useMemo(
     () => profileAvatarUri(avatar, name.trim() || 'Contact'),
@@ -231,14 +325,28 @@ export default function CallScreen() {
   const [peerOnline, setPeerOnline] = useState<boolean | null>(null);
   /** Dès que le correspondant a décroché — le chronomètre démarre seulement à `connected` (média WebRTC). */
   const [peerAnswered, setPeerAnswered] = useState(false);
+  const peerAnsweredRef = useRef(false);
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const speakerOnRef = useRef(true);
   const webrtcMediaActiveRef = useRef(false);
+  /** Incrémenté à chaque bootstrap / cleanup — ignore les `start()` obsolètes (Strict Mode / remontage). */
+  const callSetupGenRef = useRef(0);
   const stopOutgoingRingRef = useRef<(() => Promise<void>) | null>(null);
   const [cameraOff, setCameraOff] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /** Web : getUserMedia exige un clic utilisateur — pas d’auto-capture après les await réseau. */
+  const [webMediaConsentNeeded, setWebMediaConsentNeeded] = useState(false);
+  const [webMediaConsentError, setWebMediaConsentError] = useState<string | null>(null);
+  const [webMediaConsentLoading, setWebMediaConsentLoading] = useState(false);
+  const [webAudioProbe, setWebAudioProbe] = useState<WebCallAudioProbe | null>(null);
+  const webMediaConsentRef = useRef<{
+    resolve: (() => void) | null;
+    reject: ((reason?: unknown) => void) | null;
+  }>({ resolve: null, reject: null });
+  const webPreAcquiredMediaRef = useRef<MediaStream | null>(null);
+  const webListenOnlyRef = useRef(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string }[]>([]);
@@ -258,13 +366,18 @@ export default function CallScreen() {
   const [videoLayoutFocus, setVideoLayoutFocus] = useState<'remote' | 'local'>('remote');
 
   const screenShareDisplayStreamRef = useRef<MediaStream | null>(null);
-  const facingModeRef = useRef<'user' | 'environment'>('user');
+  const facingModeRef = useRef<FacingMode>('user');
+  const activeVideoDeviceIdRef = useRef<string | null>(null);
+  const [localFacing, setLocalFacing] = useState<FacingMode>('user');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectionWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaReadyHintRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectionWatchdogMsRef = useRef(60_000);
+  const mediaReadyHintMsRef = useRef(20_000);
+  const voiceBitrateRef = useRef(32_000);
 
   /** Refs PeerConnection + flux média (web et natif lorsque l’appel démarre). */
   const pcRef = useRef<any>(null);
@@ -273,23 +386,129 @@ export default function CallScreen() {
   const localVideoElRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoElRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioElRef = useRef<HTMLAudioElement | null>(null);
+  /** Flux `ontrack` natif navigateur — lecture plus fiable que MediaStream synthétique. */
+  const remotePlaybackStreamRef = useRef<MediaStream | null>(null);
+  const remoteWebAudioPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const remoteWebAudioPlaybackKeyRef = useRef('');
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const startedAtRef = useRef<number | null>(null);
   const callStateRef = useRef(callState);
   const finishingRef = useRef(false);
   const [remoteStreamUrl, setRemoteStreamUrl] = useState<string>('');
+  /** Démonte RTCView avant fermeture PC — évite crash process Android/iOS. */
+  const [nativeRtcUnmounting, setNativeRtcUnmounting] = useState(false);
   const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
   const [localStreamKey, setLocalStreamKey] = useState(0);
   const [remoteStreamKey, setRemoteStreamKey] = useState(0);
   const pcTearingDownRef = useRef(false);
+  const mediaStoppedRef = useRef(false);
+  const mediaTeardownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Évite une double offre SDP si `call:accept` est reçu deux fois. */
   const callerOfferSentRef = useRef(false);
+  const callerOfferResendCountRef = useRef(0);
+  /** IDs des pistes locales — exclues du flux distant (bug Android sendrecv). */
+  const localTrackIdsRef = useRef<Set<string>>(new Set());
+  const localSendersRef = useRef<{ audio?: RTCRtpSender | null; video?: RTCRtpSender | null }>({});
+  const upgradeToVideoRef = useRef<(() => Promise<void>) | null>(null);
+  const triggerIceRestartRef = useRef<(() => Promise<void>) | null>(null);
+
+  const cancelWebMediaConsent = useCallback(() => {
+    setWebMediaConsentNeeded(false);
+    setWebMediaConsentError(null);
+    setWebMediaConsentLoading(false);
+    setWebAudioProbe(null);
+    webListenOnlyRef.current = false;
+    webPreAcquiredMediaRef.current?.getTracks().forEach((t) => t.stop());
+    webPreAcquiredMediaRef.current = null;
+    webMediaConsentRef.current.reject?.(new Error('WEB_MEDIA_CONSENT_CANCELLED'));
+    webMediaConsentRef.current.resolve = null;
+    webMediaConsentRef.current.reject = null;
+  }, []);
+
+  const grantWebListenOnlyConsent = useCallback(() => {
+    if (webMediaConsentLoading) return;
+    webListenOnlyRef.current = true;
+    webPreAcquiredMediaRef.current = new MediaStream();
+    setWebMediaConsentError(null);
+    setWebMediaConsentLoading(false);
+    setWebMediaConsentNeeded(false);
+    webMediaConsentRef.current.resolve?.();
+    webMediaConsentRef.current.resolve = null;
+    webMediaConsentRef.current.reject = null;
+  }, [webMediaConsentLoading]);
+
+  const grantWebMediaConsent = useCallback(() => {
+    if (webMediaConsentLoading) return;
+    const mediaDevices =
+      typeof navigator !== 'undefined' ? navigator.mediaDevices : resolveWebRtcMediaDevices();
+    if (!mediaDevices?.getUserMedia) {
+      setWebMediaConsentError('WebRTC indisponible dans ce navigateur.');
+      return;
+    }
+    setWebMediaConsentError(null);
+    setWebMediaConsentLoading(true);
+    /** Invoquer getUserMedia dans le même tour synchrone que le clic — sinon NotFoundError Firefox. */
+    beginWebCallMediaCapture({
+      mediaDevices,
+      wantVideo: startedAsVideo,
+    })
+      .then((stream) => {
+        webPreAcquiredMediaRef.current = stream;
+        setWebMediaConsentLoading(false);
+        setWebMediaConsentNeeded(false);
+        webMediaConsentRef.current.resolve?.();
+        webMediaConsentRef.current.resolve = null;
+        webMediaConsentRef.current.reject = null;
+      })
+      .catch((error) => {
+        webPreAcquiredMediaRef.current = null;
+        setWebMediaConsentLoading(false);
+        setWebMediaConsentError(callMediaErrorMessage(error, startedAsVideo));
+        devWarn('[Call] web media consent failed', error);
+        void probeWebCallAudioInputs().then(setWebAudioProbe);
+      });
+  }, [startedAsVideo, webMediaConsentLoading]);
+
+  const waitForWebMediaConsent = useCallback((): Promise<void> => {
+    if (!isWebRuntime) return Promise.resolve();
+    setWebMediaConsentNeeded(true);
+    setWebAudioProbe(null);
+    void probeWebCallAudioInputs().then(setWebAudioProbe);
+    return new Promise((resolve, reject) => {
+      webMediaConsentRef.current = {
+        resolve: () => resolve(),
+        reject,
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    isVideoCallRef.current = isVideoCall;
+  }, [isVideoCall]);
 
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+  useEffect(() => {
+    peerAnsweredRef.current = peerAnswered;
+  }, [peerAnswered]);
+
+  useFocusEffect(
+    useCallback(() => {
+      prepareCallSessionMemory();
+      return () => {
+        releaseCallSessionMemory();
+      };
+    }, []),
+  );
 
   const stopAllMedia = useCallback(() => {
+    if (mediaStoppedRef.current) return;
+    mediaStoppedRef.current = true;
+    if (mediaTeardownTimerRef.current) {
+      clearTimeout(mediaTeardownTimerRef.current);
+      mediaTeardownTimerRef.current = null;
+    }
     try {
       screenShareDisplayStreamRef.current?.getTracks?.().forEach((t) => {
         try {
@@ -315,6 +534,7 @@ export default function CallScreen() {
       /* ignore */
     }
     localStreamRef.current = null;
+    localTrackIdsRef.current = new Set();
     remoteStreamRef.current = null;
     try {
       pcRef.current?.close?.();
@@ -325,8 +545,15 @@ export default function CallScreen() {
     pcTearingDownRef.current = true;
     webrtcMediaActiveRef.current = false;
     void stopNativeCallAudioSession();
+    void stopActiveCallForeground();
     void stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
+    if (remoteWebAudioPollRef.current) {
+      clearInterval(remoteWebAudioPollRef.current);
+      remoteWebAudioPollRef.current = null;
+    }
+    remotePlaybackStreamRef.current = null;
+    remoteWebAudioPlaybackKeyRef.current = '';
     if (isWebRuntime) {
       clearWebRtcMediaElement(localVideoElRef.current);
       clearWebRtcMediaElement(remoteVideoElRef.current);
@@ -335,28 +562,53 @@ export default function CallScreen() {
       setLocalStreamUrl('');
       setRemoteStreamUrl('');
     }
+    releaseCallSessionMemory();
   }, []);
+
+  const scheduleStopAllMedia = useCallback(() => {
+    if (mediaStoppedRef.current) return;
+    if (mediaTeardownTimerRef.current) return;
+    const delay = nativeRtcTeardownDelayMs(Platform.OS);
+    const run = () => {
+      mediaTeardownTimerRef.current = null;
+      stopAllMedia();
+    };
+    if (delay <= 0) {
+      run();
+      return;
+    }
+    mediaTeardownTimerRef.current = setTimeout(run, delay);
+  }, [stopAllMedia]);
 
   const finishCall = useCallback(
     (reason: 'ended' | 'failed' | 'declined' | 'cancelled' | 'missed' = 'ended') => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
       finishingRef.current = true;
+      const stateBeforeEnd = callStateRef.current;
       setPeerRaisedHand(false);
       setMyRaisedHand(false);
       setPeerScreenSharing(false);
       setLocalScreenSharing(false);
+      pcTearingDownRef.current = true;
+      setNativeRtcUnmounting(true);
       setCallState('ended');
+      if (!isWebRuntime) {
+        setLocalStreamUrl('');
+        setRemoteStreamUrl('');
+        setRemoteStreamKey((k) => k + 1);
+      }
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
-      stopAllMedia();
+      connectionWatchdogRef.current = null;
+      scheduleStopAllMedia();
       const elapsed = startedAtRef.current ? Math.floor((Date.now() - startedAtRef.current) / 1000) : 0;
       if (otherUserId && myUserId && reason !== 'declined') {
         let socketReason: 'completed' | 'cancelled' | 'missed' | 'failed' = 'completed';
         if (reason === 'cancelled') socketReason = 'cancelled';
         else if (reason === 'missed') socketReason = 'missed';
         else if (reason === 'failed') socketReason = 'failed';
-        else if (callStateRef.current !== 'connected' && role === 'caller') socketReason = 'cancelled';
+        else if (stateBeforeEnd !== 'connected' && role === 'caller') socketReason = 'cancelled';
         void socketService.ensureConnectedEmit('call:end', {
           callId: callIdRef.current,
           fromUserId: myUserId,
@@ -380,7 +632,7 @@ export default function CallScreen() {
         .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, {
           status: sessionStatus,
           duration: elapsed,
-          callMediaType: isVideo ? 'video' : 'audio',
+          callMediaType: isVideoCallRef.current ? 'video' : 'audio',
           callerName: user?.full_name || user?.username || '',
         })
         .catch(() => {
@@ -394,7 +646,7 @@ export default function CallScreen() {
         }
       }, 600);
     },
-    [otherUserId, myUserId, stopAllMedia, role, isVideo, user?.full_name, user?.username],
+    [otherUserId, myUserId, scheduleStopAllMedia, role, user?.full_name, user?.username],
   );
 
   /** Animation de pulse pendant le ringing. */
@@ -471,33 +723,116 @@ export default function CallScreen() {
       setErrorMsg('Vous devez être connecté pour lancer un appel.');
       return;
     }
+    if (role === 'receiver' && !initialCallId) {
+      setErrorMsg('Appel entrant invalide. Rouvrez depuis la notification ou le message.');
+      setCallState('ended');
+      return;
+    }
 
     let cancelled = false;
+    const setupGen = ++callSetupGenRef.current;
+    const setupStale = () => cancelled || setupGen !== callSetupGenRef.current;
 
     const callId = callIdRef.current;
-    logCallPhase(callId, 'bootstrap', { role, isVideo, otherUserId, platform: Platform.OS });
+    logCallPhase(callId, 'bootstrap', { role, isVideo: startedAsVideo, otherUserId, platform: Platform.OS });
+
+    prepareCallSessionMemory();
+    socketService.joinUserRoom(myUserId);
+
+    const peerPcState = (): string =>
+      String((pcRef.current as RTCPeerConnection | null)?.connectionState || '');
+
+    const applyRemoteTrack = (track: MediaStreamTrack | undefined, trackKind?: string) => {
+      if (!track || track.readyState === 'ended') return;
+      if (isTrackFromLocalCapture(track, localTrackIdsRef.current)) return;
+
+      const unified = remoteStreamRef.current as MediaStream;
+      mergeRemoteTrackIntoStream(unified as unknown as RemoteStreamUnified, track);
+      remoteStreamRef.current = unified;
+
+      const publishRemotePlayback = () => {
+        setupRemoteEl(unified, trackKind ?? track.kind);
+        if (!isWebRuntime && track.kind === 'audio') {
+          void applyNativeCallSpeakerRoute(speakerOnRef.current);
+        }
+        maybeMarkCallConnected(unified, trackKind ?? track.kind);
+      };
+
+      if (track.readyState === 'live') {
+        publishRemotePlayback();
+        return;
+      }
+      track.onunmute = () => {
+        if (track.readyState === 'ended') return;
+        publishRemotePlayback();
+      };
+    };
+
+    const armRemoteWebAudioPlayback = () => {
+      if (!isWebRuntime || isVideoCallRef.current) return;
+      const el = remoteAudioElRef.current;
+      const playback = remotePlaybackStreamRef.current ?? (remoteStreamRef.current as MediaStream);
+      if (!el || !playback) return;
+
+      const key = mediaStreamBindingKey(playback);
+      if (
+        streamHasLiveAudio(playback) &&
+        el.srcObject === playback &&
+        !el.paused &&
+        remoteWebAudioPlaybackKeyRef.current === key
+      ) {
+        return;
+      }
+
+      remoteWebAudioPlaybackKeyRef.current = key;
+      remoteWebAudioPollRef.current = startRemoteWebAudioPlayback(el, playback, remoteWebAudioPollRef.current);
+    };
+
+    const shouldApplyNativeRtcUrl = () =>
+      !shouldBlockNativeRtcUrlUpdate({
+        tearingDown: pcTearingDownRef.current,
+        callEnded: callStateRef.current === 'ended',
+      });
 
     const setupRemoteEl = (stream: MediaStream, trackKind?: string) => {
-      try {
-        stream.getAudioTracks?.().forEach((t) => {
-          t.enabled = true;
-        });
-      } catch {
-        /* ignore */
+      if (!shouldApplyNativeRtcUrl()) return;
+      enableRemoteAudioTracks(stream);
+      if (remotePlaybackStreamRef.current) {
+        enableRemoteAudioTracks(remotePlaybackStreamRef.current);
       }
-      if (isWebRuntime && isVideo) {
-        bindWebRtcMediaElement(remoteVideoElRef.current, stream);
+      if (isWebRuntime && isVideoCallRef.current) {
+        bindWebRtcMediaElement(remoteVideoElRef.current, stream, {
+          force: true,
+          allowPendingTracks: true,
+        });
       }
       /** Appel vidéo : l’audio sort du `<video>` distant — ne pas dupliquer sur `<audio>` (double lecture). */
-      if (isWebRuntime && !isVideo) {
-        bindWebRtcMediaElement(remoteAudioElRef.current, stream);
+      if (isWebRuntime && !isVideoCallRef.current) {
+        armRemoteWebAudioPlayback();
       }
       if (!isWebRuntime) {
+        if (!remoteStreamReadyForConnectedUi({ stream, isVideo: isVideoCallRef.current })) {
+          return;
+        }
+        const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
         const url = (stream as { toURL?: () => string })?.toURL?.();
-        if (url) {
-          setRemoteStreamUrl(url);
-          /** Remonte RTCView pour prendre en compte les pistes audio ajoutées après la vidéo. */
+        if (isValidNativeRtcStreamUrl(url, { localUrl })) {
+          setRemoteStreamUrl(url!);
           setRemoteStreamKey((k) => k + 1);
+        } else if (!url) {
+          bindNativeStreamUrlWithRetry(
+            stream,
+            (nextUrl) => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              if (isValidNativeRtcStreamUrl(nextUrl, { localUrl })) setRemoteStreamUrl(nextUrl);
+            },
+            () => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              setRemoteStreamKey((k) => k + 1);
+            },
+            10,
+            shouldApplyNativeRtcUrl,
+          );
         }
       }
       logCallPhase(callId, 'remote_stream_updated', {
@@ -508,50 +843,172 @@ export default function CallScreen() {
     };
 
     const markCallConnected = () => {
-      if (callStateRef.current === 'connected') return;
-      logCallPhase(callId, 'media_connected', {
-        remoteAudio: streamHasLiveAudio(remoteStreamRef.current as MediaStream),
-      });
-      setCallState('connected');
-      if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
-      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
-      if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
-      if (isWebRuntime && remoteAudioElRef.current) {
-        try {
-          remoteAudioElRef.current.muted = false;
-        } catch {
-          /* ignore */
+      try {
+        if (callStateRef.current === 'connected') return;
+        const remote = remoteStreamRef.current as MediaStream;
+        if (
+          !remoteStreamReadyForConnectedUi({
+            stream: remote,
+            isVideo: isVideoCallRef.current,
+          })
+        ) {
+          return;
         }
-      }
-      if (isWebRuntime && isVideo && remoteVideoElRef.current) {
-        try {
-          remoteVideoElRef.current.muted = false;
-        } catch {
-          /* ignore */
+        logCallPhase(callId, 'media_connected', {
+          remoteAudio: streamHasLiveAudio(remote),
+          remoteVideo: streamHasLiveVideo(remote),
+        });
+        setErrorMsg(null);
+        setCallState('connected');
+        if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+        if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+        connectionWatchdogRef.current = null;
+        if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
+        if (isWebRuntime && remoteAudioElRef.current && !isVideoCallRef.current) {
+          try {
+            remoteAudioElRef.current.muted = false;
+          } catch {
+            /* ignore */
+          }
+          armRemoteWebAudioPlayback();
         }
+        void optimizeCallAudioPipeline(
+          pcRef.current as RTCPeerConnection | null,
+          voiceBitrateRef.current,
+        );
+        if (isWebRuntime && isVideoCallRef.current && remoteVideoElRef.current) {
+          try {
+            remoteVideoElRef.current.muted = false;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!isWebRuntime) {
+          void applyNativeCallSpeakerRoute(speakerOnRef.current);
+          void startActiveCallForeground(name || 'Contact', isVideoCallRef.current);
+        }
+        void apiClient
+          .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
+          .catch(() => {});
+      } catch (e) {
+        devWarn('[Call] markCallConnected failed', e);
+        setErrorMsg('Connexion interrompue. Réessayez l’appel.');
+        finishCall('failed');
       }
-      if (!isWebRuntime) {
-        void applyNativeCallSpeakerRoute(speakerOnRef.current);
-      }
-      void apiClient
-        .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
-        .catch(() => {});
     };
 
-    const maybeMarkCallConnected = (stream: MediaStream, trackKind?: string) => {
-      if (!shouldMarkCallConnected({ trackKind, stream })) return;
+    const maybeMarkCallConnected = (
+      stream: MediaStream | null | undefined,
+      trackKind?: string,
+    ) => {
+      if (!stream) return;
+      if (role === 'caller' && !peerAnsweredRef.current) return;
+      const pc = pcRef.current as RTCPeerConnection | null;
+      if (!pc?.remoteDescription) return;
+      if (
+        !shouldMarkCallConnected({
+          trackKind,
+          stream,
+          isVideo: isVideoCallRef.current,
+          peerConnectionState: peerPcState(),
+          role,
+          peerAccepted: peerAnsweredRef.current,
+          hasRemoteDescription: true,
+        })
+      ) {
+        return;
+      }
       markCallConnected();
+    };
+
+    const syncRemoteTracksFromPeerConnection = (pc: RTCPeerConnection | null) => {
+      if (!pc) return;
+      try {
+        if (isWebRuntime) {
+          const tracks = dedupeRemoteReceiverTracks(
+            (pc.getReceivers?.() ?? [])
+              .map((receiver) => receiver.track)
+              .filter(
+                (track): track is MediaStreamTrack =>
+                  Boolean(
+                    track &&
+                      track.readyState !== 'ended' &&
+                      !isTrackFromLocalCapture(track, localTrackIdsRef.current),
+                  ),
+              ),
+          );
+          if (!tracks.length) return;
+
+          const current = remoteStreamRef.current as MediaStream | null;
+          const currentKey = (current?.getTracks?.() ?? [])
+            .map((t) => t.id)
+            .sort()
+            .join('|');
+          const nextKey = tracks
+            .map((t) => t.id)
+            .sort()
+            .join('|');
+          if (currentKey === nextKey && current && streamHasPlayableMediaTracks(current)) {
+            return;
+          }
+
+          const next = new MediaStream();
+          for (const track of tracks) {
+            next.addTrack(track);
+            track.onunmute = () => {
+              setupRemoteEl(next, track.kind);
+              maybeMarkCallConnected(next, track.kind);
+            };
+          }
+          remoteStreamRef.current = next;
+          remotePlaybackStreamRef.current = next;
+          setupRemoteEl(next, tracks[0]?.kind);
+          maybeMarkCallConnected(next, tracks[0]?.kind);
+          void optimizeCallAudioPipeline(pc, voiceBitrateRef.current);
+          return;
+        }
+
+        const seen = new Set<string>();
+        for (const receiver of pc.getReceivers?.() ?? []) {
+          const track = receiver.track;
+          if (!track || track.readyState === 'ended' || seen.has(track.id)) continue;
+          if (isTrackFromLocalCapture(track, localTrackIdsRef.current)) continue;
+          seen.add(track.id);
+          applyRemoteTrack(track, track.kind);
+        }
+      } catch {
+        /* ignore */
+      }
     };
 
     const armMediaReadyHint = () => {
       if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
       mediaReadyHintRef.current = setTimeout(() => {
         if (cancelled || callStateRef.current === 'connected') return;
-        if (streamHasLiveAudio(remoteStreamRef.current as MediaStream)) return;
+        const remote = remoteStreamRef.current as MediaStream;
+        const pc = pcRef.current as RTCPeerConnection | null;
+        syncRemoteTracksFromPeerConnection(pc);
+        const pcState = peerPcState();
+        const ice = String(pc?.iceConnectionState || '');
+        const pcLinked = pcState === 'connected' || ice === 'connected' || ice === 'completed';
+
+        if (
+          canPromoteCallToConnected({
+            stream: remote,
+            isVideo: isVideoCallRef.current,
+            peerConnectionState: pcState,
+            role,
+            peerAccepted: peerAnsweredRef.current,
+            hasRemoteDescription: Boolean(pc?.remoteDescription),
+          })
+        ) {
+          maybeMarkCallConnected(remote);
+          return;
+        }
         setErrorMsg(
           'Connexion lente ou bloquée par le réseau mobile. Vérifiez le Wi‑Fi ou réessayez dans quelques secondes.',
         );
-      }, CALL_MEDIA_READY_HINT_MS);
+      }, mediaReadyHintMsRef.current);
     };
 
     const waitForLocalMediaReady = async (): Promise<boolean> => {
@@ -564,15 +1021,45 @@ export default function CallScreen() {
       return Boolean((localStreamRef.current as MediaStream | null)?.getTracks?.().length);
     };
 
+    const bindLocalWebPreview = (stream: MediaStream) => {
+      bindWebRtcMediaElement(localVideoElRef.current, stream, { allowPendingTracks: true });
+      if (streamHasActiveMediaTracks(stream)) return;
+      let polls = 0;
+      const pollId = setInterval(() => {
+        if (setupStale() || ++polls > 25) {
+          clearInterval(pollId);
+          return;
+        }
+        bindWebRtcMediaElement(localVideoElRef.current, stream, { allowPendingTracks: true });
+        if (streamHasActiveMediaTracks(stream)) clearInterval(pollId);
+      }, 200);
+    };
+
     const setupLocalEl = (stream: MediaStream) => {
-      if (isWebRuntime && isVideo) {
-        bindWebRtcMediaElement(localVideoElRef.current, stream);
+      if (!shouldApplyNativeRtcUrl()) return;
+      if (isWebRuntime && isVideoCallRef.current) {
+        bindLocalWebPreview(stream);
+        setLocalStreamKey((k) => k + 1);
       }
       if (!isWebRuntime) {
         const url = (stream as { toURL?: () => string })?.toURL?.();
-        if (url) {
-          setLocalStreamUrl(url);
+        if (isValidNativeRtcStreamUrl(url)) {
+          setLocalStreamUrl(url!);
           setLocalStreamKey((k) => k + 1);
+        } else if (!url) {
+          bindNativeStreamUrlWithRetry(
+            stream,
+            (nextUrl) => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              if (isValidNativeRtcStreamUrl(nextUrl)) setLocalStreamUrl(nextUrl);
+            },
+            () => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              setLocalStreamKey((k) => k + 1);
+            },
+            10,
+            shouldApplyNativeRtcUrl,
+          );
         }
       }
     };
@@ -591,37 +1078,161 @@ export default function CallScreen() {
       });
     };
 
+    /**
+     * ⛔ ZONE SIGNALISATION VERROUILLÉE — DÉBUT
+     * Web + Android + iOS partagent ce bloc. Régression juin 2026 : SDP sans type → appel bloqué.
+     * Ne pas remplacer sendSdpFromPeerConnection / normalizeInboundCallSignal / enqueueSignal.
+     * Voir `.cursor/rules/call-signaling-locked.mdc` et `callSignalingPayload.ts`.
+     */
+    const pendingSignalsRef: Array<{ callId: string; fromUserId: string; signal: SignalPayload }> = [];
+    const PENDING_SIGNAL_CAP = 48;
+    let signalChain: Promise<void> = Promise.resolve();
+
+    const sendSdpFromPeerConnection = (
+      pc: RTCPeerConnection | null,
+      fallback?: RTCSessionDescriptionInit | null,
+    ) => {
+      const outbound = pickOutboundCallSdp(pc, fallback ?? undefined);
+      if (!outbound) {
+        logCallPhase(callIdRef.current, 'sdp_send_skipped', {
+          reason: 'invalid_outbound',
+          pcLocalType: pc?.localDescription?.type ?? null,
+          fallbackType: fallback?.type ?? null,
+        });
+        devWarn('[Call] SDP non envoyé — type ou sdp manquant après setLocalDescription');
+        return;
+      }
+      logCallPhase(callIdRef.current, 'sdp_send', {
+        type: outbound.type,
+        hasAudio: sdpContainsMedia(outbound.sdp, 'audio'),
+        hasVideo: sdpContainsMedia(outbound.sdp, 'video'),
+      });
+      sendSignal({ kind: 'sdp', sdp: outbound });
+    };
+
+    triggerIceRestartRef.current = async () => {
+      if (cancelled || pcTearingDownRef.current) return;
+      const pc = pcRef.current as RTCPeerConnection | null;
+      if (!pc || pc.connectionState === 'closed') return;
+      try {
+        const restartOffer = await pc.createOffer({ iceRestart: true });
+        const tunedRestart = withTunedVoiceSdp(restartOffer, voiceBitrateRef.current);
+        await setTunedLocalDescription(pc, tunedRestart, voiceBitrateRef.current);
+        sendSdpFromPeerConnection(pc, tunedRestart);
+        const remote = remoteStreamRef.current as MediaStream;
+        enableRemoteAudioTracks(remote);
+        if (!isWebRuntime) {
+          void applyNativeCallSpeakerRoute(speakerOnRef.current);
+        }
+        logCallPhase(callIdRef.current, 'ice_restart_network_change', {});
+      } catch (e) {
+        devWarn('[Call] ICE restart on network change failed', e);
+      }
+    };
+
+    const clearConnectionWatchdog = () => {
+      if (connectionWatchdogRef.current) {
+        clearTimeout(connectionWatchdogRef.current);
+        connectionWatchdogRef.current = null;
+      }
+    };
+
+    const clearCallerRingTimeout = () => {
+      if (!shouldClearCallerRingTimeoutOnAccept({ role })) return;
+      if (ringTimeoutRef.current) {
+        clearTimeout(ringTimeoutRef.current);
+        ringTimeoutRef.current = null;
+      }
+    };
+
+    const armMediaWatchdogIfReady = () => {
+      if (!shouldArmMediaConnectionWatchdog({ role, peerAccepted: peerAnsweredRef.current })) {
+        return;
+      }
+      armConnectionWatchdog();
+    };
+
     let restartAttempted = false;
     const armConnectionWatchdog = () => {
-      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+      clearConnectionWatchdog();
       connectionWatchdogRef.current = setTimeout(async () => {
         if (cancelled) return;
         const pc = pcRef.current as RTCPeerConnection | null;
         if (!pc) return;
         const state = String(pc.connectionState || '');
+        const ice = String(pc.iceConnectionState || '');
         if (state === 'connected' || state === 'closed') return;
-
-        // 1ère passe : relance ICE (caller) pour sortir d'un blocage "préparation en cours".
-        if (!restartAttempted && role === 'caller') {
-          restartAttempted = true;
-          try {
-            const restartOffer = await pc.createOffer({
-              offerToReceiveAudio: true,
-              offerToReceiveVideo: isVideo,
-              iceRestart: true,
-            });
-            await pc.setLocalDescription(restartOffer);
-            sendSignal({ kind: 'sdp', sdp: { type: restartOffer.type, sdp: restartOffer.sdp } });
-            armConnectionWatchdog();
-            return;
-          } catch {
-            // fallback vers fin d'appel ci-dessous
+        if (ice === 'connected' || ice === 'completed') {
+          const remote = remoteStreamRef.current as MediaStream;
+          if (
+            shouldMarkCallConnected({
+              stream: remote,
+              isVideo: isVideoCallRef.current,
+              peerConnectionState: String(pc.connectionState || ''),
+              role,
+              peerAccepted: peerAnsweredRef.current,
+              hasRemoteDescription: Boolean(pc.remoteDescription),
+            })
+          ) {
+            maybeMarkCallConnected(remote, 'audio');
           }
+          clearConnectionWatchdog();
+          return;
         }
 
-        setErrorMsg('Connexion instable. Réessayez l’appel.');
+        const remote = remoteStreamRef.current as MediaStream;
+        if (shouldMarkCallConnected({
+          stream: remote,
+          isVideo: isVideoCallRef.current,
+          peerConnectionState: String(pc?.connectionState || ''),
+          role,
+          peerAccepted: peerAnsweredRef.current,
+          hasRemoteDescription: Boolean(pc.remoteDescription),
+        })) {
+          maybeMarkCallConnected(remote, 'audio');
+          clearConnectionWatchdog();
+          return;
+        }
+        if (streamHasLiveAudio(remote) || (isVideoCallRef.current && streamHasLiveVideo(remote))) {
+          armConnectionWatchdog();
+          return;
+        }
+
+        if (
+          shouldResendCallerOffer({
+            role,
+            peerAccepted: peerAnsweredRef.current,
+            callerOfferSent: callerOfferSentRef.current,
+            hasRemoteDescription: Boolean(pc.remoteDescription),
+            resendCount: callerOfferResendCountRef.current,
+          })
+        ) {
+          callerOfferResendCountRef.current += 1;
+          sendSdpFromPeerConnection(pc, pc.localDescription);
+          logCallPhase(callIdRef.current, 'sdp_resend_offer', {
+            attempt: callerOfferResendCountRef.current,
+          });
+          armConnectionWatchdog();
+          return;
+        }
+
+        if (!restartAttempted) {
+          restartAttempted = true;
+          try {
+            const restartOffer = await pc.createOffer({ iceRestart: true });
+        const tunedRestart = withTunedVoiceSdp(restartOffer, voiceBitrateRef.current);
+        await setTunedLocalDescription(pc, tunedRestart, voiceBitrateRef.current);
+        sendSdpFromPeerConnection(pc, tunedRestart);
+        armConnectionWatchdog();
+        return;
+      } catch {
+        /* fallback fin d’appel */
+      }
+    }
+
+    setErrorMsg('Connexion instable. Réessayez l’appel.');
         finishCall('failed');
-      }, CALL_CONNECTING_WATCHDOG_MS);
+      }, connectionWatchdogMsRef.current);
     };
 
     const flushPendingIce = async () => {
@@ -631,60 +1242,285 @@ export default function CallScreen() {
         const c = pendingIceRef.current.shift();
         if (!c) continue;
         try {
-          await pc.addIceCandidate(c);
+          const ice = isWebRuntime ? c : new RTCIceCandidateImpl(c);
+          await pc.addIceCandidate(ice);
         } catch (e) {
           logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
         }
       }
     };
 
-    const handleSignal = async (payload: { callId: string; fromUserId: string; signal: SignalPayload }) => {
-      if (payload?.callId !== callIdRef.current) return;
-      if (payload.fromUserId && payload.fromUserId !== otherUserId) return;
+    /** Active la caméra locale et l’attache à la PeerConnection (passage vocal → vidéo). */
+    const attachVideoToActiveCall = async (): Promise<boolean> => {
+      if (isVideoCallRef.current) return true;
       const pc = pcRef.current as RTCPeerConnection | null;
-      if (!pc) return;
-      const sig = payload.signal;
+      if (!pc) return false;
+
+      const mediaDevicesImpl = resolveWebRtcMediaDevices();
+      if (!mediaDevicesImpl?.getUserMedia) return false;
+
+      if (!isWebRuntime) {
+        const permitted = await requestNativeCallPermissions(true);
+        if (!permitted) return false;
+      }
+
+      const videoProfile = await detectVideoProfile();
+      let camStream: MediaStream;
       try {
-        if (sig.kind === 'sdp' && sig.sdp) {
+        camStream = await mediaDevicesImpl.getUserMedia({
+          audio: false,
+          video: buildCallVideoConstraints(videoProfile),
+        });
+      } catch {
+        try {
+          camStream = await mediaDevicesImpl.getUserMedia({ audio: false, video: { facingMode: 'user' } });
+        } catch {
+          try {
+            camStream = await mediaDevicesImpl.getUserMedia({ audio: false, video: true });
+          } catch {
+            return false;
+          }
+        }
+      }
+
+      const vt = camStream.getVideoTracks()[0];
+      if (!vt) {
+        camStream.getTracks().forEach((t) => t.stop());
+        return false;
+      }
+
+      const local = localStreamRef.current as MediaStream | null;
+      if (!local) {
+        vt.stop();
+        return false;
+      }
+
+      const oldVt = local.getVideoTracks()[0];
+      if (oldVt) {
+        try {
+          local.removeTrack(oldVt);
+          oldVt.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      local.addTrack(vt);
+
+      let videoSender = localSendersRef.current.video;
+      if (!videoSender) {
+        const existingVideoTx = pc
+          .getTransceivers()
+          .find((t) => t.sender?.track?.kind === 'video' || t.receiver?.track?.kind === 'video');
+        if (existingVideoTx?.sender) {
+          videoSender = existingVideoTx.sender;
+          localSendersRef.current.video = videoSender;
+        }
+      }
+      if (!videoSender) {
+        try {
+          videoSender = pc.addTransceiver('video', { direction: 'sendrecv' }).sender;
+          localSendersRef.current.video = videoSender;
+        } catch {
+          try {
+            pc.addTrack(vt, local);
+          } catch {
+            vt.stop();
+            return false;
+          }
+        }
+      }
+      if (videoSender) {
+        try {
+          await videoSender.replaceTrack(vt);
+        } catch {
+          vt.stop();
+          return false;
+        }
+      }
+
+      if (!isWebRuntime && videoSender) {
+        try {
+          const params = videoSender.getParameters?.() || {};
+          params.encodings = (params.encodings || [{}]).map((enc: { maxBitrate?: number; maxFramerate?: number }) => ({
+            ...enc,
+            maxBitrate: videoProfile.maxBitrate,
+            maxFramerate: videoProfile.frameRate,
+          }));
+          await videoSender.setParameters?.(params).catch(() => {});
+        } catch {
+          /* ignore */
+        }
+      }
+
+      activeVideoDeviceIdRef.current = readVideoDeviceIdFromStream(local);
+      setLocalFacing('user');
+      setupLocalEl(local);
+      isVideoCallRef.current = true;
+      setIsVideoCall(true);
+      setErrorMsg(null);
+      if (!isWebRuntime) {
+        void startActiveCallForeground(name || 'Contact', true);
+      }
+
+      if (!isWebRuntime) {
+        await startNativeCallAudioSession(true, speakerOnRef.current);
+      }
+
+      logCallPhase(callIdRef.current, 'upgrade_video_local', { ok: true });
+      return true;
+    };
+
+    const handleSignal = async (payload: { callId: string; fromUserId: string; signal: SignalPayload }) => {
+      const rxKind = String((payload?.signal as { kind?: string })?.kind || '');
+      if (!callIdsEqual(payload?.callId, callIdRef.current)) {
+        logCallPhase(callIdRef.current, 'signal_drop', {
+          reason: 'call_id_mismatch',
+          rxCallId: payload?.callId ?? null,
+          expectedCallId: callIdRef.current,
+          kind: rxKind,
+        });
+        return;
+      }
+      if (payload.fromUserId && !callUserIdsEqual(payload.fromUserId, otherUserId)) {
+        logCallPhase(callIdRef.current, 'signal_drop', {
+          reason: 'from_user_mismatch',
+          fromUserId: payload.fromUserId,
+          expectedUserId: otherUserId,
+          kind: rxKind,
+        });
+        return;
+      }
+      const pc = pcRef.current as RTCPeerConnection | null;
+      if (!pc) {
+        if (pendingSignalsRef.length < PENDING_SIGNAL_CAP) {
+          pendingSignalsRef.push(payload);
+          logCallPhase(callIdRef.current, 'signal_queued', {
+            kind: rxKind,
+            queueLen: pendingSignalsRef.length,
+          });
+        } else {
+          logCallPhase(callIdRef.current, 'signal_drop', {
+            reason: 'queue_full',
+            kind: rxKind,
+            cap: PENDING_SIGNAL_CAP,
+          });
+        }
+        return;
+      }
+      logCallPhase(callIdRef.current, 'signal_rx', {
+        kind: rxKind,
+        fromUserId: payload.fromUserId ?? null,
+        signalingState: pc.signalingState,
+      });
+      const normalized = normalizeInboundCallSignal(payload.signal, pc.signalingState);
+      if (!normalized) {
+        logCallPhase(callIdRef.current, 'signal_ignored', {
+          kind: rxKind,
+          signalingState: pc.signalingState,
+        });
+        return;
+      }
+      try {
+        if (normalized.kind === 'sdp') {
+          const remoteSdp = normalized.sdp;
           const remoteDescription = isWebRuntime
-            ? (sig.sdp as RTCSessionDescriptionInit)
-            : new RTCSessionDescriptionImpl(sig.sdp);
-          await pc.setRemoteDescription(remoteDescription);
-          logCallPhase(callId, 'sdp_remote', {
-            type: sig.sdp.type,
-            hasAudio: sdpContainsMedia(sig.sdp.sdp, 'audio'),
-            hasVideo: sdpContainsMedia(sig.sdp.sdp, 'video'),
+            ? remoteSdp
+            : new RTCSessionDescriptionImpl(remoteSdp);
+          try {
+            await pc.setRemoteDescription(remoteDescription);
+          } catch (firstErr) {
+            if (
+              remoteSdp.type === 'offer' &&
+              String(pc.signalingState || '') === 'have-local-offer'
+            ) {
+              try {
+                await pc.setLocalDescription({ type: 'rollback' } as RTCSessionDescriptionInit);
+                await pc.setRemoteDescription(remoteDescription);
+              } catch {
+                throw firstErr;
+              }
+            } else {
+              throw firstErr;
+            }
+          }
+          logCallPhase(callIdRef.current, 'sdp_remote', {
+            type: remoteSdp.type,
+            hasAudio: sdpContainsMedia(remoteSdp.sdp, 'audio'),
+            hasVideo: sdpContainsMedia(remoteSdp.sdp, 'video'),
           });
           await flushPendingIce();
-          if (sig.sdp.type === 'offer') {
-            const ans = await pc.createAnswer({
-              offerToReceiveAudio: true,
-              offerToReceiveVideo: isVideo,
-            });
-            await pc.setLocalDescription(ans);
+          syncRemoteTracksFromPeerConnection(pc);
+          maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
+          if (remoteSdp.type === 'offer') {
+            const offerHasVideo = sdpContainsMedia(remoteSdp.sdp, 'video');
+            if (offerHasVideo && !isVideoCallRef.current) {
+              const camOk = await attachVideoToActiveCall();
+              if (!camOk) {
+                logCallPhase(callId, 'upgrade_video_peer_camera_failed', {});
+              }
+            }
+            const prunedAns = pruneRedundantCallTransceivers(pc);
+            if (prunedAns) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedAns });
+            const ans = await pc.createAnswer(callSdpNegotiationOptions());
+            const tunedAns = withTunedVoiceSdp(ans, voiceBitrateRef.current);
+            await setTunedLocalDescription(pc, tunedAns, voiceBitrateRef.current);
             logCallPhase(callId, 'sdp_local', {
-              type: ans.type,
-              hasAudio: sdpContainsMedia(ans.sdp, 'audio'),
-              hasVideo: sdpContainsMedia(ans.sdp, 'video'),
+              type: tunedAns.type,
+              hasAudio: sdpContainsMedia(tunedAns.sdp, 'audio'),
+              hasVideo: sdpContainsMedia(tunedAns.sdp, 'video'),
             });
-            sendSignal({ kind: 'sdp', sdp: { type: ans.type, sdp: ans.sdp } });
+            sendSdpFromPeerConnection(pc, tunedAns);
           }
-        } else if (sig.kind === 'ice') {
-          if (!sig.candidate) return;
+        } else if (normalized.kind === 'ice') {
+          if (normalized.candidate === null) {
+            if (pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(null as unknown as RTCIceCandidateInit);
+              } catch {
+                /* fin de candidats — optionnel selon impl */
+              }
+            }
+            return;
+          }
           if (pc.remoteDescription) {
-            const ice = isWebRuntime ? sig.candidate : new RTCIceCandidateImpl(sig.candidate);
+            const ice = isWebRuntime
+              ? normalized.candidate
+              : new RTCIceCandidateImpl(normalized.candidate);
             try {
               await pc.addIceCandidate(ice);
             } catch (e) {
               logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
             }
           } else {
-            pendingIceRef.current.push(sig.candidate);
+            pendingIceRef.current.push(normalized.candidate);
           }
         }
       } catch (e) {
+        logCallPhase(callIdRef.current, 'signal_failed', {
+          kind: rxKind,
+          name: String((e as Error)?.name || ''),
+          message: String((e as Error)?.message || e || ''),
+        });
         devWarn('[Call] signal handling failed', e);
       }
+    };
+
+    const flushPendingSignals = async () => {
+      const pc = pcRef.current as RTCPeerConnection | null;
+      if (!pc || pendingSignalsRef.length === 0) return;
+      while (pendingSignalsRef.length > 0) {
+        const next = pendingSignalsRef.shift();
+        if (!next) continue;
+        await handleSignal(next);
+      }
+    };
+
+    const enqueueSignal = (payload: { callId: string; fromUserId: string; signal: SignalPayload }) => {
+      signalChain = signalChain
+        .then(() => handleSignal(payload))
+        .catch((e) => {
+          devWarn('[Call] signal queue failed', e);
+        });
     };
 
     /**
@@ -694,19 +1530,30 @@ export default function CallScreen() {
      */
     const handlePeerAccepted = async (payload: { callId?: string; type?: 'audio' | 'video' }) => {
       if (cancelled || role !== 'caller') return;
-      if (payload?.callId && payload.callId !== callIdRef.current) return;
+      if (payload?.callId && !callIdsEqual(payload.callId, callIdRef.current)) return;
       if (callerOfferSentRef.current) return;
-      if (payload?.type === 'video' && !isVideo) {
+      /** Bug #1 audit : annuler timer 30 s « Pas de réponse » dès accept. */
+      clearCallerRingTimeout();
+      restartAttempted = false;
+      clearConnectionWatchdog();
+      if (payload?.type === 'video' && !startedAsVideo) {
         logCallPhase(callId, 'accept_type_mismatch', { invite: 'video', local: 'audio' });
         setErrorMsg('Le correspondant a répondu en vidéo — relancez un appel vidéo.');
         finishCall('failed');
         return;
       }
-      if (payload?.type === 'audio' && isVideo) {
-        logCallPhase(callId, 'accept_type_mismatch', { invite: 'video', accept: 'audio' });
+      if (shouldDowngradeVideoInviteToAudioAnswer({ startedAsVideo, acceptType: payload?.type })) {
+        logCallPhase(callId, 'accept_type_downgrade', { invite: 'video', accept: 'audio' });
+        isVideoCallRef.current = false;
+        setIsVideoCall(false);
+        setCameraOff(true);
       }
       setPeerAnswered(true);
+      peerAnsweredRef.current = true;
       setCallState('connecting');
+      if (isWebRuntime) {
+        void stopAllCallRings();
+      }
       armMediaReadyHint();
       const pc = pcRef.current as RTCPeerConnection | null;
       if (!pc) return;
@@ -717,18 +1564,29 @@ export default function CallScreen() {
         return;
       }
       callerOfferSentRef.current = true;
+      callerOfferResendCountRef.current = 0;
       try {
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: isVideo,
-        });
-        await pc.setLocalDescription(offer);
+        /**
+         * Pas de contraintes héritées `offerToReceive*` : en Unified Plan elles
+         * dupliquent la section audio (`mid='1'`) et cassent `setRemoteDescription`
+         * côté appelant (asymétrie audio). La réception est portée par les
+         * transceivers `addTrack`. Voir `callSdpNegotiationOptions`.
+         */
+        const prunedOffer = pruneRedundantCallTransceivers(pc);
+        if (prunedOffer) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedOffer });
+        const offer = await pc.createOffer(callSdpNegotiationOptions());
+        const tunedOffer = withTunedVoiceSdp(offer, voiceBitrateRef.current);
+        await setTunedLocalDescription(pc, tunedOffer, voiceBitrateRef.current);
         logCallPhase(callId, 'sdp_local', {
-          type: offer.type,
-          hasAudio: sdpContainsMedia(offer.sdp, 'audio'),
-          hasVideo: sdpContainsMedia(offer.sdp, 'video'),
+          type: tunedOffer.type,
+          hasAudio: sdpContainsMedia(tunedOffer.sdp, 'audio'),
+          hasVideo: sdpContainsMedia(tunedOffer.sdp, 'video'),
+          audioSections: countSdpMediaSections(tunedOffer.sdp, 'audio'),
+          videoSections: countSdpMediaSections(tunedOffer.sdp, 'video'),
+          txCount: pc.getTransceivers?.().length ?? -1,
         });
-        sendSignal({ kind: 'sdp', sdp: { type: offer.type, sdp: offer.sdp } });
+        sendSdpFromPeerConnection(pc, tunedOffer);
+        armMediaWatchdogIfReady();
       } catch (e) {
         callerOfferSentRef.current = false;
         devWarn('[Call] offer failed', e);
@@ -741,13 +1599,46 @@ export default function CallScreen() {
       setErrorMsg('Appel refusé.');
       finishCall('declined');
     };
+    const handleCallMissed = (payload: { callId?: string }) => {
+      if (payload?.callId && !callIdsEqual(payload.callId, callIdRef.current)) return;
+      if (
+        !shouldFinishCallAsMissed({
+          callState: callStateRef.current,
+          peerAnswered: peerAnsweredRef.current,
+        })
+      ) {
+        return;
+      }
+      clearCallerRingTimeout();
+      setErrorMsg('Pas de réponse.');
+      finishCall('missed');
+    };
+    const handleInviteAck = (payload: { callId?: string; receiverReachable?: boolean }) => {
+      if (role !== 'caller' || !payload?.callId) return;
+      callIdRef.current = String(payload.callId);
+      if (payload.receiverReachable === false) {
+        setErrorMsg(
+          'Le correspondant semble hors ligne. Une notification lui a été envoyée — il doit ouvrir AfriWonder.',
+        );
+      }
+    };
 
-    const offSignal = socketService.on('call:signal', handleSignal);
+    /** ⛔ ZONE SIGNALISATION VERROUILLÉE — FIN (listeners enregistrés avant start()) */
+    const offSignal = socketService.on('call:signal', enqueueSignal);
     const offAccept = socketService.on('call:accept', handlePeerAccepted);
     const offEnd = socketService.on('call:end', handlePeerEnded);
     const offDecline = socketService.on('call:decline', handlePeerDeclined);
+    const offMissed = socketService.on('call:missed', handleCallMissed);
+    const offInviteAck = socketService.on('call:invite:ack', handleInviteAck);
 
     const start = async () => {
+      if (isWebRuntime) {
+        await stopAllCallRings();
+      }
+      finishingRef.current = false;
+      pcTearingDownRef.current = false;
+      mediaStoppedRef.current = false;
+      setNativeRtcUnmounting(false);
       try {
         /**
          * Optimisations Afrique de l'Ouest (Mali / Sénégal / Côte d'Ivoire) :
@@ -765,22 +1656,26 @@ export default function CallScreen() {
         } catch {
           /* Endpoint indisponible : STUN locaux uniquement. */
         }
+        if (setupStale()) return;
 
         /**
          * Mobile Afrique : relais TURN forcé sur cellulaire (2G/3G/4G) si TURN configuré (CGNAT opérateur).
          * Logique pure + testée dans `callNetworkConfig.ts`.
          */
-        let iceNetSnapshot: { type?: string | null; cellularGeneration?: string | null } = {};
-        if (!isWebRuntime) {
-          try {
-            const net = await NetInfo.fetch();
-            const det = (net.details || {}) as { cellularGeneration?: string | null };
-            iceNetSnapshot = { type: net.type, cellularGeneration: det.cellularGeneration };
-          } catch {
-            /** En cas d'échec NetInfo sur mobile : on suppose cellulaire (cas majoritaire Afrique) → relais. */
+        let iceNetSnapshot: NetworkSnapshot = {};
+        try {
+          const net = await NetInfo.fetch();
+          const det = (net.details || {}) as { cellularGeneration?: string | null };
+          iceNetSnapshot = { type: net.type, cellularGeneration: det.cellularGeneration };
+        } catch {
+          /** Mobile Afrique : défaut cellulaire pour forcer TURN si NetInfo échoue. */
+          if (!isWebRuntime) {
             iceNetSnapshot = { type: 'cellular' };
           }
         }
+        connectionWatchdogMsRef.current = callConnectionWatchdogMs(iceNetSnapshot);
+        mediaReadyHintMsRef.current = callMediaReadyHintMs(iceNetSnapshot);
+        voiceBitrateRef.current = pickVoiceOpusBitrateForNetwork(iceNetSnapshot);
         const pcConfig = buildCallIceConfig({
           iceServers,
           turnConfigured,
@@ -795,37 +1690,41 @@ export default function CallScreen() {
           iceServersCount: iceServers.length,
         });
         pcTearingDownRef.current = false;
-        const pc = new RTCPeerConnectionImpl(pcConfig);
+        let pc: RTCPeerConnection;
+        try {
+          pc = new RTCPeerConnectionImpl(pcConfig);
+        } catch (pcErr) {
+          if (!isWebRuntime) throw pcErr;
+          devWarn('[Call] RTCPeerConnection config primaire échouée, repli STUN', pcErr);
+          pc = new RTCPeerConnection({ iceServers: iceServers.slice(0, 3) });
+        }
         pcRef.current = pc;
+        logCallPhase(callId, 'pc_created', { isWeb: isWebRuntime });
+        await flushPendingSignals();
+
+        /**
+         * Natif : transceivers sendrecv avant getUserMedia (fix silence / vidéo distante Android).
+         * Web (Firefox/Chrome) : addTrack uniquement — addTransceiver+replaceTrack provoque DOMException.
+         */
+        const localSenders: { audio?: RTCRtpSender | null; video?: RTCRtpSender | null } = {};
+        if (!isWebRuntime) {
+          try {
+            localSenders.audio = pc.addTransceiver('audio', { direction: 'sendrecv' }).sender;
+            if (startedAsVideo) {
+              localSenders.video = pc.addTransceiver('video', { direction: 'sendrecv' }).sender;
+            }
+          } catch {
+            /* fallback addTrack après getUserMedia */
+          }
+        }
+        localSendersRef.current = localSenders;
 
         const remoteStream = isWebRuntime ? new MediaStream() : new nativeWebRTC.MediaStream();
         remoteStreamRef.current = remoteStream;
 
         pc.ontrack = (ev: RTCTrackEvent) => {
-          const trackKind = ev.track?.kind;
-          const inbound = ev.streams?.[0];
-          if (inbound) {
-            remoteStreamRef.current = inbound;
-            setupRemoteEl(inbound, trackKind);
-            if (!isWebRuntime && trackKind === 'audio') {
-              void applyNativeCallSpeakerRoute(speakerOnRef.current);
-            }
-            maybeMarkCallConnected(inbound, trackKind);
-            return;
-          }
-          if (ev.track) {
-            try {
-              remoteStream.addTrack(ev.track);
-            } catch {
-              /* piste déjà présente */
-            }
-            remoteStreamRef.current = remoteStream;
-            setupRemoteEl(remoteStream, trackKind);
-            if (!isWebRuntime && trackKind === 'audio') {
-              void applyNativeCallSpeakerRoute(speakerOnRef.current);
-            }
-            maybeMarkCallConnected(remoteStream, trackKind);
-          }
+          if (!ev.track) return;
+          syncRemoteTracksFromPeerConnection(pc);
         };
 
         pc.onicecandidate = (ev: RTCPeerConnectionIceEvent) => {
@@ -835,6 +1734,8 @@ export default function CallScreen() {
               protocol: ev.candidate.protocol,
             });
             sendSignal({ kind: 'ice', candidate: ev.candidate.toJSON() });
+          } else {
+            sendSignal({ kind: 'ice', candidate: null });
           }
         };
 
@@ -842,7 +1743,30 @@ export default function CallScreen() {
           if (pcTearingDownRef.current) return;
           const s = pc.connectionState;
           logCallPhase(callId, 'pc_state', { connectionState: s });
+          if (s === 'connected') {
+            syncRemoteTracksFromPeerConnection(pc);
+            const remote = remoteStreamRef.current as MediaStream;
+            if (
+              shouldMarkCallConnected({
+                stream: remote,
+                isVideo: isVideoCallRef.current,
+                peerConnectionState: s,
+                role,
+                peerAccepted: peerAnsweredRef.current,
+                hasRemoteDescription: Boolean(pc.remoteDescription),
+              })
+            ) {
+              clearConnectionWatchdog();
+            }
+            enableRemoteAudioTracks(remote);
+            if (!isWebRuntime) {
+              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+            }
+            maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
+          }
           if (s === 'failed') {
+            const ice = String(pc.iceConnectionState || '');
+            if (ice === 'checking' || ice === 'connected' || ice === 'completed') return;
             finishCall('failed');
           }
         };
@@ -851,63 +1775,148 @@ export default function CallScreen() {
           if (pcTearingDownRef.current) return;
           const ice = String(pc.iceConnectionState || '');
           logCallPhase(callId, 'ice_state', { iceConnectionState: ice });
-          if (ice === 'failed') {
-            if (!turnConfigured && !isWebRuntime) {
-              setErrorMsg(
-                'Audio bloqué par le réseau mobile. Le serveur TURN n’est pas configuré — contactez le support AfriWonder.',
-              );
+          if (ice === 'connected' || ice === 'completed') {
+            syncRemoteTracksFromPeerConnection(pc);
+            const remote = remoteStreamRef.current as MediaStream;
+            if (
+              shouldMarkCallConnected({
+                stream: remote,
+                isVideo: isVideoCallRef.current,
+                peerConnectionState: peerPcState(),
+                role,
+                peerAccepted: peerAnsweredRef.current,
+                hasRemoteDescription: Boolean(pc.remoteDescription),
+              })
+            ) {
+              clearConnectionWatchdog();
             }
-            finishCall('failed');
+            enableRemoteAudioTracks(remote);
+            if (!isWebRuntime) {
+              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+            }
+            maybeMarkCallConnected(remote, 'audio');
+          }
+          if (ice === 'failed') {
+            void (async () => {
+              if (!restartAttempted) {
+                restartAttempted = true;
+                try {
+                  const restartOffer = await pc.createOffer({ iceRestart: true });
+                  const tunedRestart = withTunedVoiceSdp(restartOffer, voiceBitrateRef.current);
+                  await setTunedLocalDescription(pc, tunedRestart, voiceBitrateRef.current);
+                  sendSdpFromPeerConnection(pc, tunedRestart);
+                  armConnectionWatchdog();
+                  return;
+                } catch {
+                  /* fin ci-dessous */
+                }
+              }
+              if (!turnConfigured && !isWebRuntime) {
+                setErrorMsg(
+                  'Audio bloqué par le réseau mobile. Le serveur TURN n’est pas configuré — contactez le support AfriWonder.',
+                );
+              }
+              finishCall('failed');
+            })();
           }
         };
 
         if (!isWebRuntime) {
           await releaseExpoAvForWebRtcCall();
-          const permitted = await requestNativeCallPermissions(isVideo);
+          const permitted = await requestNativeCallPermissions(startedAsVideo);
           if (!permitted) {
             throw new Error('NOTALLOWED');
           }
+          /** InCallManager avant capture micro — sinon HP / écouteur parfois muets sur Android. */
+          await startNativeCallAudioSession(startedAsVideo, speakerOnRef.current, {
+            outgoingRingback: role === 'caller',
+          });
         }
 
-        if (!turnConfigured && !isWebRuntime) {
-          devWarn('[Call] TURN non configuré — risque élevé de silence audio sur 4G Afrique');
-          if (String(iceNetSnapshot.type || '').toLowerCase() === 'cellular') {
-            setErrorMsg(
-              'Réseau mobile sans relais TURN serveur — l’audio peut ne pas passer. Passez en Wi‑Fi ou contactez le support.',
-            );
-          }
+        if (shouldBlockCellularWithoutTurn({ turnConfigured, net: iceNetSnapshot })) {
+          devWarn('[Call] TURN non configuré — cellulaire Afrique bloqué (CGNAT)');
+          setErrorMsg(
+            'Réseau mobile sans relais TURN — l’audio ne peut pas passer. Passez en Wi‑Fi ou contactez le support.',
+          );
+          finishCall('failed');
+          return;
         }
 
-        const videoProfile = isVideo ? await detectVideoProfile() : null;
-        const constraints: MediaStreamConstraints = {
-          audio: {
-            // Optimisations audio pour bande passante limitée + suppression bruit (importante en Afrique : marchés, motos).
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          } as any,
-          video: videoProfile
-            ? {
-                width: { ideal: videoProfile.width },
-                height: { ideal: videoProfile.height },
-                frameRate: { ideal: videoProfile.frameRate, max: videoProfile.frameRate },
-                facingMode: 'user',
-              }
-            : false,
-        };
+        const videoProfile = startedAsVideo ? await detectVideoProfile() : null;
         if (videoProfile) {
           devWarn('[Call] Profile vidéo sélectionné', videoProfile.label, 'TURN:', turnConfigured);
         }
         if (!mediaDevicesImpl?.getUserMedia) {
           throw new Error('MEDIA_DEVICES_UNAVAILABLE');
         }
-        const local = await mediaDevicesImpl.getUserMedia(constraints);
-        if (cancelled) {
+        if (setupStale()) return;
+        let preAcquiredWebStream: MediaStream | null = null;
+        if (isWebRuntime) {
+          const prefetch = consumeWebCallMediaCapture();
+          if (prefetch) {
+            logCallPhase(callId, 'web_media_prefetch_wait', { wantVideo: startedAsVideo });
+            try {
+              preAcquiredWebStream = await prefetch;
+              logCallPhase(callId, 'web_media_prefetch_ok', {
+                audioTracks: preAcquiredWebStream.getAudioTracks?.().length ?? 0,
+              });
+            } catch (prefetchErr) {
+              devWarn('[Call] web media prefetch failed', prefetchErr);
+              logCallPhase(callId, 'web_media_prefetch_failed', {
+                name: String((prefetchErr as DOMException)?.name || ''),
+                message: String((prefetchErr as Error)?.message || ''),
+              });
+            }
+          }
+          if (!preAcquiredWebStream?.getAudioTracks?.().length) {
+            logCallPhase(callId, 'web_media_consent_wait', { wantVideo: startedAsVideo });
+            try {
+              await waitForWebMediaConsent();
+            } catch (consentErr) {
+              if (String((consentErr as Error)?.message || '') === 'WEB_MEDIA_CONSENT_CANCELLED') {
+                return;
+              }
+              throw consentErr;
+            }
+            if (setupStale()) return;
+            preAcquiredWebStream = webPreAcquiredMediaRef.current;
+            webPreAcquiredMediaRef.current = null;
+            logCallPhase(callId, 'web_media_consent_granted', {
+              wantVideo: startedAsVideo,
+              hasPreAcquiredAudio: Boolean(preAcquiredWebStream?.getAudioTracks?.().length),
+            });
+          }
+          if (setupStale()) return;
+        }
+        logCallPhase(callId, 'local_media_request', {
+          wantVideo: startedAsVideo,
+          listenOnly: Boolean(isWebRuntime && webListenOnlyRef.current),
+        });
+        const { stream: local, videoAcquired } = await acquireCallLocalMedia({
+          mediaDevices: mediaDevicesImpl,
+          wantVideo: startedAsVideo,
+          videoProfile,
+          preAcquiredStream: preAcquiredWebStream,
+          listenOnly: isWebRuntime && webListenOnlyRef.current,
+        });
+        logCallPhase(callId, 'local_media_acquired', {
+          audioTracks: local.getAudioTracks?.().length ?? 0,
+          videoTracks: local.getVideoTracks?.().length ?? 0,
+          listenOnly: Boolean(isWebRuntime && webListenOnlyRef.current),
+        });
+        if (setupStale()) {
           local.getTracks().forEach((t: any) => t.stop());
           return;
         }
+        if (startedAsVideo && !videoAcquired) {
+          setCameraOff(true);
+          devWarn('[Call] Caméra indisponible — poursuite en audio local (appel vidéo conservé)');
+        }
         localStreamRef.current = local;
+        localTrackIdsRef.current = collectTrackIds(local);
         webrtcMediaActiveRef.current = true;
+        activeVideoDeviceIdRef.current = readVideoDeviceIdFromStream(local);
+        setLocalFacing('user');
         /** Natif : couper expo-av avant WebRTC ; web : ringback HTML5 continue jusqu’à `connecting`. */
         if (!isWebRuntime) {
           void stopOutgoingRingRef.current?.();
@@ -916,14 +1925,20 @@ export default function CallScreen() {
         const localTrackCounts = countLocalTracks(local);
         logCallPhase(callId, 'local_media', {
           ...localTrackCounts,
-          isVideo,
+          isVideo: startedAsVideo,
+          videoAcquired,
         });
-        if (!isWebRuntime) {
-          await startNativeCallAudioSession(isVideo, speakerOnRef.current, {
-            outgoingRingback: role === 'caller',
-          });
+        if (isWebRuntime && webListenOnlyRef.current && !local.getAudioTracks?.().length) {
+          try {
+            const tx = pc.addTransceiver('audio', { direction: 'recvonly' });
+            localSenders.audio = tx.sender;
+            logCallPhase(callId, 'web_listen_only_transceiver', {});
+          } catch (listenOnlyErr) {
+            devWarn('[Call] listen-only transceiver failed', listenOnlyErr);
+          }
         }
-        local.getTracks().forEach((t: any) => pc.addTrack(t, local));
+        await attachLocalTracksToPeerConnection(pc, local, localSenders);
+        await optimizeCallAudioPipeline(pc, voiceBitrateRef.current);
         setupLocalEl(local);
 
         /**
@@ -967,7 +1982,7 @@ export default function CallScreen() {
             callId: callIdRef.current,
             fromUserId: myUserId,
             toUserId: otherUserId,
-            type: isVideo ? 'video' : 'audio',
+            type: startedAsVideo ? 'video' : 'audio',
             callerName: user?.full_name || user?.username || 'Quelqu’un',
             callerAvatar: user?.profile_image || user?.avatar || '',
           });
@@ -978,10 +1993,16 @@ export default function CallScreen() {
           }
 
           ringTimeoutRef.current = setTimeout(() => {
-            if (callStateRef.current !== 'connected') {
-              setErrorMsg('Pas de réponse.');
-              finishCall('missed');
+            if (
+              !shouldFinishCallAsMissed({
+                callState: callStateRef.current,
+                peerAnswered: peerAnsweredRef.current,
+              })
+            ) {
+              return;
             }
+            setErrorMsg('Pas de réponse.');
+            finishCall('missed');
           }, CALL_RING_MS);
         } else {
           // Receveur : PC prêt avant accept — indispensable si l’app a été ouverte depuis une notification push.
@@ -991,7 +2012,7 @@ export default function CallScreen() {
               callId: callIdRef.current,
               accepterUserId: myUserId,
               callerUserId: otherUserId,
-              type: isVideo ? 'video' : 'audio',
+              type: startedAsVideo ? 'video' : 'audio',
             }),
           );
           if (!accepted) {
@@ -1000,37 +2021,138 @@ export default function CallScreen() {
             return;
           }
           setPeerAnswered(true);
+          peerAnsweredRef.current = true;
           setCallState('connecting');
+          if (isWebRuntime) {
+            void stopAllCallRings();
+          }
           armMediaReadyHint();
+          armMediaWatchdogIfReady();
         }
-        armConnectionWatchdog();
+
+        upgradeToVideoRef.current = async () => {
+          if (cancelled || isVideoCallRef.current) return;
+          if (callStateRef.current !== 'connected') return;
+          const camOk = await attachVideoToActiveCall();
+          if (!camOk) {
+            setErrorMsg(
+              isWebRuntime
+                ? 'Caméra indisponible. Autorisez la caméra dans le navigateur.'
+                : 'Caméra indisponible. Autorisez la caméra dans Réglages → AfriWonder.',
+            );
+            return;
+          }
+          void socketService.ensureConnectedEmit('call:upgrade', {
+            callId: callIdRef.current,
+            fromUserId: myUserId,
+            toUserId: otherUserId,
+            active: true,
+          });
+          const activePc = pcRef.current as RTCPeerConnection | null;
+          if (!activePc) return;
+          try {
+            const offer = await activePc.createOffer(callSdpNegotiationOptions());
+            const tunedOffer = withTunedVoiceSdp(offer, voiceBitrateRef.current);
+            await setTunedLocalDescription(activePc, tunedOffer, voiceBitrateRef.current);
+            logCallPhase(callIdRef.current, 'upgrade_video_offer', {
+              hasVideo: sdpContainsMedia(tunedOffer.sdp, 'video'),
+            });
+            sendSdpFromPeerConnection(activePc, tunedOffer);
+          } catch (e) {
+            devWarn('[Call] upgrade offer failed', e);
+            setErrorMsg('Impossible de passer en vidéo.');
+          }
+        };
       } catch (e: any) {
+        if (setupStale()) return;
+        logCallPhase(callId, 'setup_failed', {
+          name: String(e?.name || ''),
+          message: String(e?.message || e || ''),
+        });
         devWarn('[Call] setup failed', e);
-        const msg = String(e?.message || '').toLowerCase();
-        if (msg.includes('permission') || msg.includes('notallowed')) {
+        captureSentryException(e, {
+          source: 'call.setup_failed',
+          callId,
+          role,
+          isVideo: startedAsVideo,
+          platform: Platform.OS,
+        });
+        if (String(e?.message || '') === 'MEDIA_DEVICES_UNAVAILABLE') {
+          setErrorMsg('WebRTC indisponible dans ce navigateur.');
+        } else if (String(e?.message || '') === 'NOTALLOWED') {
           setErrorMsg('Permission micro / caméra refusée.');
         } else {
-          setErrorMsg('Impossible de démarrer l’appel.');
+          setErrorMsg(callMediaErrorMessage(e, startedAsVideo));
         }
         finishCall('failed');
       }
     };
 
+    const mediaNudgeTimer = setInterval(() => {
+      if (cancelled) return;
+      const pc = pcRef.current as RTCPeerConnection | null;
+      syncRemoteTracksFromPeerConnection(pc);
+      const remote = remoteStreamRef.current as MediaStream;
+      enableRemoteAudioTracks(remote);
+      if (remotePlaybackStreamRef.current) {
+        enableRemoteAudioTracks(remotePlaybackStreamRef.current);
+      }
+      if (!isWebRuntime) {
+        void applyNativeCallSpeakerRoute(speakerOnRef.current);
+      }
+      if (callStateRef.current !== 'connected' && pc?.remoteDescription) {
+        if (
+          canPromoteCallToConnected({
+            stream: remote,
+            isVideo: isVideoCallRef.current,
+            trackKind: 'audio',
+            peerConnectionState: peerPcState(),
+            role,
+            peerAccepted: peerAnsweredRef.current,
+            hasRemoteDescription: true,
+          })
+        ) {
+          maybeMarkCallConnected(remote, 'audio');
+        }
+      }
+      if (isWebRuntime && isVideoCallRef.current) {
+        bindWebRtcMediaElement(remoteVideoElRef.current, remote, {
+          allowPendingTracks: true,
+        });
+      } else if (isWebRuntime && !isVideoCallRef.current) {
+        if (callStateRef.current !== 'connected' || !streamHasLiveAudio(remote)) {
+          armRemoteWebAudioPlayback();
+        } else if (remoteAudioElRef.current?.paused) {
+          try {
+            remoteAudioElRef.current.muted = false;
+            void remoteAudioElRef.current.play().catch(() => {});
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }, 1000);
+
     void start();
 
     return () => {
       cancelled = true;
+      cancelWebMediaConsent();
+      clearInterval(mediaNudgeTimer);
       offSignal();
       offAccept();
       offEnd();
       offDecline();
-      stopAllMedia();
+      offMissed();
+      offInviteAck();
+      scheduleStopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+      connectionWatchdogRef.current = null;
       if (mediaReadyHintRef.current) clearTimeout(mediaReadyHintRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otherUserId, myUserId, isVideo, role]);
+  }, [otherUserId, myUserId, startedAsVideo, role]);
 
   useEffect(() => {
     speakerOnRef.current = speakerOn;
@@ -1060,8 +2182,9 @@ export default function CallScreen() {
    */
   useEffect(() => {
     if (role !== 'caller' || callState !== 'ringing') return;
-    if (!isWebRuntime && webrtcMediaActiveRef.current) return;
-    if (!isWebRuntime && !nativeWebRTC) return;
+    /** Natif : tonalité via InCallManager dans startNativeCallAudioSession — pas expo-av (double sonnerie). */
+    if (!isWebRuntime) return;
+    if (webrtcMediaActiveRef.current) return;
     let cancelled = false;
     void startOutgoingRingbackPattern(0.58).then((fn) => {
       if (cancelled) {
@@ -1081,14 +2204,13 @@ export default function CallScreen() {
     };
   }, [role, callState]);
 
-  /** Arrête la tonalité d’attente dès connexion WebRTC (web + natif). */
+  /** Arrête la tonalité d’attente dès connexion WebRTC (web + natif). Ne pas rappeler releaseExpoAv ici — casse l’audio natif. */
   useEffect(() => {
     if (callState !== 'connecting' && callState !== 'connected') return;
     void stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
     if (isWebRuntime) return;
     void stopNativeOutgoingRingback();
-    void releaseExpoAvForWebRtcCall();
   }, [callState]);
 
   /**
@@ -1106,7 +2228,9 @@ export default function CallScreen() {
           setErrorMsg('Reseau perdu - reconnexion...');
         } else {
           setErrorMsg(`Reseau change : ${type.toUpperCase()}`);
-          // Auto-clear après 4s
+          if (callStateRef.current === 'connected') {
+            void triggerIceRestartRef.current?.();
+          }
           setTimeout(() => setErrorMsg(null), 4000);
         }
       }
@@ -1130,9 +2254,23 @@ export default function CallScreen() {
     });
   }, []);
 
+  const upgradeCallToVideo = useCallback(async () => {
+    if (isVideoCall || videoUpgradeLoading) return;
+    if (callState !== 'connected') {
+      Alert.alert('Vidéo', 'Attendez que l’appel soit bien connecté.');
+      return;
+    }
+    setVideoUpgradeLoading(true);
+    try {
+      await upgradeToVideoRef.current?.();
+    } finally {
+      setVideoUpgradeLoading(false);
+    }
+  }, [isVideoCall, callState, videoUpgradeLoading]);
+
   /** Toggle caméra (vidéo only). */
   const toggleCamera = useCallback(() => {
-    if (!isVideo) return;
+    if (!isVideoCall) return;
     setCameraOff((v) => {
       const next = !v;
       if (isWebRuntime) {
@@ -1144,7 +2282,7 @@ export default function CallScreen() {
       }
       return next;
     });
-  }, [isVideo]);
+  }, [isVideoCall]);
 
   const toggleSpeaker = useCallback(() => {
     setSpeakerOn((v) => {
@@ -1216,10 +2354,22 @@ export default function CallScreen() {
         setPeerScreenSharing(!!p.active);
       },
     );
+    const offU = socketService.on(
+      'call:upgrade',
+      (p: { callId?: string; fromUserId?: string; active?: boolean }) => {
+        if (p?.callId !== callIdRef.current || p.fromUserId !== otherUserId) return;
+        if (p.active) {
+          setErrorMsg(null);
+          isVideoCallRef.current = true;
+          setIsVideoCall(true);
+        }
+      },
+    );
     return () => {
       offR();
       offH();
       offS();
+      offU();
     };
   }, [otherUserId, myUserId, pushFloatingReaction]);
 
@@ -1246,75 +2396,85 @@ export default function CallScreen() {
     return () => clearInterval(id);
   }, [callState]);
 
-  const restoreCameraTrack = useCallback(async () => {
-    const mediaDevicesImpl = resolveWebRtcMediaDevices();
-    if (!mediaDevicesImpl?.getUserMedia || !pcRef.current || !localStreamRef.current) return;
-    const facing = facingModeRef.current;
-    const camOnly = await mediaDevicesImpl.getUserMedia({
-      video: isWebRuntime ? { facingMode: facing } : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: facing },
-      audio: false,
-    });
-    const newVt = camOnly.getVideoTracks()[0];
-    const local = localStreamRef.current as MediaStream;
-    const oldVt = local.getVideoTracks()[0];
-    const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
-    if (!sender || !newVt) return;
-    await sender.replaceTrack(newVt);
-    if (oldVt) {
-      local.removeTrack(oldVt);
-      oldVt.stop();
-    }
-    local.addTrack(newVt);
-    if (isWebRuntime) {
-      bindWebRtcMediaElement(localVideoElRef.current, local);
-    }
-    if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
-      setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
-      setLocalStreamKey((k) => k + 1);
-    }
-  }, []);
-
-  const flipCamera = useCallback(async () => {
-    const mediaDevicesImpl = resolveWebRtcMediaDevices();
-    if (!isVideo || !pcRef.current || !localStreamRef.current || !mediaDevicesImpl?.getUserMedia) {
-      Alert.alert('Caméra', 'Caméra indisponible.');
-      return;
-    }
-    const nextFacing = facingModeRef.current === 'user' ? 'environment' : 'user';
-    try {
-      const camOnly = await mediaDevicesImpl.getUserMedia({
-        video: isWebRuntime
-          ? { facingMode: nextFacing }
-          : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: nextFacing },
-        audio: false,
-      });
+  const replaceLocalVideoTrack = useCallback(
+    async (videoConstraints: MediaTrackConstraints) => {
+      const mediaDevicesImpl = resolveWebRtcMediaDevices();
+      if (!mediaDevicesImpl?.getUserMedia || !pcRef.current || !localStreamRef.current) return false;
+      const camOnly = await mediaDevicesImpl.getUserMedia({ video: videoConstraints, audio: false });
       const newVt = camOnly.getVideoTracks()[0];
       const local = localStreamRef.current as MediaStream;
       const oldVt = local.getVideoTracks()[0];
-      const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
-      if (sender && newVt) {
-        await sender.replaceTrack(newVt);
-        if (oldVt) {
-          local.removeTrack(oldVt);
-          oldVt.stop();
-        }
-        local.addTrack(newVt);
-        if (isWebRuntime) {
-          bindWebRtcMediaElement(localVideoElRef.current, local);
-        }
-        if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
-          setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
-          setLocalStreamKey((k) => k + 1);
-        }
-        facingModeRef.current = nextFacing;
+      const sender = (pcRef.current as RTCPeerConnection)
+        .getSenders()
+        .find((s) => s.track?.kind === 'video');
+      if (!sender || !newVt) {
+        camOnly.getTracks().forEach((t) => t.stop());
+        return false;
       }
-    } catch {
-      Alert.alert('Caméra', 'Impossible de changer de caméra sur cet appareil.');
+      await sender.replaceTrack(newVt);
+      if (oldVt) {
+        local.removeTrack(oldVt);
+        oldVt.stop();
+      }
+      local.addTrack(newVt);
+      activeVideoDeviceIdRef.current = readVideoDeviceIdFromStream(local);
+      if (isWebRuntime) {
+        bindWebRtcMediaElement(localVideoElRef.current, local, { force: true });
+        setLocalStreamKey((k) => k + 1);
+      } else if ((local as MediaStream & { toURL?: () => string }).toURL) {
+        setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
+        setLocalStreamKey((k) => k + 1);
+      }
+      return true;
+    },
+    [],
+  );
+
+  const restoreCameraTrack = useCallback(async () => {
+    const selection = {
+      deviceId: activeVideoDeviceIdRef.current,
+      facing: facingModeRef.current,
+    };
+    await replaceLocalVideoTrack(buildCameraVideoConstraints(selection, { isWeb: isWebRuntime }));
+  }, [replaceLocalVideoTrack]);
+
+  const flipCamera = useCallback(async () => {
+    const mediaDevicesImpl = resolveWebRtcMediaDevices();
+    const result = await executeCameraFlip({
+      isWeb: isWebRuntime,
+      stream: localStreamRef.current as MediaStream | null,
+      mediaDevices: mediaDevicesImpl ?? ({} as MediaDevices),
+      currentFacing: facingModeRef.current,
+      currentDeviceId: activeVideoDeviceIdRef.current,
+      replaceVideoTrack: (constraints) => {
+        if (!isVideoCall || !pcRef.current || !localStreamRef.current) {
+          return Promise.resolve(false);
+        }
+        return replaceLocalVideoTrack(constraints);
+      },
+    });
+
+    if (result.ok) {
+      facingModeRef.current = result.facing;
+      setLocalFacing(result.facing);
+      activeVideoDeviceIdRef.current = readVideoDeviceIdFromStream(localStreamRef.current as MediaStream);
+      setLocalStreamKey((k) => k + 1);
+      return;
     }
-  }, [isVideo]);
+
+    if (result.reason === 'unavailable') {
+      Alert.alert('Caméra', 'Caméra indisponible.');
+      return;
+    }
+    if (result.reason === 'single_camera') {
+      Alert.alert('Caméra', 'Une seule caméra disponible sur cet appareil.');
+      return;
+    }
+    Alert.alert('Caméra', 'Impossible de changer de caméra sur cet appareil.');
+  }, [isVideoCall, replaceLocalVideoTrack]);
 
   const toggleScreenShare = useCallback(async () => {
-    if (!isVideo) {
+    if (!isVideoCall) {
       Alert.alert('Partage d’écran', 'Réservé aux appels vidéo.');
       return;
     }
@@ -1371,7 +2531,7 @@ export default function CallScreen() {
       }
       local.addTrack(v);
       if (isWebRuntime) {
-        bindWebRtcMediaElement(localVideoElRef.current, local);
+        bindWebRtcMediaElement(localVideoElRef.current, local, { force: true, allowPendingTracks: true });
       }
       setLocalScreenSharing(true);
       emitCallRelay('call:screen_share', { active: true });
@@ -1381,7 +2541,15 @@ export default function CallScreen() {
     } finally {
       setScreenShareLoading(false);
     }
-  }, [isVideo, localScreenSharing, restoreCameraTrack, emitCallRelay]);
+  }, [isVideoCall, localScreenSharing, restoreCameraTrack, emitCallRelay]);
+
+  const bindRemoteVideoEl = useCallback((el: HTMLVideoElement | null) => {
+    remoteVideoElRef.current = el;
+    if (!el) return;
+    bindWebRtcMediaElement(el, remoteStreamRef.current as MediaStream | null, {
+      allowPendingTracks: true,
+    });
+  }, []);
 
   const statusLine = useMemo(
     () =>
@@ -1406,15 +2574,10 @@ export default function CallScreen() {
   }, []);
 
   /**
-   * Le flux distant est réellement disponible (caméra du correspondant) :
-   * - natif : on a un `streamURL` distant ;
-   * - web : la connexion est établie.
-   * Tant qu'il n'est pas là (sonnerie / connexion), on affiche SA PROPRE caméra en plein écran
-   * (comportement WhatsApp : on se voit en attendant que l'autre décroche).
+   * Vidéo distante affichée seulement quand le média WebRTC bidirectionnel est prêt
+   * (audio + vidéo) — évite un faux « connecté » avec seulement l’audio.
    */
-  const remoteVideoLive = isWebRuntime
-    ? callState === 'connected'
-    : Boolean(remoteStreamUrl && RTCViewNative);
+  const remoteVideoLive = callState === 'connected';
   /** Quand le distant n'est pas encore là, MA caméra prend tout l'écran. */
   const selfFullScreen = !remoteVideoLive;
   const peerVideoFullscreen = remoteVideoLive && videoLayoutFocus === 'remote';
@@ -1428,32 +2591,53 @@ export default function CallScreen() {
       params: {
         callId: callIdRef.current,
         otherUserId,
-        type: isVideo ? 'video' : 'audio',
+        type: isVideoCall ? 'video' : 'audio',
       },
     } as never);
-  }, [otherUserId, isVideo]);
+  }, [otherUserId, isVideoCall]);
 
   const isWeb = isWebRuntime;
+
+  /** RTCView distant uniquement après média confirmé — évite crash natif en sonnerie / teardown. */
+  const showNativeRemoteRtc =
+    !isWeb &&
+    !nativeRtcUnmounting &&
+    callState === 'connected' &&
+    isValidNativeRtcStreamUrl(remoteStreamUrl, { localUrl: localStreamUrl });
+  const showNativeLocalRtc =
+    !isWeb &&
+    !nativeRtcUnmounting &&
+    callState !== 'ended' &&
+    isValidNativeRtcStreamUrl(localStreamUrl);
 
   const dockIconColor = (active: boolean) => (active ? '#1a1a1a' : '#FFFFFF');
 
   return (
     <View style={[styles.root, { paddingBottom: insets.bottom }]}>
-      {isWeb && !isVideo
+      {isWeb && !isVideoCall
         ? createElement('audio', {
             ref: (el: HTMLAudioElement | null) => {
               remoteAudioElRef.current = el;
-              bindWebRtcMediaElement(el, remoteStreamRef.current as MediaStream | null);
+              if (!el) return;
+              const playback =
+                remotePlaybackStreamRef.current ?? (remoteStreamRef.current as MediaStream | null);
+              remoteWebAudioPollRef.current = startRemoteWebAudioPlayback(
+                el,
+                playback,
+                remoteWebAudioPollRef.current,
+              );
             },
+            autoPlay: true,
             playsInline: true,
             preload: 'none',
             style: { display: 'none' },
           })
         : null}
 
-      {/* Natif : RTCView caché pour l’audio distant (appels vocaux — évite double lecture en vidéo). */}
-      {!isWeb && remoteStreamUrl && RTCViewNative && !isVideo ? (
-        <RTCViewNative
+      {/* Natif : RTCView caché pour l’audio distant — appels vocaux uniquement (évite double décodeur en vidéo). */}
+      {showNativeRemoteRtc && !isVideoCall ? (
+        <SafeNativeRtcView
+          debugLabel="remote-audio"
           key={`remote-audio-${remoteStreamKey}`}
           streamURL={remoteStreamUrl}
           style={styles.hiddenRemoteRtc}
@@ -1462,7 +2646,19 @@ export default function CallScreen() {
         />
       ) : null}
 
-      {!isVideo ? <CallWallpaperPattern /> : null}
+      {/* Natif vidéo : secours audio si le RTCView vidéo ne route pas le son (Samsung/Xiaomi). */}
+      {showNativeRemoteRtc && isVideoCall ? (
+        <SafeNativeRtcView
+          debugLabel="remote-audio-video-backup"
+          key={`remote-audio-video-backup-${remoteStreamKey}`}
+          streamURL={remoteStreamUrl}
+          style={styles.hiddenRemoteRtcVideoBackup}
+          objectFit="cover"
+          zOrder={0}
+        />
+      ) : null}
+
+      {!isVideoCall ? <CallWallpaperPattern /> : null}
 
       {/* Barre du haut — style WhatsApp */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
@@ -1477,7 +2673,7 @@ export default function CallScreen() {
             {statusLine}
           </Text>
         </View>
-        {isVideo ? (
+        {isVideoCall ? (
           <View style={styles.topIconHit} />
         ) : (
           <TouchableOpacity onPress={openAddPeople} style={styles.topIconHit} accessibilityLabel="Ajouter">
@@ -1499,7 +2695,7 @@ export default function CallScreen() {
         </View>
       ) : null}
 
-      {isVideo ? (
+      {isVideoCall ? (
         <View style={styles.videoBackground}>
           {/* Flux distant — toujours monté (audio web) ; taille = plein écran ou PiP */}
           <View
@@ -1509,10 +2705,7 @@ export default function CallScreen() {
             {isWeb ? (
               <View style={StyleSheet.absoluteFill}>
                 {createElement('video', {
-                  ref: (el: HTMLVideoElement | null) => {
-                    remoteVideoElRef.current = el;
-                    bindWebRtcMediaElement(el, remoteStreamRef.current as MediaStream | null);
-                  },
+                  ref: bindRemoteVideoEl,
                   playsInline: true,
                   muted: false,
                   preload: 'none',
@@ -1532,9 +2725,10 @@ export default function CallScreen() {
                   </View>
                 ) : null}
               </View>
-            ) : remoteStreamUrl && RTCViewNative ? (
+            ) : showNativeRemoteRtc ? (
               <View style={StyleSheet.absoluteFill}>
-                <RTCViewNative
+                <SafeNativeRtcView
+                  debugLabel="remote-video"
                   key={`remote-video-${remoteStreamKey}`}
                   streamURL={remoteStreamUrl}
                   style={styles.nativeVideoFill}
@@ -1558,9 +2752,7 @@ export default function CallScreen() {
                 ) : (
                   <>
                     <ActivityIndicator size="large" color={Colors.primary} />
-                    <Text style={styles.videoPlaceholderText}>
-                      {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
-                    </Text>
+                    <Text style={styles.videoPlaceholderText}>Connexion vidéo…</Text>
                   </>
                 )}
               </View>
@@ -1591,36 +2783,46 @@ export default function CallScreen() {
             </TouchableOpacity>
           </View>
 
-          {!cameraOff ? (
-            <View
-              style={peerVideoFullscreen ? styles.videoLayerPip : styles.videoLayerFull}
-              pointerEvents={peerVideoFullscreen ? 'box-none' : 'none'}
-            >
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                {isWeb ? (
+          <View
+            style={peerVideoFullscreen ? styles.videoLayerPip : styles.videoLayerFull}
+            pointerEvents={peerVideoFullscreen ? 'box-none' : 'none'}
+          >
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {!cameraOff && (isWeb || showNativeLocalRtc) ? (
+                isWeb ? (
                   createElement('video', {
+                    key: `local-web-video-${localStreamKey}`,
                     ref: (el: HTMLVideoElement | null) => {
                       localVideoElRef.current = el;
-                      bindWebRtcMediaElement(el, localStreamRef.current as MediaStream | null);
+                      bindWebRtcMediaElement(el, localStreamRef.current as MediaStream | null, {
+                        allowPendingTracks: true,
+                      });
                     },
                     playsInline: true,
                     muted: true,
                     preload: 'none',
-                    style: { width: '100%', height: '100%', objectFit: 'cover' },
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: localFacing === 'user' ? 'scaleX(-1)' : 'none',
+                    },
                   })
-                ) : localStreamUrl && RTCViewNative ? (
-                  <RTCViewNative
+                ) : (
+                  <SafeNativeRtcView
+                    debugLabel="local-video"
                     key={`local-video-${localStreamKey}`}
                     streamURL={localStreamUrl}
                     style={styles.nativeVideoFill}
                     objectFit="cover"
-                    mirror
+                    mirror={nativeLocalVideoMirror(localFacing)}
                     zOrderMediaOverlay
                   />
-                ) : (
-                  <Image source={{ uri: myAvatarUri }} style={styles.selfViewImage} />
-                )}
-              </View>
+                )
+              ) : (
+                <Image source={{ uri: myAvatarUri }} style={styles.selfViewImage} />
+              )}
+            </View>
               {pipEffect !== 'none' ? (
                 <View
                   style={[StyleSheet.absoluteFill, { backgroundColor: PIP_EFFECT_LAYER[pipEffect] }]}
@@ -1653,7 +2855,6 @@ export default function CallScreen() {
                 />
               ) : null}
             </View>
-          ) : null}
         </View>
       ) : (
         <View style={styles.audioStage}>
@@ -1685,21 +2886,22 @@ export default function CallScreen() {
           <TouchableOpacity
             style={[
               styles.dockCircle,
-              !isVideo && styles.dockCircleMuted,
-              isVideo && cameraOff && styles.dockCircleMuted,
+              !isVideoCall && !videoUpgradeLoading && styles.dockCircleMuted,
+              isVideoCall && cameraOff && styles.dockCircleMuted,
             ]}
-            onPress={
-              isVideo
-                ? toggleCamera
-                : () => Alert.alert('AfriWonder', 'Passez un appel vidéo pour activer la caméra.')
-            }
-            accessibilityLabel={isVideo ? 'Caméra' : 'Vidéo indisponible'}
+            onPress={isVideoCall ? toggleCamera : () => void upgradeCallToVideo()}
+            disabled={videoUpgradeLoading}
+            accessibilityLabel={isVideoCall ? 'Caméra' : 'Passer en vidéo'}
           >
-            <Ionicons
-              name={isVideo ? (cameraOff ? 'videocam-off' : 'videocam') : 'videocam-off'}
-              size={24}
-              color="#FFF"
-            />
+            {videoUpgradeLoading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Ionicons
+                name={isVideoCall ? (cameraOff ? 'videocam-off' : 'videocam') : 'videocam'}
+                size={24}
+                color="#FFF"
+              />
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.dockCircle, speakerOn && styles.dockCircleOn]}
@@ -1735,6 +2937,85 @@ export default function CallScreen() {
         </View>
       ) : null}
 
+      {isWeb && webMediaConsentNeeded ? (
+        <View style={styles.webMediaConsentOverlay}>
+          <View style={styles.webMediaConsentCard}>
+            <Ionicons
+              name={startedAsVideo ? 'videocam' : 'mic'}
+              size={36}
+              color={Colors.primary}
+              style={styles.webMediaConsentIcon}
+            />
+            <Text style={styles.webMediaConsentTitle}>
+              {startedAsVideo ? 'Micro et caméra requis' : 'Micro requis'}
+            </Text>
+            <Text style={styles.webMediaConsentBody}>
+              {startedAsVideo
+                ? 'Cliquez ci-dessous pour autoriser le micro et la caméra dans votre navigateur.'
+                : 'Cliquez ci-dessous pour autoriser le micro dans votre navigateur.'}
+            </Text>
+            {webMediaConsentError ? (
+              <Text style={styles.webMediaConsentError}>{webMediaConsentError}</Text>
+            ) : webAudioProbe ? (
+              <Text style={styles.webMediaConsentHint}>
+                {webCallAudioProbeHint(webAudioProbe) ||
+                  `Micro détecté (${webAudioProbe.inputCount} entrée${webAudioProbe.inputCount > 1 ? 's' : ''}).`}
+              </Text>
+            ) : null}
+            {createElement(
+              'button',
+              {
+                type: 'button',
+                disabled: webMediaConsentLoading,
+                onClick: grantWebMediaConsent,
+                'aria-label': startedAsVideo ? 'Autoriser micro et caméra' : 'Autoriser le micro',
+                style: {
+                  backgroundColor: Colors.primary,
+                  border: 'none',
+                  borderRadius: 12,
+                  padding: '14px 20px',
+                  minWidth: 220,
+                  color: '#FFF',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  cursor: webMediaConsentLoading ? 'wait' : 'pointer',
+                  opacity: webMediaConsentLoading ? 0.75 : 1,
+                },
+              },
+              webMediaConsentLoading
+                ? 'Autorisation…'
+                : startedAsVideo
+                  ? 'Autoriser et appeler'
+                  : 'Autoriser le micro',
+            )}
+            {!startedAsVideo && (webMediaConsentError || webAudioProbe?.inputCount === 0) ? (
+              createElement(
+                'button',
+                {
+                  type: 'button',
+                  disabled: webMediaConsentLoading,
+                  onClick: grantWebListenOnlyConsent,
+                  'aria-label': 'Continuer en écoute seule sans micro',
+                  style: {
+                    backgroundColor: 'transparent',
+                    border: `1px solid ${Colors.border}`,
+                    borderRadius: 12,
+                    padding: '12px 20px',
+                    minWidth: 220,
+                    marginTop: 12,
+                    color: Colors.textSecondary,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: webMediaConsentLoading ? 'wait' : 'pointer',
+                  },
+                },
+                'Continuer en écoute seule (sans micro)',
+              )
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
       <CallMoreOptionsSheet
         visible={moreMenuOpen}
         onClose={() => setMoreMenuOpen(false)}
@@ -1756,7 +3037,7 @@ export default function CallScreen() {
           setMoreMenuOpen(false);
         }}
         onShareScreen={() => void toggleScreenShare()}
-        showScreenShare={isWebRuntime && isVideo}
+        showScreenShare={isWebRuntime && isVideoCall}
         onOpenMessageComposer={() => {
           setMoreMenuOpen(false);
           setMessageModalOpen(true);
@@ -1813,16 +3094,82 @@ export default function CallScreen() {
   );
 }
 
+export default function CallScreen() {
+  return (
+    <CallScreenErrorBoundary>
+      <CallScreenInner />
+    </CallScreenErrorBoundary>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0B141A' },
-  /** Lecture audio distante (appels vocaux natifs) — invisible mais monté dans l’arbre RN. */
+  webMediaConsentOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    backgroundColor: 'rgba(11, 20, 26, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  webMediaConsentCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#1F2C34',
+    borderRadius: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  webMediaConsentIcon: { marginBottom: 12 },
+  webMediaConsentTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  webMediaConsentBody: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  webMediaConsentHint: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 18,
+    paddingHorizontal: 8,
+  },
+  webMediaConsentError: {
+    color: '#FFB4B4',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  /** Lecture audio distante — taille minimale visible pour Android (1×1 px = silence sur certains devices). */
   hiddenRemoteRtc: {
     position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-    left: -9999,
-    top: -9999,
+    width: 48,
+    height: 48,
+    opacity: 0.01,
+    bottom: 0,
+    left: 0,
+    zIndex: 0,
+  },
+  /** Appel vidéo : secours audio si le RTCView vidéo distant ne route pas le son. */
+  hiddenRemoteRtcVideoBackup: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    opacity: 0.01,
+    bottom: 0,
+    right: 0,
+    zIndex: 0,
   },
   topBar: {
     flexDirection: 'row',
