@@ -380,6 +380,16 @@ class NotificationService {
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@afriwonder.app';
 
     const dataObj: Record<string, unknown> = { ...(data || {}), category };
+    /** Appels entrants mobile : `_layout.tsx` attend `type: incoming_call` dans le push data. */
+    if (String(dataObj.type || '') === 'call_incoming') {
+      dataObj.type = 'incoming_call';
+      if (dataObj.callMediaType && !dataObj.callType) {
+        dataObj.callType = dataObj.callMediaType;
+      }
+      if (dataObj.callerId && !dataObj.fromUserId) {
+        dataObj.fromUserId = dataObj.callerId;
+      }
+    }
     const payload = JSON.stringify({
       title,
       body: message,

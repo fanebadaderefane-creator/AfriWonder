@@ -91,6 +91,17 @@ Copie les **valeurs** depuis ton fichier `backend/.env` (ne les note pas ici pou
 - [ ] `ADMIN_EMAIL`
 - [ ] `ADMIN_PHONE`
 
+## Mises à jour application mobile (Play Store / App Store)
+
+À aligner sur `frontend/app.json` → `android.versionCode` à chaque release. Guide test : `docs/MOBILE_APP_UPDATE_PLAY_INTERNAL_TEST.md`.
+
+- [ ] `MOBILE_ANDROID_LATEST_VERSION_CODE` (ex: `25` — doit être **&gt;** la build installée pour afficher la modale)
+- [ ] `MOBILE_ANDROID_MIN_VERSION_CODE` (ex: `22` ou vide — si = dernière version, MAJ **obligatoire**)
+- [ ] `MOBILE_ANDROID_STORE_URL` (optionnel — défaut Play `com.afriwonder.app`)
+- [ ] `MOBILE_IOS_LATEST_BUILD_NUMBER` (optionnel iOS)
+- [ ] `MOBILE_IOS_MIN_BUILD_NUMBER` (optionnel iOS)
+- [ ] `MOBILE_IOS_STORE_URL` (optionnel iOS)
+
 ## Optionnel
 
 - [ ] `BACKUP_DIR` (ex: `./backups`)

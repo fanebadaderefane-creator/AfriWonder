@@ -11,6 +11,7 @@ import { logger } from './utils/logger.js';
 import { setMessageIo, broadcastPresence } from './services/message.service.js';
 import notificationService from './services/notification.service.js';
 import { recordCallLogMessage } from './services/callLogMessage.service.js';
+import { dispatchIncomingCallMobileWakePush } from './services/incomingCallPush.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
@@ -39,14 +40,35 @@ function hasActiveSocketForUser(userId: string) {
   return false;
 }
 
-function clearPendingCall(callId?: string) {
+function clearPendingCallTimer(callId?: string) {
   if (!callId) return;
   const t = pendingCallTimers.get(callId);
   if (t) {
     clearTimeout(t);
     pendingCallTimers.delete(callId);
   }
-  pendingCallMeta.delete(callId);
+}
+
+function clearPendingCall(callId?: string) {
+  clearPendingCallTimer(callId);
+  if (callId) pendingCallMeta.delete(callId);
+}
+
+/** Vérifie que l’émetteur et le destinataire sont bien les deux parties du callId. */
+function canRelayDirectCallEvent(
+  payload: { callId: string; fromUserId: string; toUserId: string },
+  actorId: string,
+): boolean {
+  if (!payload?.callId || !payload?.fromUserId || !payload?.toUserId) return false;
+  if (!actorId || actorId !== payload.fromUserId) return false;
+  if (payload.fromUserId === payload.toUserId) return false;
+  const meta = pendingCallMeta.get(payload.callId);
+  if (!meta) return true;
+  const forward =
+    meta.fromUserId === payload.fromUserId && meta.toUserId === payload.toUserId;
+  const reverse =
+    meta.fromUserId === payload.toUserId && meta.toUserId === payload.fromUserId;
+  return forward || reverse;
 }
 
 async function upsertDirectCallState(
@@ -212,6 +234,12 @@ const corsOrigins: (string | RegExp)[] = [
 if (process.env.NODE_ENV !== 'production' && process.env.CORS_ALLOW_VERCEL_PREVIEW === 'true') {
   corsOrigins.push(/\.vercel\.app$/);
 }
+/** Dev LAN : autoriser le frontend ouvert depuis l’IP du PC (`http://10.x.x.x:3001`, etc.). */
+if (process.env.NODE_ENV !== 'production') {
+  corsOrigins.push(/^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/);
+  corsOrigins.push(/^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/);
+  corsOrigins.push(/^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/);
+}
 const io = new Server(httpServer, {
   cors: {
     origin: corsOrigins.length > 0 ? corsOrigins : 'http://localhost:5173',
@@ -296,6 +324,17 @@ async function ensureDbConnected() {
 // WebSocket connection
 io.on('connection', (socket) => {
   logger.info('WebSocket client connected', { socketId: socket.id });
+
+  /** Rejoindre immédiatement la room privée — évite perte de call:signal avant user:join client. */
+  const authUserId = (socket.data as { userId?: string }).userId;
+  if (authUserId) {
+    socket.join(`user:${authUserId}`);
+    socketToUserId.set(socket.id, authUserId);
+    broadcastPresence(authUserId, true).catch((e) =>
+      logger.warn('Presence online', { err: e instanceof Error ? e.message : String(e) }),
+    );
+    logger.info('User auto-joined room on connect', { userId: authUserId, socketId: socket.id });
+  }
 
   // SÉCURITÉ : l'userId provient STRICTEMENT du JWT vérifié dans io.use() ci-dessus.
   // Tout userId fourni par le client est ignoré pour empêcher l'usurpation de rooms privées.
@@ -508,9 +547,31 @@ io.on('connection', (socket) => {
   // Direct call signaling (invite / accept / decline / end)
   socket.on('call:invite', async (payload: { toUserId: string; fromUserId: string; callId?: string; type?: 'audio' | 'video'; callerName?: string; callerAvatar?: string }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
+    const actorId = (socket.data as { userId?: string }).userId;
+    if (!actorId || actorId !== payload.fromUserId) return;
     const callId = payload.callId || `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const callType: 'audio' | 'video' = payload.type === 'video' ? 'video' : 'audio';
-    io.to(`user:${payload.toUserId}`).emit('call:invite', { ...payload, callId, type: callType });
+    const calleeRoom = `user:${payload.toUserId}`;
+    io.to(calleeRoom).emit('call:invite', { ...payload, callId, type: callType, toUserId: payload.toUserId });
+    let receiverReachable = false;
+    try {
+      const calleeSockets = await io.in(calleeRoom).fetchSockets();
+      receiverReachable = calleeSockets.length > 0;
+      if (!receiverReachable) {
+        logger.info('call:invite — destinataire hors ligne (socket)', {
+          callId,
+          toUserId: payload.toUserId,
+        });
+      }
+    } catch {
+      /* fetchSockets indisponible — push + notif DB restent actifs */
+    }
+    socket.emit('call:invite:ack', {
+      callId,
+      type: callType,
+      toUserId: payload.toUserId,
+      receiverReachable,
+    });
     await upsertDirectCallState(callId, payload.fromUserId, payload.toUserId, 'pending');
     clearPendingCall(callId);
     pendingCallMeta.set(callId, {
@@ -593,6 +654,16 @@ io.on('connection', (socket) => {
           actionUrls,
         },
       });
+      void dispatchIncomingCallMobileWakePush({
+        toUserId: payload.toUserId,
+        callId,
+        fromUserId: payload.fromUserId,
+        type: callType,
+        callerName: payload.callerName,
+        callerAvatar: payload.callerAvatar,
+      }).catch((err) => {
+        logger.warn('Incoming call mobile wake push failed', { callId, err });
+      });
     } catch (err) {
       logger.warn('Incoming call notification failed from socket', {
         toUserId: payload.toUserId,
@@ -604,14 +675,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('call:accept', async (payload: { toUserId: string; fromUserId: string; callId?: string; type?: 'audio' | 'video' }) => {
-    if (!payload?.toUserId || !payload?.fromUserId) return;
-    clearPendingCall(payload.callId);
+    if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId) return;
+    const actorId = (socket.data as { userId?: string }).userId;
+    if (!actorId || actorId !== payload.fromUserId) return;
+    clearPendingCallTimer(payload.callId);
     if (payload.callId) await upsertDirectCallState(payload.callId, payload.toUserId, payload.fromUserId, 'active');
     io.to(`user:${payload.toUserId}`).emit('call:accept', payload);
   });
 
   socket.on('call:decline', async (payload: { toUserId: string; fromUserId: string; callId?: string; reason?: string }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
+    const actorId = (socket.data as { userId?: string }).userId;
+    if (!actorId || actorId !== payload.fromUserId) return;
     const meta = payload.callId ? pendingCallMeta.get(payload.callId) : undefined;
     clearPendingCall(payload.callId);
     const callerId = payload.toUserId;
@@ -646,6 +721,8 @@ io.on('connection', (socket) => {
       durationSec?: number;
     }) => {
     if (!payload) return;
+    const actorId = (socket.data as { userId?: string }).userId;
+    if (!actorId || !payload.fromUserId || actorId !== payload.fromUserId) return;
     const callId = payload.callId || '';
     const meta = callId ? pendingCallMeta.get(callId) : undefined;
     clearPendingCall(callId);
@@ -662,6 +739,9 @@ io.on('connection', (socket) => {
       outcome = 'missed';
     } else if (reason === 'failed') {
       dbStatus = 'ended';
+      outcome = 'cancelled';
+    } else if (reason === 'declined') {
+      dbStatus = 'declined' as typeof dbStatus;
       outcome = 'cancelled';
     }
 
@@ -719,6 +799,8 @@ io.on('connection', (socket) => {
 
   socket.on('call:signal', (payload: { toUserId: string; fromUserId: string; callId: string; signal: any }) => {
     if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || !payload?.signal) return;
+    const actorId = (socket.data as { userId?: string }).userId;
+    if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
     io.to(`user:${payload.toUserId}`).emit('call:signal', payload);
   });
 
@@ -727,6 +809,8 @@ io.on('connection', (socket) => {
     'call:reaction',
     (payload: { toUserId: string; fromUserId: string; callId: string; emoji: string }) => {
       if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.emoji !== 'string') return;
+      const actorId = (socket.data as { userId?: string }).userId;
+      if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
       const emoji = payload.emoji.trim().slice(0, 16);
       if (!emoji) return;
       io.to(`user:${payload.toUserId}`).emit('call:reaction', { ...payload, emoji });
@@ -738,6 +822,8 @@ io.on('connection', (socket) => {
     'call:raise_hand',
     (payload: { toUserId: string; fromUserId: string; callId: string; raised: boolean }) => {
       if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.raised !== 'boolean') return;
+      const actorId = (socket.data as { userId?: string }).userId;
+      if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
       io.to(`user:${payload.toUserId}`).emit('call:raise_hand', payload);
     },
   );
@@ -747,7 +833,20 @@ io.on('connection', (socket) => {
     'call:screen_share',
     (payload: { toUserId: string; fromUserId: string; callId: string; active: boolean }) => {
       if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.active !== 'boolean') return;
+      const actorId = (socket.data as { userId?: string }).userId;
+      if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
       io.to(`user:${payload.toUserId}`).emit('call:screen_share', payload);
+    },
+  );
+
+  /** Passage vocal → vidéo en cours d’appel (re-négociation WebRTC côté clients). */
+  socket.on(
+    'call:upgrade',
+    (payload: { toUserId: string; fromUserId: string; callId: string; active: boolean }) => {
+      if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.active !== 'boolean') return;
+      const actorId = (socket.data as { userId?: string }).userId;
+      if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
+      io.to(`user:${payload.toUserId}`).emit('call:upgrade', payload);
     },
   );
 

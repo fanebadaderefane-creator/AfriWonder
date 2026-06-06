@@ -138,6 +138,25 @@ router.get('/media', async (req: Request, res: ExpressResponse) => {
     }
 
     const nodeStream = Readable.fromWeb(stream as any);
+    const destroyQuietly = () => {
+      try {
+        nodeStream.destroy();
+      } catch {
+        /* ignore */
+      }
+    };
+    nodeStream.on('error', (err) => {
+      console.error('Proxy media stream read error:', err);
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Flux vidéo interrompu' });
+      } else {
+        res.end();
+      }
+      destroyQuietly();
+    });
+    res.on('close', () => {
+      if (!res.writableEnded) destroyQuietly();
+    });
     nodeStream.pipe(res);
   } catch (err) {
     console.error('Proxy media error:', err);

@@ -4,7 +4,7 @@ import prisma from '../config/database.js';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import analyticsService from '../services/analytics.service.js';
-import { getMobileAppVersionPolicy } from '../services/mobileAppVersion.service.js';
+import { getMobileAppVersionPolicyAsync } from '../services/mobileAppVersion.service.js';
 import { getVideoLowQualityCoverageCached } from '../services/videoLowQualityCoverage.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
@@ -170,11 +170,15 @@ async function processSyncAction(userId: string, action: Record<string, any>) {
 }
 
 // GET /api/mobile/app-version — politique MAJ Play Store / App Store (sans auth)
-router.get('/app-version', (_req, res) => {
-  res.json({
-    success: true,
-    data: getMobileAppVersionPolicy(),
-  });
+router.get('/app-version', async (_req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: await getMobileAppVersionPolicyAsync(),
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // GET /api/mobile/health

@@ -53,6 +53,9 @@ describe('Mobile API', () => {
       min_version_code: expect.any(Number),
       latest_version_code: expect.any(Number),
       store_url: expect.any(String),
+      update_message: expect.any(String),
+      force_update_message: expect.any(String),
+      use_play_in_app_update: expect.any(Boolean),
     });
     expect(res.body.data.ios).toMatchObject({
       min_version_code: expect.any(Number),
@@ -187,5 +190,23 @@ describe('Mobile API', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.metric_type).toBe('mobile_feed_open');
+  });
+
+  it('POST /api/proxy/analytics (feed TTFF via apiClient)', async () => {
+    const res = await request(app)
+      .post('/api/proxy/analytics')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        entityType: 'video_playback',
+        entityId: 'video-test-1',
+        metricType: 'first_frame_ms',
+        metricValue: 850,
+        metadata: { source: 'mobile_feed', platform: 'android' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.metric_type).toBe('first_frame_ms');
+    expect(res.body.data.entity_type).toBe('video_playback');
   });
 });

@@ -21,6 +21,10 @@ import { addToBlacklist } from '../services/blacklist.service.js';
 import * as amlService from '../services/aml.service.js';
 import featureFlagService from '../services/featureFlag.service.js';
 import commissionSettingsService from '../services/commissionSettings.service.js';
+import {
+  getMobileAppVersionPolicyAsync,
+  saveMobileAppUpdatePolicy,
+} from '../services/mobileAppVersion.service.js';
 import * as monetizationService from '../services/monetization.service.js';
 import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
 import experimentService from '../services/experiment.service.js';
@@ -88,11 +92,13 @@ async function getAdminSettingsSnapshot() {
           'maintenance_message',
           'promotion_banner',
           'min_withdrawal_fcfa',
+          'mobile_app_update_policy',
         ],
       },
     },
   });
   const getJsonValue = (key: string) => rawSettings.find((row) => row.key === key)?.value;
+  const mobileAppUpdate = await getMobileAppVersionPolicyAsync();
   return {
     killSwitch,
     featureFlags,
@@ -100,6 +106,7 @@ async function getAdminSettingsSnapshot() {
     maintenance_message: getJsonValue('maintenance_message') ?? null,
     promotion_banner: getJsonValue('promotion_banner') ?? null,
     min_withdrawal_fcfa: getJsonValue('min_withdrawal_fcfa') ?? 5000,
+    mobile_app_update: mobileAppUpdate,
   };
 }
 
@@ -1420,6 +1427,9 @@ router.put('/settings', authenticate, requireSuperAdmin, validateBody(jsonObject
         create: { key: 'min_withdrawal_fcfa', value: body.min_withdrawal_fcfa },
         update: { value: body.min_withdrawal_fcfa },
       });
+    }
+    if (body.mobile_app_update !== undefined) {
+      await saveMobileAppUpdatePolicy(body.mobile_app_update);
     }
     await auditLog(req, 'settings_update', 'platform', undefined, body);
     const snapshot = await getAdminSettingsSnapshot();
