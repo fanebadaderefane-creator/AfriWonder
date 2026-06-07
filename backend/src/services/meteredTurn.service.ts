@@ -102,10 +102,21 @@ export const METERED_STATIC_TURN_URLS = [
 ];
 
 export function buildStaticIceServers(urls: string[], username: string, credential: string): IceServerEntry[] {
+  const sortedUrls = [...urls].sort((a, b) => {
+    const score = (u: string) => {
+      const lower = String(u).toLowerCase();
+      let s = 0;
+      if (lower.startsWith('turns:')) s += 100;
+      else if (lower.startsWith('turn:')) s += 10;
+      if (lower.includes('transport=tcp')) s += 20;
+      return s;
+    };
+    return score(b) - score(a);
+  });
   return [
     { urls: 'stun:stun.relay.metered.ca:80' },
     ...PUBLIC_STUN_FALLBACKS.filter((u) => u !== 'stun:stun.relay.metered.ca:80').map((u) => ({ urls: u })),
-    { urls, username, credential },
+    { urls: sortedUrls.length === 1 ? sortedUrls[0] : sortedUrls, username, credential },
   ];
 }
 

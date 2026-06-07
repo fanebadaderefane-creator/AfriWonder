@@ -60,9 +60,12 @@ import {
   buildCallIceConfig,
   callConnectionWatchdogMs,
   callMediaReadyHintMs,
+  prepareIceServersForPlatform,
   pickVideoProfileForNetwork,
   pickVoiceOpusBitrateForNetwork,
+  resolveIceNetworkSnapshot,
   shouldBlockCellularWithoutTurn,
+  shouldBlockNativeCellularWithoutTlsTurn,
   type NetworkSnapshot,
   type VideoQualityProfile as NetVideoQualityProfile,
 } from '../../src/call/callNetworkConfig';
@@ -1648,30 +1651,45 @@ function CallScreenInner() {
          */
         let iceServers: RTCIceServer[] = parseTurnCredentialsResponse(null).iceServers;
         let turnConfigured = false;
-        try {
+        const loadTurnCredentials = async () => {
           const res = await apiClient.get('/calls/turn-credentials');
-          const parsed = parseTurnCredentialsResponse(res.data?.data || res.data);
+          return parseTurnCredentialsResponse(res.data?.data || res.data);
+        };
+        try {
+          let parsed = await loadTurnCredentials();
           iceServers = parsed.iceServers;
           turnConfigured = parsed.turnConfigured;
         } catch {
-          /* Endpoint indisponible : STUN locaux uniquement. */
+          try {
+            await new Promise((r) => setTimeout(r, 1500));
+            const parsed = await loadTurnCredentials();
+            iceServers = parsed.iceServers;
+            turnConfigured = parsed.turnConfigured;
+          } catch {
+            /* Endpoint indisponible : STUN locaux uniquement. */
+          }
         }
+        iceServers = prepareIceServersForPlatform({
+          isWeb: isWebRuntime,
+          turnConfigured,
+          iceServers,
+        });
         if (setupStale()) return;
 
         /**
          * Mobile Afrique : relais TURN forcé sur cellulaire (2G/3G/4G) si TURN configuré (CGNAT opérateur).
          * Logique pure + testée dans `callNetworkConfig.ts`.
          */
-        let iceNetSnapshot: NetworkSnapshot = {};
+        let iceNetSnapshot: NetworkSnapshot = { type: 'unknown' };
         try {
           const net = await NetInfo.fetch();
           const det = (net.details || {}) as { cellularGeneration?: string | null };
-          iceNetSnapshot = { type: net.type, cellularGeneration: det.cellularGeneration };
+          iceNetSnapshot = resolveIceNetworkSnapshot({
+            type: net.type,
+            cellularGeneration: det.cellularGeneration,
+          });
         } catch {
-          /** Mobile Afrique : défaut cellulaire pour forcer TURN si NetInfo échoue. */
-          if (!isWebRuntime) {
-            iceNetSnapshot = { type: 'cellular' };
-          }
+          iceNetSnapshot = { type: 'unknown' };
         }
         connectionWatchdogMsRef.current = callConnectionWatchdogMs(iceNetSnapshot);
         mediaReadyHintMsRef.current = callMediaReadyHintMs(iceNetSnapshot);
@@ -1815,6 +1833,10 @@ function CallScreenInner() {
                 setErrorMsg(
                   'Audio bloqué par le réseau mobile. Le serveur TURN n’est pas configuré — contactez le support AfriWonder.',
                 );
+              } else if (turnConfigured && !isWebRuntime) {
+                setErrorMsg(
+                  'Connexion média impossible via le relais sécurisé (TURN). Réessayez en Wi‑Fi ou plus tard.',
+                );
               }
               finishCall('failed');
             })();
@@ -1837,6 +1859,22 @@ function CallScreenInner() {
           devWarn('[Call] TURN non configuré — cellulaire Afrique bloqué (CGNAT)');
           setErrorMsg(
             'Réseau mobile sans relais TURN — l’audio ne peut pas passer. Passez en Wi‑Fi ou contactez le support.',
+          );
+          finishCall('failed');
+          return;
+        }
+
+        if (
+          shouldBlockNativeCellularWithoutTlsTurn({
+            isWeb: isWebRuntime,
+            turnConfigured,
+            net: iceNetSnapshot,
+            iceServers,
+          })
+        ) {
+          devWarn('[Call] TURN sans relais TLS (turns:) — cellulaire Android bloqué');
+          setErrorMsg(
+            'Relais TURN sécurisé indisponible pour le réseau mobile. Mettez à jour l’app ou contactez le support AfriWonder.',
           );
           finishCall('failed');
           return;

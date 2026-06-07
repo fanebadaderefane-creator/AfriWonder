@@ -96,6 +96,8 @@ const nativeChecks = [
   ['Permissions Android RECORD_AUDIO', /requestNativeCallPermissions/],
   ['releaseExpoAv avant WebRTC', /releaseExpoAvForWebRtcCall/],
   ['TURN relay mobile', /buildCallIceConfig/],
+  ['TURN TLS natif prepareIceServers', /prepareIceServersForPlatform/],
+  ['NetInfo resolveIceNetworkSnapshot', /resolveIceNetworkSnapshot/],
   ['Transceiver audio sendrecv', /addTransceiver\('audio'/],
   ['Transceiver vidéo sendrecv', /addTransceiver\('video'/],
   ['SafeNativeRtcView distant', /showNativeRemoteRtc[\s\S]*SafeNativeRtcView/],

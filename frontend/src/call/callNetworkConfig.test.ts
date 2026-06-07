@@ -15,6 +15,11 @@ import {
   resolveOutboundCallTypeForNetwork,
   shouldBlockCellularWithoutTurn,
   shouldForceTurnRelay,
+  optimizeIceServersForNativeRelay,
+  prepareIceServersForPlatform,
+  resolveIceNetworkSnapshot,
+  shouldBlockNativeCellularWithoutTlsTurn,
+  sortTurnUrlsPreferTls,
 } from './callNetworkConfig';
 
 const STUN: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -76,7 +81,7 @@ describe('pickVideoProfileForNetwork — Afrique 2G/3G/4G', () => {
 });
 
 describe('shouldForceTurnRelay — CGNAT Afrique', () => {
-  it('TURN configuré → relais forcé sur natif et web cellulaire', () => {
+  it('TURN configuré → relais forcé sur cellulaire (natif + web), pas sur Wi‑Fi', () => {
     expect(
       shouldForceTurnRelay({
         turnConfigured: true,
@@ -86,7 +91,7 @@ describe('shouldForceTurnRelay — CGNAT Afrique', () => {
     ).toBe(true);
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
     ).toBe(true);
@@ -186,14 +191,14 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
-  it('Wi‑Fi + TURN → relay forcé aussi', () => {
+  it('Wi‑Fi + TURN natif → pas de relay forcé (parité web Wi‑Fi)', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: false,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBe('relay');
+    expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
   it('web + TURN + cellulaire → relay forcé', () => {
@@ -214,5 +219,81 @@ describe('buildCallIceConfig', () => {
       net: { type: 'wifi' },
     });
     expect(cfg.iceTransportPolicy).toBeUndefined();
+  });
+});
+
+describe('optimizeIceServersForNativeRelay', () => {
+  it('préfère turns: et regroupe les URLs Metered', () => {
+    const meteredLike: RTCIceServer[] = [
+      { urls: 'stun:stun.relay.metered.ca:80' },
+      { urls: 'turn:global.relay.metered.ca:80', username: 'u1', credential: 'c1' },
+      { urls: 'turn:global.relay.metered.ca:443', username: 'u1', credential: 'c1' },
+      { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'u1', credential: 'c1' },
+    ];
+    const out = optimizeIceServersForNativeRelay(meteredLike);
+    expect(out).toHaveLength(2);
+    const turnEntry = out[1];
+    const urls = Array.isArray(turnEntry.urls) ? turnEntry.urls : [turnEntry.urls];
+    expect(urls[0]).toMatch(/^turns:/);
+    expect(urls.length).toBeGreaterThanOrEqual(1);
+    expect(turnEntry.username).toBe('u1');
+    expect(turnEntry.credential).toBe('c1');
+  });
+
+  it('repli turn: si aucun turns: dans la réponse', () => {
+    const plain: RTCIceServer[] = [
+      { urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' },
+    ];
+    const out = optimizeIceServersForNativeRelay(plain);
+    expect(out).toHaveLength(1);
+    expect(out[0].urls).toBe('turn:relay.example.com:3478');
+  });
+});
+
+describe('resolveIceNetworkSnapshot', () => {
+  it('ne force pas cellulaire quand NetInfo échoue', () => {
+    expect(resolveIceNetworkSnapshot(null)).toEqual({ type: 'unknown' });
+    expect(resolveIceNetworkSnapshot({ type: 'none' })).toEqual({ type: 'unknown' });
+    expect(resolveIceNetworkSnapshot({ type: 'wifi' })).toEqual({ type: 'wifi', cellularGeneration: null });
+  });
+});
+
+describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
+  it('bloque cellulaire natif sans turns:', () => {
+    expect(
+      shouldBlockNativeCellularWithoutTlsTurn({
+        isWeb: false,
+        turnConfigured: true,
+        net: { type: 'cellular', cellularGeneration: '4g' },
+        iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockNativeCellularWithoutTlsTurn({
+        isWeb: false,
+        turnConfigured: true,
+        net: { type: 'cellular' },
+        iceServers: [{ urls: 'turns:relay.example.com:443?transport=tcp', username: 'u', credential: 'c' }],
+      }),
+    ).toBe(false);
+    expect(
+      shouldBlockNativeCellularWithoutTlsTurn({
+        isWeb: false,
+        turnConfigured: true,
+        net: { type: 'wifi' },
+        iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('sortTurnUrlsPreferTls', () => {
+  it('classe turns: TCP en tête', () => {
+    const sorted = sortTurnUrlsPreferTls([
+      'turn:global.relay.metered.ca:80',
+      'turns:global.relay.metered.ca:443?transport=tcp',
+      'turn:global.relay.metered.ca:443',
+    ]);
+    expect(sorted[0]).toBe('turns:global.relay.metered.ca:443?transport=tcp');
   });
 });

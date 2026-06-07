@@ -121,9 +121,9 @@ export function pickVideoProfileForNetwork(net: NetworkSnapshot | null | undefin
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
- * **Natif** : relais obligatoire si TURN configuré (CGNAT opérateurs Afrique).
- * **Web Wi‑Fi** : ICE direct + STUN (dev local / Firefox).
- * **Web cellulaire** : relais TURN si configuré (même contrainte CGNAT qu’en natif).
+ * **Cellulaire** (natif + web) : relais obligatoire si TURN configuré (CGNAT opérateurs Afrique).
+ * **Wi‑Fi / Ethernet** : ICE direct + STUN d’abord (comme navigateur) — évite d’imposer un relais
+ * TURN TLS-only sur APK Android (`usesCleartextTraffic: false`) quand le P2P local suffit.
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
@@ -131,8 +131,132 @@ export function shouldForceTurnRelay(input: {
   net?: NetworkSnapshot | null | undefined;
 }): boolean {
   if (!input.turnConfigured) return false;
-  if (!input.isWeb) return true;
   return isCellularNetwork(input.net);
+}
+
+function iceServerUrlList(entry: RTCIceServer): string[] {
+  const raw = entry.urls;
+  if (raw == null) return [];
+  return Array.isArray(raw) ? raw.map(String) : [String(raw)];
+}
+
+/** Préfère `turns:` + TCP (Android `usesCleartextTraffic: false`). */
+export function sortTurnUrlsPreferTls(urls: string[]): string[] {
+  const uniq = [...new Set(urls.map(String).filter(Boolean))];
+  return uniq.sort((a, b) => {
+    const score = (u: string) => {
+      const lower = u.toLowerCase();
+      let s = 0;
+      if (lower.startsWith('turns:')) s += 100;
+      else if (lower.startsWith('turn:')) s += 10;
+      if (lower.includes('transport=tcp')) s += 20;
+      if (lower.includes(':443')) s += 5;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+}
+
+export function hasTurnTlsRelay(iceServers: RTCIceServer[]): boolean {
+  for (const entry of iceServers) {
+    for (const u of iceServerUrlList(entry)) {
+      if (u.toLowerCase().startsWith('turns:')) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * NetInfo indisponible : ne pas supposer « cellulaire » (forçait le relais TURN à tort en Wi‑Fi).
+ */
+export function resolveIceNetworkSnapshot(input: {
+  type?: string | null;
+  cellularGeneration?: string | null;
+} | null | undefined): NetworkSnapshot {
+  const type = String(input?.type || '').trim().toLowerCase();
+  if (!type || type === 'none') return { type: 'unknown' };
+  return {
+    type,
+    cellularGeneration: input?.cellularGeneration ?? null,
+  };
+}
+
+/**
+ * APK Android : `usesCleartextTraffic: false` bloque `turn:…:80` (Metered renvoie aussi du `turns:`).
+ * Regroupe les entrées TURN Metered en une seule config TLS (`turns:`) pour react-native-webrtc.
+ */
+export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RTCIceServer[] {
+  if (iceServers.length === 0) return iceServers;
+
+  const stunEntries: RTCIceServer[] = [];
+  const turnsUrls: string[] = [];
+  const plainTurnUrls: string[] = [];
+  let username = '';
+  let credential = '';
+
+  for (const entry of iceServers) {
+    const urls = iceServerUrlList(entry);
+    if (urls.length > 0 && urls.every((u) => u.toLowerCase().startsWith('stun:'))) {
+      stunEntries.push(entry);
+      continue;
+    }
+    for (const u of urls) {
+      const lower = u.toLowerCase();
+      if (lower.startsWith('turns:')) {
+        turnsUrls.push(u);
+        if (!username && entry.username) username = String(entry.username);
+        if (!credential && entry.credential) credential = String(entry.credential);
+      } else if (lower.startsWith('turn:')) {
+        plainTurnUrls.push(u);
+        if (!username && entry.username) username = String(entry.username);
+        if (!credential && entry.credential) credential = String(entry.credential);
+      }
+    }
+  }
+
+  const chosenTurnUrls = sortTurnUrlsPreferTls(
+    turnsUrls.length > 0 ? turnsUrls : plainTurnUrls,
+  );
+  if (chosenTurnUrls.length === 0 || !username || !credential) {
+    return iceServers;
+  }
+
+  const out: RTCIceServer[] = stunEntries.slice(0, 3);
+  out.push({
+    urls: chosenTurnUrls.length === 1 ? chosenTurnUrls[0] : chosenTurnUrls,
+    username,
+    credential,
+  });
+  return out;
+}
+
+/** Prépare les serveurs ICE selon la plateforme (TLS natif, STUN web). */
+export function prepareIceServersForPlatform(input: {
+  isWeb: boolean;
+  turnConfigured: boolean;
+  iceServers: RTCIceServer[];
+}): RTCIceServer[] {
+  if (input.isWeb) {
+    return input.iceServers.slice(0, 6);
+  }
+  if (!input.turnConfigured) {
+    return input.iceServers;
+  }
+  return optimizeIceServersForNativeRelay(input.iceServers);
+}
+
+/** Cellulaire natif + relais TURN obligatoire : exige au moins une URL `turns:`. */
+export function shouldBlockNativeCellularWithoutTlsTurn(input: {
+  isWeb: boolean;
+  turnConfigured: boolean;
+  net: NetworkSnapshot | null | undefined;
+  iceServers: RTCIceServer[];
+}): boolean {
+  if (input.isWeb || !input.turnConfigured) return false;
+  if (!shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: input.net })) {
+    return false;
+  }
+  return !hasTurnTlsRelay(input.iceServers);
 }
 
 /** Construit la config ICE complète pour `RTCPeerConnection`. */
@@ -162,7 +286,11 @@ export function buildCallIceConfig(input: {
   }
 
   const config: RTCConfiguration = {
-    iceServers: input.iceServers,
+    iceServers: prepareIceServersForPlatform({
+      isWeb: false,
+      turnConfigured: input.turnConfigured,
+      iceServers: input.iceServers,
+    }),
     iceCandidatePoolSize: 8,
     bundlePolicy: 'max-bundle' as RTCBundlePolicy,
     rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
