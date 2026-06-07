@@ -3,12 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const initMock = vi.fn();
 const captureMessageMock = vi.fn();
 const captureExceptionMock = vi.fn();
+const addBreadcrumbMock = vi.fn();
 
 vi.mock('@sentry/react-native', () => ({
   default: {},
   init: initMock,
   captureMessage: captureMessageMock,
   captureException: captureExceptionMock,
+  addBreadcrumb: addBreadcrumbMock,
 }));
 
 describe('sentryMobile', () => {
@@ -16,6 +18,7 @@ describe('sentryMobile', () => {
     initMock.mockReset();
     captureMessageMock.mockReset();
     captureExceptionMock.mockReset();
+    addBreadcrumbMock.mockReset();
     delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     delete process.env.EXPO_PUBLIC_SENTRY_DEBUG;
     delete process.env.EXPO_PUBLIC_APP_ENV;
@@ -150,5 +153,28 @@ describe('sentryMobile', () => {
     initMobileSentry();
     captureSentryException(err, { k: 1 });
     expect(captureExceptionMock).toHaveBeenCalledWith(err, { extra: { k: 1 } });
+  });
+
+  it('addSentryBreadcrumb ne fait rien si non initialisé', async () => {
+    vi.resetModules();
+    const { addSentryBreadcrumb } = await import('./sentryMobile');
+    addSentryBreadcrumb('afw_call', 'bootstrap');
+    expect(addBreadcrumbMock).not.toHaveBeenCalled();
+  });
+
+  it('addSentryBreadcrumb envoie après init', async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://public@o1.ingest.sentry.io/1';
+    const g = globalThis as { __DEV__?: boolean };
+    g.__DEV__ = false;
+    const { initMobileSentry, addSentryBreadcrumb } = await import('./sentryMobile');
+    initMobileSentry();
+    addSentryBreadcrumb('afw_call', 'sdp_send', { callId: 'c1' });
+    expect(addBreadcrumbMock).toHaveBeenCalledWith({
+      category: 'afw_call',
+      message: 'sdp_send',
+      level: 'info',
+      data: { callId: 'c1' },
+    });
   });
 });

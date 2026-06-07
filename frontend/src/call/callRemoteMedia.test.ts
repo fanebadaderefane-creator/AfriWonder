@@ -3,6 +3,8 @@ import {
   collectTrackIds,
   countLocalTracks,
   dedupeRemoteReceiverTracks,
+  isIceConnectionReady,
+  isIceStillNegotiating,
   isTrackFromLocalCapture,
   mergeRemoteTrackIntoStream,
   type RemoteStreamUnified,
@@ -14,6 +16,37 @@ import {
 } from './callRemoteMedia';
 
 describe('callRemoteMedia', () => {
+  it('isIceConnectionReady détecte connected/completed', () => {
+    expect(isIceConnectionReady('connected')).toBe(true);
+    expect(isIceConnectionReady('completed')).toBe(true);
+    expect(isIceConnectionReady('checking')).toBe(false);
+    expect(isIceStillNegotiating('checking')).toBe(true);
+    expect(isIceStillNegotiating('connected')).toBe(false);
+  });
+
+  it('shouldMarkCallConnected — vocal natif : ICE connected sans piste live', () => {
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        role: 'receiver',
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(true);
+  });
+
+  it('remoteStreamReadyForConnectedUi — ICE connected vocal sans piste live', () => {
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [] },
+      }),
+    ).toBe(true);
+  });
+
   it('streamHasLiveAudio détecte une piste audio active', () => {
     expect(
       streamHasLiveAudio({
@@ -103,6 +136,15 @@ describe('callRemoteMedia', () => {
       shouldMarkCallConnected({
         isVideo: false,
         peerConnectionState: 'connected',
+        hasRemoteDescription: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'new' }],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
         hasRemoteDescription: true,
         stream: {
           getAudioTracks: () => [{ enabled: true, readyState: 'new' }],

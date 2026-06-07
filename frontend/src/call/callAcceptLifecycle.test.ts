@@ -6,6 +6,7 @@ import {
   shouldFinishCallAsMissed,
   shouldDowngradeVideoInviteToAudioAnswer,
   shouldResendCallerOffer,
+  shouldSendCallerOfferAfterInvite,
 } from './callAcceptLifecycle';
 
 describe('callAcceptLifecycle', () => {
@@ -35,6 +36,30 @@ describe('callAcceptLifecycle', () => {
   it('downgrade vidéo→audio sur accept 2G', () => {
     expect(shouldDowngradeVideoInviteToAudioAnswer({ startedAsVideo: true, acceptType: 'audio' })).toBe(true);
     expect(shouldDowngradeVideoInviteToAudioAnswer({ startedAsVideo: true, acceptType: 'video' })).toBe(false);
+  });
+
+  it('offre appelant après invite si accept déjà reçu', () => {
+    expect(
+      shouldSendCallerOfferAfterInvite({
+        role: 'caller',
+        peerAccepted: true,
+        callerOfferSent: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendCallerOfferAfterInvite({
+        role: 'caller',
+        peerAccepted: false,
+        callerOfferSent: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldSendCallerOfferAfterInvite({
+        role: 'receiver',
+        peerAccepted: true,
+        callerOfferSent: false,
+      }),
+    ).toBe(false);
   });
 
   it('réémission offre appelant si pas de sdp_remote (max 2)', () => {

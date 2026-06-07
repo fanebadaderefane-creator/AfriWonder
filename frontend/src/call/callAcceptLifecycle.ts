@@ -43,6 +43,18 @@ export function shouldDowngradeVideoInviteToAudioAnswer(input: {
   return input.startedAsVideo && input.acceptType === 'audio';
 }
 
+/**
+ * Filet : l’accept socket peut arriver avant que l’appelant ait fini `start()` —
+ * réémettre l’offre juste après `call:invite` si le receveur a déjà décroché.
+ */
+export function shouldSendCallerOfferAfterInvite(input: {
+  role: CallRole;
+  peerAccepted: boolean;
+  callerOfferSent: boolean;
+}): boolean {
+  return input.role === 'caller' && input.peerAccepted && !input.callerOfferSent;
+}
+
 /** Filet prod : réémettre l’offre si la réponse SDP n’est pas arrivée (socket / cold start). */
 export function shouldResendCallerOffer(input: {
   role: CallRole;

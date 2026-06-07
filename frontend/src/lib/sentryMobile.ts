@@ -61,6 +61,25 @@ export function captureSentryMessage(
   }
 }
 
+/** Fil d’Ariane WebRTC en prod Play Store (visible sur l’événement Sentry si l’appel échoue). */
+export function addSentryBreadcrumb(
+  category: string,
+  message: string,
+  data?: Record<string, unknown>,
+): void {
+  if (!initialized) return;
+  try {
+    Sentry.addBreadcrumb({
+      category,
+      message,
+      level: 'info',
+      data,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export function isCrashlyticsEnabled(): boolean {
   return isCrashlyticsAvailable();
 }

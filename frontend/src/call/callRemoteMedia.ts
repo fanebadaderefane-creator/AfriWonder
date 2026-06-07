@@ -18,6 +18,18 @@ export function streamHasLiveVideo(stream: MediaStreamLike | null | undefined): 
   return tracks.some((t) => t.readyState === 'live' && t.enabled !== false);
 }
 
+/** ICE prêt pour le média — `connected` ou `completed`. */
+export function isIceConnectionReady(iceConnectionState?: string | null): boolean {
+  const ice = String(iceConnectionState || '').toLowerCase();
+  return ice === 'connected' || ice === 'completed';
+}
+
+/** Négociation ICE encore en cours — ne pas afficher « réseau bloqué » ni couper l'appel. */
+export function isIceStillNegotiating(iceConnectionState?: string | null): boolean {
+  const ice = String(iceConnectionState || '').toLowerCase();
+  return ice === '' || ice === 'new' || ice === 'checking';
+}
+
 /** Piste distante minimale (MediaStreamTrack ou mock de test). */
 export type RemoteMediaTrackLike = {
   id?: string;
@@ -64,6 +76,8 @@ export function shouldMarkCallConnected(input: {
   isVideo?: boolean;
   /** `RTCPeerConnection.connectionState` — filet si pistes `live` pas encore signalées. */
   peerConnectionState?: string;
+  /** `RTCPeerConnection.iceConnectionState` — react-native-webrtc : audio joue avant `toURL()`. */
+  iceConnectionState?: string | null;
   /** Appelant : exiger le décrochage socket (`call:accept`) avant « connecté ». */
   role?: 'caller' | 'receiver';
   peerAccepted?: boolean;
@@ -75,13 +89,27 @@ export function shouldMarkCallConnected(input: {
   if (input.hasRemoteDescription === false) return false;
 
   const stream = input.stream;
+  const iceReady = isIceConnectionReady(input.iceConnectionState);
+  const pcConnected = input.peerConnectionState === 'connected';
+
+  /**
+   * Natif Android/iOS : InCallManager route l'audio dès ICE `connected`, parfois
+   * avant que les pistes distantes apparaissent `live` dans le MediaStream unifié
+   * (symptôme prod : « Connexion média… » → « réseau bloqué » → coupure).
+   */
+  if (iceReady || pcConnected) {
+    if (!input.isVideo) return true;
+    if (streamHasLiveVideo(stream) || streamHasLiveAudio(stream)) return true;
+    if (iceReady && pcConnected) return true;
+    if (iceReady && (stream?.getAudioTracks?.()?.length ?? 0) > 0) return true;
+  }
+
   if (!stream) return false;
 
   const hasAudio = streamHasLiveAudio(stream);
   const hasVideo = streamHasLiveVideo(stream);
   const remoteVideoTracks = stream.getVideoTracks?.() ?? [];
   const remoteAudioTracks = stream.getAudioTracks?.() ?? [];
-  const pcConnected = input.peerConnectionState === 'connected';
 
   if (!input.isVideo) {
     if (hasAudio) return true;
@@ -131,8 +159,20 @@ export function isTrackFromLocalCapture(
 export function remoteStreamReadyForConnectedUi(input: {
   stream: MediaStreamLike | null | undefined;
   isVideo: boolean;
+  iceConnectionState?: string | null;
+  hasRemoteDescription?: boolean;
+  peerConnectionState?: string;
 }): boolean {
   const stream = input.stream;
+  const iceReady = isIceConnectionReady(input.iceConnectionState);
+  const pcConnected = input.peerConnectionState === 'connected';
+
+  if (input.hasRemoteDescription && (iceReady || pcConnected)) {
+    if (!input.isVideo) return true;
+    if (streamHasLiveVideo(stream) || streamHasLiveAudio(stream)) return true;
+    if (iceReady) return true;
+  }
+
   if (!stream) return false;
   if (input.isVideo) {
     return streamHasLiveVideo(stream) || streamHasLiveAudio(stream);
@@ -146,17 +186,25 @@ export function canPromoteCallToConnected(input: {
   isVideo: boolean;
   trackKind?: string;
   peerConnectionState?: string;
+  iceConnectionState?: string | null;
   role?: 'caller' | 'receiver';
   peerAccepted?: boolean;
   hasRemoteDescription?: boolean;
 }): boolean {
   return (
-    remoteStreamReadyForConnectedUi({ stream: input.stream, isVideo: input.isVideo }) &&
+    remoteStreamReadyForConnectedUi({
+      stream: input.stream,
+      isVideo: input.isVideo,
+      iceConnectionState: input.iceConnectionState,
+      hasRemoteDescription: input.hasRemoteDescription,
+      peerConnectionState: input.peerConnectionState,
+    }) &&
     shouldMarkCallConnected({
       stream: input.stream,
       isVideo: input.isVideo,
       trackKind: input.trackKind,
       peerConnectionState: input.peerConnectionState,
+      iceConnectionState: input.iceConnectionState,
       role: input.role,
       peerAccepted: input.peerAccepted,
       hasRemoteDescription: input.hasRemoteDescription,
