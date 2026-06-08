@@ -26,16 +26,19 @@ export function logCallPhase(
   data?: Record<string, unknown>,
 ): void {
   if (isCallDebugEnabled()) {
-    devWarn(
-      '[Call]',
-      JSON.stringify({
-        tag: 'AFW_CALL',
-        callId,
-        phase,
-        ts: Date.now(),
-        ...data,
-      }),
-    );
+    const payload = JSON.stringify({
+      tag: 'AFW_CALL',
+      callId,
+      phase,
+      ts: Date.now(),
+      ...data,
+    });
+    /** Release + EXPO_PUBLIC_CALL_DEBUG=1 : devWarn est silencieux (__DEV__ false). */
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      devWarn('[Call]', payload);
+    } else {
+      console.warn('[Call]', payload);
+    }
   }
 
   if (shouldBreadcrumbCallPhase(phase)) {

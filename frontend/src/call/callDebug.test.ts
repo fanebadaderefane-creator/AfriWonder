@@ -49,4 +49,15 @@ describe('callDebug', () => {
     process.env.EXPO_PUBLIC_CALL_DEBUG = '1';
     expect(isCallDebugEnabled()).toBe(true);
   });
+
+  it('logCallPhase émet console.warn en release avec CALL_DEBUG', () => {
+    const g = globalThis as { __DEV__?: boolean };
+    g.__DEV__ = false;
+    process.env.EXPO_PUBLIC_CALL_DEBUG = '1';
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    logCallPhase('call-diag', 'bootstrap', { role: 'caller' });
+    expect(spy).toHaveBeenCalled();
+    expect(String(spy.mock.calls[0]?.[1] ?? '')).toContain('AFW_CALL');
+    spy.mockRestore();
+  });
 });

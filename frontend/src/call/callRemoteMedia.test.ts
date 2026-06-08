@@ -10,6 +10,7 @@ import {
   type RemoteStreamUnified,
   canPromoteCallToConnected,
   remoteStreamReadyForConnectedUi,
+  shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
   streamHasLiveAudio,
   streamHasLiveVideo,
@@ -240,6 +241,30 @@ describe('callRemoteMedia', () => {
         getVideoTracks: () => [{}, {}],
       }),
     ).toEqual({ audio: 1, video: 2 });
+  });
+
+  it('shouldBindNativeRemoteStreamUrl — vocal natif avec SDP distant et piste new', () => {
+    expect(
+      shouldBindNativeRemoteStreamUrl({
+        isVideo: false,
+        hasRemoteDescription: true,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBindNativeRemoteStreamUrl({
+        isVideo: false,
+        hasRemoteDescription: false,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(false);
+    expect(
+      shouldBindNativeRemoteStreamUrl({
+        isVideo: true,
+        hasRemoteDescription: true,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(false);
   });
 
   it('dedupeRemoteReceiverTracks garde une seule piste audio live', () => {

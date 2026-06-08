@@ -376,6 +376,31 @@ export function resolveWebRtcMediaDevices(): MediaDevices | undefined {
   return fromModule || fromNavigator;
 }
 
+/** Micro local actif avant createOffer/createAnswer (émission bidirectionnelle). */
+export function ensureLocalAudioTracksEnabled(stream: MediaStream | null | undefined): void {
+  if (!stream?.getAudioTracks) return;
+  for (const track of stream.getAudioTracks()) {
+    if (track.readyState === 'ended') continue;
+    try {
+      track.enabled = true;
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Vérifie qu’au moins un expéditeur audio actif est attaché à la PeerConnection. */
+export function peerConnectionHasActiveAudioSender(
+  pc: RTCPeerConnection | null | undefined,
+): boolean {
+  return (pc?.getSenders?.() ?? []).some(
+    (sender) =>
+      sender.track?.kind === 'audio' &&
+      sender.track.readyState !== 'ended' &&
+      sender.track.enabled !== false,
+  );
+}
+
 /** Active les pistes audio distantes et monte le volume natif si disponible. */
 export function enableRemoteAudioTracks(stream: MediaStream | null | undefined): void {
   if (!stream?.getAudioTracks) return;

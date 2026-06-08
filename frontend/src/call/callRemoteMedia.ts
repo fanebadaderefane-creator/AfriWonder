@@ -240,6 +240,32 @@ export type ReceiverTrackLike = {
 };
 
 /** Une piste audio + une vidéo max — évite double décodage / voix qui se répète. */
+/**
+ * Natif vocal : binder `remoteStreamUrl` dès SDP distant + piste audio (même `readyState=new`).
+ * Sans ça, RTCView distant ne monte pas sur Xiaomi/Samsung → pas d’audio entrant.
+ */
+export function shouldBindNativeRemoteStreamUrl(input: {
+  isVideo: boolean;
+  stream: MediaStreamLike | null | undefined;
+  hasRemoteDescription?: boolean;
+  iceConnectionState?: string | null;
+  peerConnectionState?: string;
+}): boolean {
+  if (
+    remoteStreamReadyForConnectedUi({
+      stream: input.stream,
+      isVideo: input.isVideo,
+      iceConnectionState: input.iceConnectionState,
+      hasRemoteDescription: input.hasRemoteDescription,
+      peerConnectionState: input.peerConnectionState,
+    })
+  ) {
+    return true;
+  }
+  if (input.isVideo || !input.hasRemoteDescription) return false;
+  return (input.stream?.getAudioTracks?.()?.length ?? 0) > 0;
+}
+
 export function dedupeRemoteReceiverTracks<T extends ReceiverTrackLike>(tracks: T[]): T[] {
   const audio = tracks.filter((t) => t.kind === 'audio');
   const video = tracks.filter((t) => t.kind === 'video');

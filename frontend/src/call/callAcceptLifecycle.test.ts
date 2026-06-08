@@ -1,6 +1,7 @@
 /** ⛔ Tests de régression cycle accept/offre — ne pas supprimer. Voir call-signaling-locked.mdc */
 import { describe, expect, it } from 'vitest';
 import {
+  peerConnectionHasLocalOffer,
   shouldArmMediaConnectionWatchdog,
   shouldClearCallerRingTimeoutOnAccept,
   shouldFinishCallAsMissed,
@@ -76,6 +77,16 @@ describe('callAcceptLifecycle', () => {
       shouldResendCallerOffer({
         role: 'caller',
         peerAccepted: true,
+        callerOfferSent: false,
+        hasLocalOffer: true,
+        hasRemoteDescription: false,
+        resendCount: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldResendCallerOffer({
+        role: 'caller',
+        peerAccepted: true,
         callerOfferSent: true,
         hasRemoteDescription: false,
         resendCount: 2,
@@ -89,6 +100,18 @@ describe('callAcceptLifecycle', () => {
         hasRemoteDescription: false,
         resendCount: 0,
       }),
+    ).toBe(false);
+  });
+
+  it('peerConnectionHasLocalOffer détecte have-local-offer', () => {
+    expect(
+      peerConnectionHasLocalOffer({ signalingState: 'have-local-offer', localDescriptionType: '' }),
+    ).toBe(true);
+    expect(
+      peerConnectionHasLocalOffer({ signalingState: 'stable', localDescriptionType: 'offer' }),
+    ).toBe(true);
+    expect(
+      peerConnectionHasLocalOffer({ signalingState: 'stable', localDescriptionType: 'answer' }),
     ).toBe(false);
   });
 });

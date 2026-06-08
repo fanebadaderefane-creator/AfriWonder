@@ -55,6 +55,16 @@ export function shouldSendCallerOfferAfterInvite(input: {
   return input.role === 'caller' && input.peerAccepted && !input.callerOfferSent;
 }
 
+/** Offre locale déjà posée sur la PeerConnection (évite un 2e createOffer en parallèle). */
+export function peerConnectionHasLocalOffer(input: {
+  signalingState?: string;
+  localDescriptionType?: string;
+}): boolean {
+  if (String(input.signalingState || '') === 'have-local-offer') return true;
+  const localType = String(input.localDescriptionType || '').trim().toLowerCase();
+  return localType === 'offer';
+}
+
 /** Filet prod : réémettre l’offre si la réponse SDP n’est pas arrivée (socket / cold start). */
 export function shouldResendCallerOffer(input: {
   role: CallRole;
@@ -63,9 +73,11 @@ export function shouldResendCallerOffer(input: {
   hasRemoteDescription: boolean;
   resendCount: number;
   maxResends?: number;
+  hasLocalOffer?: boolean;
 }): boolean {
   if (input.role !== 'caller') return false;
-  if (!input.peerAccepted || !input.callerOfferSent) return false;
+  if (!input.peerAccepted) return false;
+  if (!input.callerOfferSent && !input.hasLocalOffer) return false;
   if (input.hasRemoteDescription) return false;
   const max = input.maxResends ?? 2;
   return input.resendCount < max;

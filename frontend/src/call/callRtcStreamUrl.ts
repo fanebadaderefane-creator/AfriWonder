@@ -15,3 +15,25 @@ export function isValidNativeRtcStreamUrl(
   if (/^(null|undefined|0|false)$/i.test(trimmed)) return false;
   return true;
 }
+
+/**
+ * RTCView audio distant : vocal en `connecting` dès URL valide (décodeur natif Android).
+ * Vidéo : attendre `connected` pour limiter les crashs RTCView en sonnerie.
+ */
+export function shouldShowNativeRemoteAudioRtc(input: {
+  isWeb: boolean;
+  nativeRtcUnmounting: boolean;
+  callState: 'ringing' | 'connecting' | 'connected' | 'ended';
+  isVideoCall: boolean;
+  remoteStreamUrl: string;
+  localStreamUrl: string;
+}): boolean {
+  if (input.isWeb || input.nativeRtcUnmounting) return false;
+  if (input.callState === 'ended' || input.callState === 'ringing') return false;
+  const urlOk = isValidNativeRtcStreamUrl(input.remoteStreamUrl, {
+    localUrl: input.localStreamUrl,
+  });
+  if (!urlOk) return false;
+  if (input.callState === 'connected') return true;
+  return input.callState === 'connecting' && !input.isVideoCall;
+}

@@ -306,6 +306,33 @@ describe('callNativeMedia', () => {
     });
   });
 
+  it('ensureLocalAudioTracksEnabled active le micro local', async () => {
+    const { ensureLocalAudioTracksEnabled } = await import('./callNativeMedia');
+    const track = { kind: 'audio', readyState: 'live', enabled: false };
+    ensureLocalAudioTracksEnabled({
+      getAudioTracks: () => [track],
+    } as unknown as MediaStream);
+    expect(track.enabled).toBe(true);
+  });
+
+  it('peerConnectionHasActiveAudioSender détecte expéditeur audio actif', async () => {
+    const { peerConnectionHasActiveAudioSender } = await import('./callNativeMedia');
+    expect(
+      peerConnectionHasActiveAudioSender({
+        getSenders: () => [
+          { track: { kind: 'audio', readyState: 'live', enabled: true } },
+        ],
+      } as unknown as RTCPeerConnection),
+    ).toBe(true);
+    expect(
+      peerConnectionHasActiveAudioSender({
+        getSenders: () => [
+          { track: { kind: 'audio', readyState: 'live', enabled: false } },
+        ],
+      } as unknown as RTCPeerConnection),
+    ).toBe(false);
+  });
+
   it('resolveWebRtcMediaDevices uses navigator on web', async () => {
     vi.resetModules();
     vi.doMock('react-native', () => ({

@@ -42,7 +42,9 @@ import {
   applyNativeCallSpeakerRoute,
   buildCallVideoConstraints,
   callMediaErrorMessage,
+  ensureLocalAudioTracksEnabled,
   enableRemoteAudioTracks,
+  peerConnectionHasActiveAudioSender,
   probeWebCallAudioInputs,
   releaseExpoAvForWebRtcCall,
   requestNativeCallPermissions,
@@ -72,6 +74,7 @@ import {
 import { parseTurnCredentialsResponse } from '../../src/call/parseTurnCredentialsResponse';
 import { formatCallStatusLine } from '../../src/call/callStatusLine';
 import {
+  peerConnectionHasLocalOffer,
   shouldArmMediaConnectionWatchdog,
   shouldClearCallerRingTimeoutOnAccept,
   shouldFinishCallAsMissed,
@@ -79,6 +82,15 @@ import {
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
 } from '../../src/call/callAcceptLifecycle';
+import {
+  CALLER_OFFER_MAX_RETRIES,
+  CALLER_OFFER_RETRY_MS,
+  chainCallerOfferTask,
+  shouldAttemptCallerCreateOffer,
+  shouldDeferConnectionWatchdogIceRestart,
+  shouldFailCallerAfterOfferRetries,
+  shouldIgnoreInboundCallEnd,
+} from '../../src/call/callCallerOffer';
 import {
   buildCallAcceptPayload,
   callIdsEqual,
@@ -114,6 +126,7 @@ import {
   mergeRemoteTrackIntoStream,
   type RemoteStreamUnified,
   remoteStreamReadyForConnectedUi,
+  shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
   streamHasLiveAudio,
   streamHasLiveVideo,
@@ -132,7 +145,10 @@ import { CallDuringMessageModal, CallMoreOptionsSheet } from '../../src/componen
 import { startActiveCallForeground, stopActiveCallForeground } from '../../src/services/incomingCallService';
 import { SafeNativeRtcView } from '../../src/components/call/SafeNativeRtcView';
 import { CallScreenErrorBoundary } from '../../src/components/call/CallScreenErrorBoundary';
-import { isValidNativeRtcStreamUrl } from '../../src/call/callRtcStreamUrl';
+import {
+  isValidNativeRtcStreamUrl,
+  shouldShowNativeRemoteAudioRtc,
+} from '../../src/call/callRtcStreamUrl';
 import NetInfo from '@react-native-community/netinfo';
 
 /**
@@ -594,8 +610,12 @@ function CallScreenInner() {
   }, [stopAllMedia]);
 
   const finishCall = useCallback(
-    (reason: 'ended' | 'failed' | 'declined' | 'cancelled' | 'missed' = 'ended') => {
+    (
+      reason: 'ended' | 'failed' | 'declined' | 'cancelled' | 'missed' = 'ended',
+      exitSource?: string,
+    ) => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
+      finishingRef.current = true;
       logCallExit(reason, {
         callId: callIdRef.current,
         role,
@@ -604,8 +624,8 @@ function CallScreenInner() {
         ice: String((pcRef.current as RTCPeerConnection | null)?.iceConnectionState || ''),
         pcState: String((pcRef.current as RTCPeerConnection | null)?.connectionState || ''),
         hasRemoteSdp: Boolean((pcRef.current as RTCPeerConnection | null)?.remoteDescription),
+        exitSource: exitSource ?? null,
       });
-      finishingRef.current = true;
       const stateBeforeEnd = callStateRef.current;
       setPeerRaisedHand(false);
       setMyRaisedHand(false);
@@ -835,7 +855,16 @@ function CallScreenInner() {
         armRemoteWebAudioPlayback();
       }
       if (!isWebRuntime) {
-        if (!remoteStreamReadyForConnectedUi({ stream, isVideo: isVideoCallRef.current })) {
+        const pcNow = pcRef.current as RTCPeerConnection | null;
+        if (
+          !shouldBindNativeRemoteStreamUrl({
+            isVideo: isVideoCallRef.current,
+            stream,
+            hasRemoteDescription: Boolean(pcNow?.remoteDescription),
+            iceConnectionState: peerIceState(),
+            peerConnectionState: peerPcState(),
+          })
+        ) {
           return;
         }
         const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
@@ -888,6 +917,8 @@ function CallScreenInner() {
         });
         setErrorMsg(null);
         setCallState('connected');
+        ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
+        enableRemoteAudioTracks(remote);
         if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
         if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
         connectionWatchdogRef.current = null;
@@ -921,7 +952,7 @@ function CallScreenInner() {
       } catch (e) {
         devWarn('[Call] markCallConnected failed', e);
         setErrorMsg('Connexion interrompue. Réessayez l’appel.');
-        finishCall('failed');
+        finishCall('failed', 'mark_call_connected');
       }
     };
 
@@ -1123,6 +1154,9 @@ function CallScreenInner() {
     const pendingSignalsRef: Array<{ callId: string; fromUserId: string; signal: SignalPayload }> = [];
     const PENDING_SIGNAL_CAP = 48;
     let signalChain: Promise<void> = Promise.resolve();
+    /** Évite deux createOffer parallèles (call:accept + post_invite) → InvalidStateError + finishCall. */
+    let callerOfferSendChain: Promise<boolean> = Promise.resolve(false);
+    let callerOfferNegotiationInFlight = false;
 
     const sendSdpFromPeerConnection = (
       pc: RTCPeerConnection | null,
@@ -1237,6 +1271,10 @@ function CallScreenInner() {
             role,
             peerAccepted: peerAnsweredRef.current,
             callerOfferSent: callerOfferSentRef.current,
+            hasLocalOffer: peerConnectionHasLocalOffer({
+              signalingState: pc.signalingState,
+              localDescriptionType: pc.localDescription?.type,
+            }),
             hasRemoteDescription: Boolean(pc.remoteDescription),
             resendCount: callerOfferResendCountRef.current,
           })
@@ -1246,6 +1284,11 @@ function CallScreenInner() {
           logCallPhase(callIdRef.current, 'sdp_resend_offer', {
             attempt: callerOfferResendCountRef.current,
           });
+          armConnectionWatchdog();
+          return;
+        }
+
+        if (shouldDeferConnectionWatchdogIceRestart(callerOfferNegotiationInFlight)) {
           armConnectionWatchdog();
           return;
         }
@@ -1269,7 +1312,7 @@ function CallScreenInner() {
           pcState: state,
         });
         setErrorMsg('Connexion instable. Réessayez l’appel.');
-        finishCall('failed');
+        finishCall('failed', 'connection_watchdog');
       }, connectionWatchdogMsRef.current);
     };
 
@@ -1487,7 +1530,9 @@ function CallScreenInner() {
             hasVideo: sdpContainsMedia(remoteSdp.sdp, 'video'),
           });
           await flushPendingIce();
+          ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
           syncRemoteTracksFromPeerConnection(pc);
+          enableRemoteAudioTracks(remoteStreamRef.current as MediaStream);
           maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
           if (remoteSdp.type === 'offer') {
             const offerHasVideo = sdpContainsMedia(remoteSdp.sdp, 'video');
@@ -1499,6 +1544,11 @@ function CallScreenInner() {
             }
             const prunedAns = pruneRedundantCallTransceivers(pc);
             if (prunedAns) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedAns });
+            ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
+            if (!peerConnectionHasActiveAudioSender(pc) && !callerLocalMediaReady()) {
+              logCallPhase(callIdRef.current, 'answer_abort', { reason: 'no_audio_sender' });
+              return;
+            }
             const ans = await pc.createAnswer(callSdpNegotiationOptions());
             const tunedAns = withTunedVoiceSdp(ans, voiceBitrateRef.current);
             await setTunedLocalDescription(pc, tunedAns, voiceBitrateRef.current);
@@ -1573,6 +1623,24 @@ function CallScreenInner() {
       return (pc?.getSenders?.() ?? []).some((sender) => sender.track?.kind === 'audio');
     };
 
+    const resendExistingCallerOffer = (pc: RTCPeerConnection, source: string): boolean => {
+      if (
+        !peerConnectionHasLocalOffer({
+          signalingState: pc.signalingState,
+          localDescriptionType: pc.localDescription?.type,
+        })
+      ) {
+        return false;
+      }
+      const sent = sendSdpFromPeerConnection(pc);
+      if (!sent) return false;
+      callerOfferSentRef.current = true;
+      callerOfferResendCountRef.current = 0;
+      armMediaWatchdogIfReady();
+      logCallPhase(callIdRef.current, 'sdp_resend_existing_offer', { source });
+      return true;
+    };
+
     const sendCallerOfferAfterAccept = async (source: string): Promise<boolean> => {
       if (cancelled || role !== 'caller') return false;
       if (callerOfferSentRef.current) return true;
@@ -1582,6 +1650,7 @@ function CallScreenInner() {
         logCallPhase(callIdRef.current, 'caller_offer_deferred', { reason: 'no_pc', source });
         return false;
       }
+      if (resendExistingCallerOffer(pc, source)) return true;
       if (!callerLocalMediaReady()) {
         const mediaReady = await waitForLocalMediaReady();
         if (cancelled || !mediaReady) {
@@ -1589,14 +1658,31 @@ function CallScreenInner() {
             reason: 'local_media_timeout',
             source,
           });
-          setErrorMsg('Micro indisponible. Réessayez l’appel.');
-          finishCall('failed');
           return false;
         }
       }
+      callerOfferNegotiationInFlight = true;
       try {
         const prunedOffer = pruneRedundantCallTransceivers(pc);
         if (prunedOffer) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedOffer });
+        if (resendExistingCallerOffer(pc, `${source}_pre_create`)) return true;
+        ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
+        if (!peerConnectionHasActiveAudioSender(pc) && !callerLocalMediaReady()) {
+          logCallPhase(callIdRef.current, 'caller_offer_abort', {
+            reason: 'no_audio_sender',
+            source,
+          });
+          return false;
+        }
+        if (
+          !shouldAttemptCallerCreateOffer({
+            callerOfferSent: callerOfferSentRef.current,
+            signalingState: pc.signalingState,
+            localDescriptionType: pc.localDescription?.type,
+          })
+        ) {
+          return resendExistingCallerOffer(pc, `${source}_skip_create`) || false;
+        }
         const offer = await pc.createOffer(callSdpNegotiationOptions());
         const tunedOffer = withTunedVoiceSdp(offer, voiceBitrateRef.current);
         await setTunedLocalDescription(pc, tunedOffer, voiceBitrateRef.current);
@@ -1614,7 +1700,7 @@ function CallScreenInner() {
             reason: 'sdp_send_skipped',
             source,
           });
-          return false;
+          return resendExistingCallerOffer(pc, `${source}_post_send`);
         }
         callerOfferSentRef.current = true;
         callerOfferResendCountRef.current = 0;
@@ -1627,9 +1713,19 @@ function CallScreenInner() {
           source,
           message: String((e as Error)?.message || e || ''),
         });
-        finishCall('failed');
+        if (resendExistingCallerOffer(pc, `${source}_after_error`)) return true;
         return false;
+      } finally {
+        callerOfferNegotiationInFlight = false;
       }
+    };
+
+    const queueCallerOfferAfterAccept = (source: string): Promise<boolean> => {
+      const chained = chainCallerOfferTask(callerOfferSendChain, () =>
+        sendCallerOfferAfterAccept(source),
+      );
+      callerOfferSendChain = chained.nextChain;
+      return chained.result;
     };
 
     const handlePeerAccepted = async (payload: { callId?: string; type?: 'audio' | 'video' }) => {
@@ -1670,10 +1766,48 @@ function CallScreenInner() {
         void stopAllCallRings();
       }
       armMediaReadyHint();
-      await sendCallerOfferAfterAccept('call:accept');
+      const sent = await queueCallerOfferAfterAccept('call:accept');
+      if (!sent && !callerOfferSentRef.current && peerAnsweredRef.current) {
+        let attempt = 0;
+        const retryCallerOffer = () => {
+          if (cancelled || callerOfferSentRef.current || !peerAnsweredRef.current) return;
+          attempt += 1;
+          if (shouldFailCallerAfterOfferRetries(attempt)) {
+            if (!callerOfferSentRef.current && callStateRef.current !== 'ended') {
+              setErrorMsg('Impossible d’établir la connexion média. Réessayez l’appel.');
+              finishCall('failed', 'caller_offer_retries_exhausted');
+            }
+            return;
+          }
+          void queueCallerOfferAfterAccept(`call:accept_retry_${attempt}`).then((ok) => {
+            if (!ok && !callerOfferSentRef.current && !cancelled) {
+              setTimeout(retryCallerOffer, CALLER_OFFER_RETRY_MS);
+            }
+          });
+        };
+        setTimeout(retryCallerOffer, CALLER_OFFER_RETRY_MS);
+      }
     };
 
-    const handlePeerEnded = () => finishCall('ended');
+    const handlePeerEnded = (payload?: { callId?: string }) => {
+      if (
+        shouldIgnoreInboundCallEnd({
+          payloadCallId: payload?.callId,
+          localCallId: callIdRef.current,
+          callState: callStateRef.current,
+          role,
+        })
+      ) {
+        logCallPhase(callIdRef.current, 'peer_end_ignored', {
+          reason: 'filtered',
+          payloadCallId: payload?.callId ?? null,
+          localCallId: callIdRef.current,
+          callState: callStateRef.current,
+        });
+        return;
+      }
+      finishCall('ended', 'peer_call_end');
+    };
     const handlePeerDeclined = () => {
       setErrorMsg('Appel refusé.');
       finishCall('declined');
@@ -1717,6 +1851,8 @@ function CallScreenInner() {
       finishingRef.current = false;
       pcTearingDownRef.current = false;
       mediaStoppedRef.current = false;
+      callerOfferSentRef.current = false;
+      callerOfferResendCountRef.current = 0;
       setNativeRtcUnmounting(false);
       try {
         /**
@@ -1903,6 +2039,10 @@ function CallScreenInner() {
           }
           if (ice === 'failed') {
             void (async () => {
+              if (shouldDeferConnectionWatchdogIceRestart(callerOfferNegotiationInFlight)) {
+                armConnectionWatchdog();
+                return;
+              }
               if (!restartAttempted) {
                 restartAttempted = true;
                 try {
@@ -2063,6 +2203,7 @@ function CallScreenInner() {
           }
         }
         await attachLocalTracksToPeerConnection(pc, local, localSenders);
+        ensureLocalAudioTracksEnabled(local);
         await optimizeCallAudioPipeline(pc, voiceBitrateRef.current);
         setupLocalEl(local);
 
@@ -2137,7 +2278,7 @@ function CallScreenInner() {
               callerOfferSent: callerOfferSentRef.current,
             })
           ) {
-            void sendCallerOfferAfterAccept('post_invite');
+            void queueCallerOfferAfterAccept('post_invite');
           }
         } else {
           // Receveur : PC prêt avant accept — indispensable si l’app a été ouverte depuis une notification push.
@@ -2737,12 +2878,15 @@ function CallScreenInner() {
 
   const isWeb = isWebRuntime;
 
-  /** RTCView distant uniquement après média confirmé — évite crash natif en sonnerie / teardown. */
-  const showNativeRemoteRtc =
-    !isWeb &&
-    !nativeRtcUnmounting &&
-    callState === 'connected' &&
-    isValidNativeRtcStreamUrl(remoteStreamUrl, { localUrl: localStreamUrl });
+  /** RTCView distant : vocal dès `connecting` + URL valide (audio bidirectionnel Android). */
+  const showNativeRemoteRtc = shouldShowNativeRemoteAudioRtc({
+    isWeb,
+    nativeRtcUnmounting,
+    callState,
+    isVideoCall,
+    remoteStreamUrl,
+    localStreamUrl,
+  });
   const showNativeLocalRtc =
     !isWeb &&
     !nativeRtcUnmounting &&

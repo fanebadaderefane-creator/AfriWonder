@@ -272,7 +272,7 @@ export default function ChatScreen() {
   }, [messages]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<'session' | 'network' | null>(null);
+  const [loadError, setLoadError] = useState<'session' | 'network' | 'not_found' | null>(null);
   const [sending, setSending] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -438,6 +438,10 @@ export default function ChatScreen() {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 401 || !isAuthenticated) {
         setLoadError('session');
+      } else if (status === 404) {
+        /** Conversation supprimée ou ID obsolète en cache — évite boucle d’erreurs Sentry. */
+        setLoadError('not_found');
+        setMessages([]);
       } else {
         const cached = await loadThreadMessageCache(conversationId);
         const merged = await mergeThreadWithOutboundLocal(cached as Message[]);
@@ -2366,6 +2370,25 @@ export default function ChatScreen() {
               accessibilityLabel="Se reconnecter"
             >
               <Text style={styles.loadErrorButtonText}>Se reconnecter</Text>
+            </TouchableOpacity>
+          </View>
+        ) : loadError === 'not_found' ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={40}
+              color="rgba(255,255,255,0.45)"
+            />
+            <Text style={styles.loadingText}>
+              Cette conversation n’existe plus ou n’est plus accessible.
+            </Text>
+            <TouchableOpacity
+              style={styles.loadErrorButton}
+              onPress={() => safeRouterBack('/messages')}
+              accessibilityRole="button"
+              accessibilityLabel="Retour"
+            >
+              <Text style={styles.loadErrorButtonText}>Retour</Text>
             </TouchableOpacity>
           </View>
         ) : loadError === 'network' && messages.length === 0 ? (
