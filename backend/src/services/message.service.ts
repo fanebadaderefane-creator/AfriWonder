@@ -448,7 +448,7 @@ class MessageService {
         cleared_before_at_user2: true,
       },
     });
-    if (!conv) throw new Error('Conversation non trouvee ou acces non autorise');
+    if (!conv) throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
 
     const take = Math.min(50, Math.max(1, limit)) + 1;
 
