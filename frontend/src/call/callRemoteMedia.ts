@@ -146,6 +146,13 @@ export function collectTrackIds(stream: MediaStreamLike | null | undefined): Set
   return ids;
 }
 
+/** Pas de pistes « distantes » avant SDP distant — évite le bruit sendrecv Android (mid=0). */
+export function shouldSyncRemoteReceiverTracks(
+  pc: { remoteDescription?: unknown } | null | undefined,
+): boolean {
+  return Boolean(pc?.remoteDescription);
+}
+
 /** Évite de traiter le micro/caméra local comme flux « distant » (faux 00:00 + crash RTCView). */
 export function isTrackFromLocalCapture(
   track: { id?: string } | null | undefined,
@@ -174,6 +181,11 @@ export function remoteStreamReadyForConnectedUi(input: {
   }
 
   if (!stream) return false;
+  // Vocal natif : sans SDP distant, une piste audio « live » peut être le micro local
+  // (unified stream / receivers prématurés) — ne pas ouvrir RTCView ni logger remote_stream_updated.
+  if (!input.isVideo && !input.hasRemoteDescription) {
+    return false;
+  }
   if (input.isVideo) {
     return streamHasLiveVideo(stream) || streamHasLiveAudio(stream);
   }

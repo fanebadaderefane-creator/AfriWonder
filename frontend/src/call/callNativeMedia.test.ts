@@ -315,6 +315,158 @@ describe('callNativeMedia', () => {
     expect(track.enabled).toBe(true);
   });
 
+  it('shouldPrenegotiateNativeVideoTransceiver — toujours false (addTrack après getUserMedia)', async () => {
+    const { shouldPrenegotiateNativeVideoTransceiver } = await import('./callNativeMedia');
+    expect(shouldPrenegotiateNativeVideoTransceiver(false)).toBe(false);
+    expect(shouldPrenegotiateNativeVideoTransceiver(true)).toBe(false);
+  });
+
+  it('attachNativeAudioTrackToPeerConnection — replace sur transceiver orphelin', async () => {
+    const { attachNativeAudioTrackToPeerConnection } = await import('./callNativeMedia');
+    const replaceTrack = vi.fn().mockResolvedValue(undefined);
+    const addTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1' } as MediaStreamTrack;
+    const local = { getTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      addTrack,
+      getSenders: () => [],
+      getTransceivers: () => [
+        { direction: 'sendrecv', sender: { replaceTrack, track: null }, receiver: { track: null } },
+      ],
+    } as unknown as RTCPeerConnection;
+    const mode = await attachNativeAudioTrackToPeerConnection(pc, track, local);
+    expect(mode).toBe('replaced');
+    expect(replaceTrack).toHaveBeenCalledWith(track);
+    expect(addTrack).not.toHaveBeenCalled();
+  });
+
+  it('needsNativeAudioOfferMediaReset — doublons ou recvonly', async () => {
+    const { needsNativeAudioOfferMediaReset } = await import('./callNativeMedia');
+    expect(needsNativeAudioOfferMediaReset(null)).toBe(false);
+    const noSender = {
+      getSenders: () => [],
+      getTransceivers: () => [{ direction: 'recvonly' }],
+    } as unknown as RTCPeerConnection;
+    expect(needsNativeAudioOfferMediaReset(noSender)).toBe(true);
+    const dup = {
+      getSenders: () => [{ track: { kind: 'audio', readyState: 'live', enabled: true } }],
+      getTransceivers: () => [{ direction: 'sendrecv' }, { direction: 'recvonly' }],
+    } as unknown as RTCPeerConnection;
+    expect(needsNativeAudioOfferMediaReset(dup)).toBe(true);
+    const ok = {
+      getSenders: () => [{ track: { kind: 'audio', readyState: 'live', enabled: true } }],
+      getTransceivers: () => [{ direction: 'sendrecv', currentDirection: 'sendrecv' }],
+    } as unknown as RTCPeerConnection;
+    expect(needsNativeAudioOfferMediaReset(ok)).toBe(false);
+  });
+
+  it('prepareNativeAudioCallerOffer reset si PC incohérent', async () => {
+    const { prepareNativeAudioCallerOffer } = await import('./callNativeMedia');
+    const stopped = { n: 0 };
+    const tx = { stop() { stopped.n += 1; } };
+    const addTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1' } as MediaStreamTrack;
+    const local = { getAudioTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      getSenders: () => [],
+      getTransceivers: () => [tx, tx],
+      addTrack,
+    } as unknown as RTCPeerConnection;
+    expect(await prepareNativeAudioCallerOffer(pc, local)).toBe(true);
+    expect(stopped.n).toBe(2);
+    expect(addTrack).toHaveBeenCalled();
+  });
+
+  it('prepareNativeAudioCallerOffer force reset même si PC semble OK', async () => {
+    const { prepareNativeAudioCallerOffer } = await import('./callNativeMedia');
+    const stopped = { n: 0 };
+    const tx = { stop() { stopped.n += 1; } };
+    const addTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1', readyState: 'live', enabled: true } as MediaStreamTrack;
+    const local = { getAudioTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      getSenders: () => [{ track }],
+      getTransceivers: () => [{ direction: 'sendrecv', currentDirection: 'sendrecv', ...tx }],
+      addTrack,
+    } as unknown as RTCPeerConnection;
+    expect(await prepareNativeAudioCallerOffer(pc, local)).toBe(false);
+    expect(await prepareNativeAudioCallerOffer(pc, local, { force: true })).toBe(true);
+    expect(stopped.n).toBeGreaterThan(0);
+    expect(addTrack).toHaveBeenCalled();
+  });
+
+  it('recoverNativeAudioOfferMedia stop transceivers puis addTrack', async () => {
+    const { recoverNativeAudioOfferMedia } = await import('./callNativeMedia');
+    const stopped = { n: 0 };
+    const tx = { stop() { stopped.n += 1; } };
+    const addTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1' } as MediaStreamTrack;
+    const local = { getAudioTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      getTransceivers: () => [tx, tx],
+      addTrack,
+    } as unknown as RTCPeerConnection;
+    expect(await recoverNativeAudioOfferMedia(pc, local)).toBe(2);
+    expect(stopped.n).toBe(2);
+    expect(addTrack).toHaveBeenCalledWith(track, local);
+  });
+
+  it('shouldAddTrackAfterReplaceTrackFailure — natif sendrecv : pas de addTrack de secours', async () => {
+    const { shouldAddTrackAfterReplaceTrackFailure } = await import('./callNativeMedia');
+    expect(shouldAddTrackAfterReplaceTrackFailure(false, true)).toBe(false);
+    expect(shouldAddTrackAfterReplaceTrackFailure(true, true)).toBe(true);
+    expect(shouldAddTrackAfterReplaceTrackFailure(false, false)).toBe(false);
+  });
+
+  it('attachLocalTracksToPeerConnection — ignore si sender audio déjà sur la bonne piste', async () => {
+    const { attachLocalTracksToPeerConnection } = await import('./callNativeMedia');
+    const addTrack = vi.fn();
+    const replaceTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1' } as MediaStreamTrack;
+    const local = { getTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      addTrack,
+      getSenders: () => [{ track: { kind: 'audio', id: 'mic-1' } }],
+    } as unknown as RTCPeerConnection;
+    await attachLocalTracksToPeerConnection(pc, local, {}, false);
+    expect(addTrack).not.toHaveBeenCalled();
+    expect(replaceTrack).not.toHaveBeenCalled();
+  });
+
+  it('attachLocalTracksToPeerConnection — natif audio : addTrack si pas de transceiver orphelin', async () => {
+    const { attachLocalTracksToPeerConnection } = await import('./callNativeMedia');
+    const addTrack = vi.fn();
+    const track = { kind: 'audio', id: 'mic-1' } as MediaStreamTrack;
+    const local = { getTracks: () => [track] } as unknown as MediaStream;
+    const pc = {
+      addTrack,
+      getSenders: () => [],
+      getTransceivers: () => [],
+    } as unknown as RTCPeerConnection;
+    await attachLocalTracksToPeerConnection(pc, local, {}, false);
+    expect(addTrack).toHaveBeenCalledWith(track, local);
+  });
+
+  it('summarizePeerConnectionForOffer — snapshot senders et transceivers', async () => {
+    const { summarizePeerConnectionForOffer } = await import('./callNativeMedia');
+    const summary = summarizePeerConnectionForOffer({
+      signalingState: 'stable',
+      getSenders: () => [{ track: { kind: 'audio', id: 'a1', readyState: 'live' } }],
+      getTransceivers: () => [
+        {
+          mid: '0',
+          direction: 'sendrecv',
+          currentDirection: 'sendrecv',
+          sender: { track: { kind: 'audio' } },
+          receiver: { track: { kind: 'audio' } },
+        },
+      ],
+    } as unknown as RTCPeerConnection);
+    expect(summary.senders).toHaveLength(1);
+    expect(summary.transceivers[0]?.mid).toBe('0');
+    expect(summary.signalingState).toBe('stable');
+  });
+
   it('peerConnectionHasActiveAudioSender détecte expéditeur audio actif', async () => {
     const { peerConnectionHasActiveAudioSender } = await import('./callNativeMedia');
     expect(

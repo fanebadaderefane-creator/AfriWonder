@@ -67,7 +67,7 @@ const checks = [
   ['Bug #1 — clear ring timeout on accept', /clearCallerRingTimeout\(\)/],
   ['Bug #2 — pas de releaseExpoAv en connecting', /Ne pas rappeler releaseExpoAv/],
   ['Bug #3 — watchdog après accept (appelant)', /shouldArmMediaConnectionWatchdog|armMediaWatchdogIfReady/],
-  ['Transceivers sendrecv avant getUserMedia', /addTransceiver\('audio'/],
+  ['Vocal natif addTrack / vidéo sendrecv', /shouldPrenegotiateNativeSendrecvTransceivers/],
   ['acquireCallLocalMedia (repli getUserMedia)', /acquireCallLocalMedia/],
   ['streamHasActiveMediaTracks (URI invalide web)', /streamHasActiveMediaTracks/],
   ['callSetupGenRef anti double bootstrap', /callSetupGenRef/],

@@ -389,6 +389,214 @@ export function ensureLocalAudioTracksEnabled(stream: MediaStream | null | undef
   }
 }
 
+/** Tag livraison — visible Logcat (`PATCH_AUDIO_FIX_ACTIVE`). */
+export const CALL_NATIVE_AUDIO_FIX_TAG = '2026-06-09-v3';
+
+/**
+ * Natif : aucun addTransceiver avant getUserMedia (audio ni vidéo).
+ * addTrack après getUserMedia — seul chemin stable react-native-webrtc Android.
+ */
+export function shouldPrenegotiateNativeVideoTransceiver(_wantVideo: boolean): boolean {
+  return false;
+}
+
+/** @deprecated Préférer `shouldPrenegotiateNativeVideoTransceiver` (audio exclu). */
+export function shouldPrenegotiateNativeSendrecvTransceivers(wantVideo: boolean): boolean {
+  return shouldPrenegotiateNativeVideoTransceiver(wantVideo);
+}
+
+type MinimalOfferTransceiver = {
+  sender?: { track?: { kind?: string; readyState?: string } | null } | null;
+  direction?: string;
+  currentDirection?: string;
+};
+
+/** Vocal natif : PC incohérent avant le 1er offer (doublons, recvonly, pas d’émetteur). */
+export function needsNativeAudioOfferMediaReset(
+  pc: RTCPeerConnection | null | undefined,
+): boolean {
+  if (!pc) return false;
+  const transceivers = (pc.getTransceivers?.() ?? []) as MinimalOfferTransceiver[];
+  if (!peerConnectionHasActiveAudioSender(pc)) return true;
+  if (transceivers.length === 0) return true;
+  if (transceivers.length > 1) return true;
+  const tx = transceivers[0];
+  const dir = String(tx?.currentDirection || tx?.direction || '').toLowerCase();
+  if (dir === 'recvonly' || dir === 'inactive') return true;
+  return false;
+}
+
+export type PrepareNativeAudioCallerOfferOptions = {
+  /** 1re offre vocale native : reset systématique (état « OK » mais createOffer casse quand même). */
+  force?: boolean;
+};
+
+/**
+ * Réinitialise les transceivers avant createOffer (évite mid=0 recv parameters).
+ * Retourne true si un reset a été effectué.
+ */
+export async function prepareNativeAudioCallerOffer(
+  pc: RTCPeerConnection,
+  local: MediaStream,
+  options?: PrepareNativeAudioCallerOfferOptions,
+): Promise<boolean> {
+  if (!options?.force && !needsNativeAudioOfferMediaReset(pc)) return false;
+  await recoverNativeAudioOfferMedia(pc, local);
+  return true;
+}
+
+/**
+ * Dernier recours vocal natif : stop transceivers incohérents puis addTrack propre.
+ */
+export async function recoverNativeAudioOfferMedia(
+  pc: RTCPeerConnection,
+  local: MediaStream,
+): Promise<number> {
+  let stopped = 0;
+  for (const t of pc.getTransceivers?.() ?? []) {
+    try {
+      t.stop?.();
+      stopped += 1;
+    } catch {
+      /* ignore */
+    }
+  }
+  const audio = local.getAudioTracks()[0];
+  if (audio) {
+    try {
+      pc.addTrack(audio, local);
+    } catch {
+      /* ignore */
+    }
+  }
+  return stopped;
+}
+
+/**
+ * Natif avec transceiver sendrecv pré-créé : ne pas addTrack si replaceTrack échoue
+ * (2e section audio → setLocalDescription « recv parameters mid=0 »).
+ * Web (Firefox) : addTrack reste le repli documenté.
+ */
+export function shouldAddTrackAfterReplaceTrackFailure(
+  isWebRuntime: boolean,
+  hasPresetSender: boolean,
+): boolean {
+  if (!hasPresetSender) return false;
+  return isWebRuntime;
+}
+
+export function findPeerConnectionSenderForKind(
+  pc: RTCPeerConnection,
+  kind: string,
+): RTCRtpSender | undefined {
+  return pc.getSenders?.().find((sender) => sender.track?.kind === kind);
+}
+
+/** Transceiver audio sans piste émise (addTransceiver orphelin avant addTrack). */
+export function findOrphanNativeAudioTransceiver(
+  pc: RTCPeerConnection,
+): RTCRtpTransceiver | undefined {
+  for (const tx of pc.getTransceivers?.() ?? []) {
+    if (tx.sender?.track) continue;
+    const rxKind = tx.receiver?.track?.kind;
+    const dir = String(tx.direction || tx.currentDirection || '').toLowerCase();
+    if (rxKind === 'audio' || dir.includes('send') || dir.includes('recv')) {
+      return tx;
+    }
+  }
+  return undefined;
+}
+
+export async function attachNativeAudioTrackToPeerConnection(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack,
+  local: MediaStream,
+): Promise<'skipped' | 'replaced' | 'added'> {
+  const existingSender = findPeerConnectionSenderForKind(pc, 'audio');
+  if (existingSender?.track?.id === track.id) return 'skipped';
+  if (existingSender) {
+    await existingSender.replaceTrack(track);
+    return 'replaced';
+  }
+  const orphan = findOrphanNativeAudioTransceiver(pc);
+  if (orphan?.sender) {
+    await orphan.sender.replaceTrack(track);
+    return 'replaced';
+  }
+  pc.addTrack(track, local);
+  return 'added';
+}
+
+export async function attachLocalTracksToPeerConnection(
+  pc: RTCPeerConnection,
+  local: MediaStream,
+  senders: { audio?: RTCRtpSender | null; video?: RTCRtpSender | null },
+  isWebRuntime: boolean,
+): Promise<void> {
+  for (const track of local.getTracks()) {
+    const existingSender = findPeerConnectionSenderForKind(pc, track.kind);
+    if (existingSender?.track?.id === track.id) continue;
+
+    if (!isWebRuntime && track.kind === 'audio') {
+      await attachNativeAudioTrackToPeerConnection(pc, track, local);
+      continue;
+    }
+
+    const presetSender = track.kind === 'video' ? senders.video : senders.audio;
+    const sender = presetSender ?? existingSender;
+    if (sender) {
+      try {
+        await sender.replaceTrack(track);
+      } catch {
+        if (shouldAddTrackAfterReplaceTrackFailure(isWebRuntime, Boolean(presetSender))) {
+          if (!existingSender) {
+            pc.addTrack(track, local);
+          }
+        }
+      }
+    } else if (!existingSender) {
+      pc.addTrack(track, local);
+    }
+  }
+}
+
+export type PeerConnectionOfferDiagnostic = {
+  senders: Array<{
+    kind: string | null;
+    trackId: string | null;
+    readyState: string | null;
+  }>;
+  transceivers: Array<{
+    mid: string | null;
+    direction: string | null;
+    currentDirection: string | null;
+    senderKind: string | null;
+    receiverKind: string | null;
+  }>;
+  signalingState: string | null;
+};
+
+/** Snapshot Logcat avant createOffer — détecte doublons audio / transceivers incohérents. */
+export function summarizePeerConnectionForOffer(
+  pc: RTCPeerConnection | null | undefined,
+): PeerConnectionOfferDiagnostic {
+  return {
+    senders: (pc?.getSenders?.() ?? []).map((sender) => ({
+      kind: sender.track?.kind ?? null,
+      trackId: sender.track?.id ?? null,
+      readyState: sender.track?.readyState ?? null,
+    })),
+    transceivers: (pc?.getTransceivers?.() ?? []).map((tx) => ({
+      mid: tx.mid ?? null,
+      direction: tx.direction ?? null,
+      currentDirection: tx.currentDirection ?? null,
+      senderKind: tx.sender?.track?.kind ?? null,
+      receiverKind: tx.receiver?.track?.kind ?? null,
+    })),
+    signalingState: pc?.signalingState ?? null,
+  };
+}
+
 /** Vérifie qu’au moins un expéditeur audio actif est attaché à la PeerConnection. */
 export function peerConnectionHasActiveAudioSender(
   pc: RTCPeerConnection | null | undefined,

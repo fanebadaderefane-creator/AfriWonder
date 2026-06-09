@@ -122,7 +122,27 @@ export function normalizeOutboundSessionDescription(
     typeof (desc as RTCSessionDescription).toJSON === 'function'
       ? (desc as RTCSessionDescription).toJSON()
       : desc;
-  return coerceSessionDescriptionInit(raw, signalingState);
+  return coerceOutboundSessionDescriptionInit(raw, signalingState);
+}
+
+/**
+ * SDP local sortant — en `have-local-offer` le type DOIT être `offer` (pas `answer`).
+ * Régression Android : `inferSdpTypeForPeerConnection` renvoyait `answer` → offer jamais acceptée.
+ */
+export function coerceOutboundSessionDescriptionInit(
+  raw: unknown,
+  signalingState?: string,
+): CallSignalSdpPayload | null {
+  const parsed = coerceSessionDescriptionInit(raw, signalingState);
+  if (!parsed) return null;
+  const state = String(signalingState || '');
+  if (state === 'have-local-offer' && parsed.type !== 'offer') {
+    return { type: 'offer', sdp: parsed.sdp };
+  }
+  if (state === 'have-local-pranswer' && parsed.type !== 'pranswer') {
+    return { type: 'pranswer', sdp: parsed.sdp };
+  }
+  return parsed;
 }
 
 /** Préfère `pc.localDescription` (fiable après setLocalDescription) puis le fallback session init. */

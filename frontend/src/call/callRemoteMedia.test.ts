@@ -12,6 +12,7 @@ import {
   remoteStreamReadyForConnectedUi,
   shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
+  shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
   streamHasLiveVideo,
 } from './callRemoteMedia';
@@ -179,6 +180,12 @@ describe('callRemoteMedia', () => {
     expect(stream.getVideoTracks()).toHaveLength(1);
   });
 
+  it('shouldSyncRemoteReceiverTracks attend le SDP distant (anti faux distant Android)', () => {
+    expect(shouldSyncRemoteReceiverTracks(null)).toBe(false);
+    expect(shouldSyncRemoteReceiverTracks({})).toBe(false);
+    expect(shouldSyncRemoteReceiverTracks({ remoteDescription: { type: 'offer' } })).toBe(true);
+  });
+
   it('isTrackFromLocalCapture ignore le micro/caméra local', () => {
     const localIds = collectTrackIds({
       getAudioTracks: () => [{ id: 'mic-1' }],
@@ -229,6 +236,13 @@ describe('callRemoteMedia', () => {
     expect(
       remoteStreamReadyForConnectedUi({
         isVideo: false,
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(false);
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        hasRemoteDescription: true,
         stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
       }),
     ).toBe(true);

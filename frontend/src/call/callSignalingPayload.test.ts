@@ -103,6 +103,17 @@ describe('callSignalingPayload', () => {
     });
   });
 
+  it('pickOutboundCallSdp force type offer sans fallback (Android sans type)', () => {
+    const pc = {
+      signalingState: 'have-local-offer',
+      localDescription: { sdp: SAMPLE_SDP },
+    } as RTCPeerConnection;
+    expect(pickOutboundCallSdp(pc)).toEqual({
+      type: 'offer',
+      sdp: SAMPLE_SDP,
+    });
+  });
+
   it('normalizeInboundCallSignal répare sdp imbriqué sans type (régression prod)', () => {
     expect(
       normalizeInboundCallSignal(

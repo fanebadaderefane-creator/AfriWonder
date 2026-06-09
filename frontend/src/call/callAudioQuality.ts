@@ -55,12 +55,43 @@ export function withTunedVoiceSdp<T extends { type: RTCSdpType; sdp?: string }>(
   };
 }
 
+/**
+ * Natif (react-native-webrtc) : ne pas retoucher le SDP avant setLocalDescription.
+ * Sinon Android échoue sur :
+ * « Failed to set local audio description recv parameters for m-section with mid='0' »
+ * Le bitrate vocal passe par `applyVoiceAudioSenderParameters` après négociation.
+ */
+export function shouldTuneSdpBeforeSetLocalDescription(isWebRuntime: boolean): boolean {
+  return isWebRuntime;
+}
+
+/**
+ * Natif : `setParameters` sur l’expéditeur avant le 1er `setLocalDescription` peut faire échouer
+ * Android avec « recv parameters for m-section with mid='0' ». Appliquer le bitrate après SDP.
+ */
+export function shouldOptimizeCallAudioBeforeFirstNegotiation(isWebRuntime: boolean): boolean {
+  return isWebRuntime;
+}
+
+export type NativeSessionDescriptionCtor = new (
+  descriptionInitDict: RTCSessionDescriptionInit,
+) => RTCSessionDescription;
+
 export async function setTunedLocalDescription(
   pc: RTCPeerConnection,
   desc: RTCSessionDescriptionInit,
   maxBitrate = VOICE_OPUS_MAX_AVERAGE_BITRATE,
+  isWebRuntime = false,
+  nativeSessionDescriptionImpl?: NativeSessionDescriptionCtor,
 ): Promise<void> {
-  await pc.setLocalDescription(withTunedVoiceSdp(desc, maxBitrate));
+  const payload = shouldTuneSdpBeforeSetLocalDescription(isWebRuntime)
+    ? withTunedVoiceSdp(desc, maxBitrate)
+    : desc;
+  if (!isWebRuntime && nativeSessionDescriptionImpl) {
+    await pc.setLocalDescription(new nativeSessionDescriptionImpl(payload));
+    return;
+  }
+  await pc.setLocalDescription(payload);
 }
 
 export async function applyVoiceAudioSenderParameters(
@@ -118,10 +149,9 @@ function transceiverIsSending(t: MinimalTransceiver): boolean {
 
 /**
  * Choisit les transceivers à neutraliser pour éviter une section média en
- * doublon (`mid='1'`). On garde, par type, le premier transceiver qui ENVOIE
- * notre média ; on neutralise les autres du même type qui n’envoient rien
- * (recvonly/inactive en trop) — ils provoquent l’erreur
- * `setRemoteDescription ... send parameters for m-section`.
+ * doublon (`mid='0'` / `mid='1'`). On garde, par type, le premier transceiver
+ * qui ENVOIE notre média ; on neutralise les autres du même type (2e émetteur
+ * addTrack ou recvonly/inactive en trop).
  *
  * Pur et testable : ne touche pas au PeerConnection.
  */
@@ -133,7 +163,7 @@ export function selectRedundantTransceivers<T extends MinimalTransceiver>(transc
     if (kind !== 'audio' && kind !== 'video') continue;
     if (transceiverIsSending(t)) {
       if (keptSenderByKind.has(kind)) {
-        // 2e transceiver émetteur du même type : laissé tel quel (multi-piste légitime).
+        redundant.push(t);
         continue;
       }
       keptSenderByKind.add(kind);

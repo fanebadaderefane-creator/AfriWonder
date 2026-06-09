@@ -3,6 +3,8 @@ import { VOICE_OPUS_BITRATE_2G, VOICE_OPUS_BITRATE_3G } from './callNetworkConfi
 import {
   pruneRedundantCallTransceivers,
   selectRedundantTransceivers,
+  shouldOptimizeCallAudioBeforeFirstNegotiation,
+  shouldTuneSdpBeforeSetLocalDescription,
   tuneVoiceCallSdp,
   VOICE_OPUS_MAX_AVERAGE_BITRATE,
   withTunedVoiceSdp,
@@ -40,6 +42,16 @@ describe('callAudioQuality', () => {
     expect(tuned.sdp).toContain('opus/48000/1');
   });
 
+  it('shouldTuneSdpBeforeSetLocalDescription — natif : SDP brut (anti mid=0 recv)', () => {
+    expect(shouldTuneSdpBeforeSetLocalDescription(false)).toBe(false);
+    expect(shouldTuneSdpBeforeSetLocalDescription(true)).toBe(true);
+  });
+
+  it('shouldOptimizeCallAudioBeforeFirstNegotiation — natif : bitrate après 1er SDP', () => {
+    expect(shouldOptimizeCallAudioBeforeFirstNegotiation(false)).toBe(false);
+    expect(shouldOptimizeCallAudioBeforeFirstNegotiation(true)).toBe(true);
+  });
+
   it('tuneVoiceCallSdp laisse intact un SDP sans Opus', () => {
     const plain = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 0\r\n';
     expect(tuneVoiceCallSdp(plain)).toBe(plain);
@@ -57,6 +69,13 @@ describe('callAudioQuality', () => {
     const recvOnlyDup = tx('audio', false);
     const redundant = selectRedundantTransceivers([sending, recvOnlyDup]);
     expect(redundant).toEqual([recvOnlyDup]);
+  });
+
+  it("selectRedundantTransceivers neutralise le 2e audio émetteur (addTrack en double)", () => {
+    const sending1 = tx('audio', true);
+    const sending2 = tx('audio', true);
+    const redundant = selectRedundantTransceivers([sending1, sending2]);
+    expect(redundant).toEqual([sending2]);
   });
 
   it('selectRedundantTransceivers ne touche pas un audio unique (même sans envoi listen-only)', () => {

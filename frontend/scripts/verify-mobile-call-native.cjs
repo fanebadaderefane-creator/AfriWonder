@@ -91,6 +91,7 @@ if (/WebRTCModule/.test(webrtcLoader) && /isNativeWebRtcAvailable/.test(webrtcLo
 
 console.log('\n━━ Parcours natif call.tsx ━━');
 const callTsx = read('app/messages/call.tsx');
+const callNativeMedia = read('src/call/callNativeMedia.ts');
 const nativeChecks = [
   ['InCallManager / session audio', /startNativeCallAudioSession/],
   ['Permissions Android RECORD_AUDIO', /requestNativeCallPermissions/],
@@ -98,8 +99,10 @@ const nativeChecks = [
   ['TURN relay mobile', /buildCallIceConfig/],
   ['TURN TLS natif prepareIceServers', /prepareIceServersForPlatform/],
   ['NetInfo resolveIceNetworkSnapshot', /resolveIceNetworkSnapshot/],
-  ['Transceiver audio sendrecv', /addTransceiver\('audio'/],
-  ['Transceiver vidéo sendrecv', /addTransceiver\('video'/],
+  ['Vocal natif — CALL_NATIVE_AUDIO_FIX_TAG', /CALL_NATIVE_AUDIO_FIX_TAG/],
+  ['attachNativeAudioTrackToPeerConnection (call.tsx)', /attachLocalTracksToPeerConnection/],
+  ['PATCH_AUDIO_FIX_ACTIVE Logcat', /logPatchAudioFixActive/],
+  ['Web listen-only recvonly', /addTransceiver\('audio', \{ direction: 'recvonly' \}/],
   ['SafeNativeRtcView distant', /showNativeRemoteRtc[\s\S]*SafeNativeRtcView/],
   ['RTC audio caché (vocal)', /hiddenRemoteRtc/],
   ['RTC secours audio (vidéo)', /hiddenRemoteRtcVideoBackup/],
@@ -121,6 +124,16 @@ const nativeChecks = [
 for (const [label, re] of nativeChecks) {
   if (re.test(callTsx)) ok(label);
   else fail(label);
+}
+if (/shouldPrenegotiateNativeVideoTransceiver[\s\S]*return false/.test(callNativeMedia)) {
+  ok('Natif — shouldPrenegotiateNativeVideoTransceiver toujours false');
+} else {
+  fail('Natif — shouldPrenegotiateNativeVideoTransceiver toujours false');
+}
+if (/attachNativeAudioTrackToPeerConnection/.test(callNativeMedia)) {
+  ok('attachNativeAudioTrackToPeerConnection (callNativeMedia.ts)');
+} else {
+  fail('attachNativeAudioTrackToPeerConnection (callNativeMedia.ts)');
 }
 
 console.log('\n━━ Entrants natifs ━━');
