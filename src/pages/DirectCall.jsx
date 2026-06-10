@@ -240,10 +240,18 @@ export default function DirectCallPage() {
 
     pc.ontrack = (event) => {
       event.streams[0].getTracks().forEach((track) => {
+        if (track.kind === 'audio') track.enabled = true;
         remoteStreamRef.current.addTrack(track);
       });
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
-      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStreamRef.current;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        void remoteVideoRef.current.play?.().catch(() => {});
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStreamRef.current;
+        remoteAudioRef.current.muted = false;
+        void remoteAudioRef.current.play().catch(() => {});
+      }
       if (!callStartTime) setCallStartTime(Date.now());
       setCallStatus('active');
       if (!activePersistedRef.current) {
@@ -672,7 +680,10 @@ export default function DirectCallPage() {
 
   useEffect(() => {
     if (!remoteAudioRef.current) return;
-    remoteAudioRef.current.muted = !isSpeakerOn;
+    /** Web : le bouton HP route via setSinkId si dispo — ne pas couper la piste distante (muted = silence total). */
+    remoteAudioRef.current.muted = false;
+    if (!remoteAudioRef.current.paused) return;
+    void remoteAudioRef.current.play().catch(() => {});
   }, [isSpeakerOn]);
 
   const handleEndCall = () => {

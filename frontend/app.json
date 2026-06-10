@@ -79,6 +79,7 @@
       "./plugins/withAndroidDeferFirebaseInit.js",
       "./plugins/withAndroidLargeHeap.js",
       "./plugins/withAndroidNotifeeMaven.js",
+      "./plugins/withAndroidNotifeeForegroundService.js",
       [
         "expo-build-properties",
         {

@@ -33,6 +33,7 @@
     "quality": "npm run verify",
     "standards:mobile": "npm run verify",
     "eas:android:preview": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile preview",
+    "eas:android:callDiagnostic": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile callDiagnostic",
     "eas:android:production": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile production",
     "sync:render:mobile-version": "node ./scripts/sync-render-mobile-version.cjs",
     "sync:render:mobile-version:dry-run": "node ./scripts/sync-render-mobile-version.cjs --dry-run",

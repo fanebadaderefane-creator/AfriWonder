@@ -67,7 +67,7 @@ const checks = [
   ['Bug #1 — clear ring timeout on accept', /clearCallerRingTimeout\(\)/],
   ['Bug #2 — pas de releaseExpoAv en connecting', /Ne pas rappeler releaseExpoAv/],
   ['Bug #3 — watchdog après accept (appelant)', /shouldArmMediaConnectionWatchdog|armMediaWatchdogIfReady/],
-  ['Vocal natif addTrack / vidéo sendrecv', /shouldPrenegotiateNativeSendrecvTransceivers/],
+  ['Vocal natif — CALL_NATIVE_AUDIO_FIX_TAG', /CALL_NATIVE_AUDIO_FIX_TAG/],
   ['acquireCallLocalMedia (repli getUserMedia)', /acquireCallLocalMedia/],
   ['streamHasActiveMediaTracks (URI invalide web)', /streamHasActiveMediaTracks/],
   ['callSetupGenRef anti double bootstrap', /callSetupGenRef/],
@@ -105,6 +105,13 @@ const checks = [
 for (const [label, re] of checks) {
   if (re.test(callTsx)) ok(label);
   else fail(label);
+}
+
+const callNativeMedia = read('src/call/callNativeMedia.ts');
+if (/shouldPrenegotiateNativeVideoTransceiver[\s\S]*return false/.test(callNativeMedia)) {
+  ok('Natif — shouldPrenegotiateNativeVideoTransceiver toujours false (addTrack après getUserMedia)');
+} else {
+  fail('Natif — shouldPrenegotiateNativeVideoTransceiver toujours false (addTrack après getUserMedia)');
 }
 
 // Régression mid='1' : les contraintes héritées offerToReceive* recréent une 2e

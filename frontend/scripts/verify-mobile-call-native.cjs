@@ -136,6 +136,21 @@ if (/attachNativeAudioTrackToPeerConnection/.test(callNativeMedia)) {
   fail('attachNativeAudioTrackToPeerConnection (callNativeMedia.ts)');
 }
 
+console.log('\n━━ Plugin Notifee FGS (microphone) ━━');
+const plugins = appJson.expo?.plugins || [];
+const pluginPaths = plugins.map((p) => (Array.isArray(p) ? p[0] : p));
+if (pluginPaths.some((p) => String(p).includes('withAndroidNotifeeForegroundService'))) {
+  ok('withAndroidNotifeeForegroundService enregistré (manifest FGS microphone|camera)');
+} else {
+  fail('withAndroidNotifeeForegroundService manquant dans app.json');
+}
+const notifeeFgPlugin = read('plugins/withAndroidNotifeeForegroundService.js');
+if (/microphone\|camera\|shortService/.test(notifeeFgPlugin) && /app\.notifee\.core\.ForegroundService/.test(notifeeFgPlugin)) {
+  ok('Plugin Notifee — types FGS microphone|camera|shortService');
+} else {
+  fail('Plugin Notifee — types FGS incomplets');
+}
+
 console.log('\n━━ Entrants natifs ━━');
 const incoming = read('src/services/incomingCallService.ts');
 if (/FOREGROUND_SERVICE_PHONE_CALL/.test(incoming) || /AndroidForegroundServiceType/.test(incoming)) {
