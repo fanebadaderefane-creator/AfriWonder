@@ -12,6 +12,8 @@ import {
   remoteStreamReadyForConnectedUi,
   shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
+  receiverTracksBindingKey,
+  shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
   streamHasLiveVideo,
@@ -178,6 +180,55 @@ describe('callRemoteMedia', () => {
     expect(mergeRemoteTrackIntoStream(stream as RemoteStreamUnified, { id: 'a1', kind: 'audio' })).toBe(false);
     expect(stream.getAudioTracks()).toHaveLength(1);
     expect(stream.getVideoTracks()).toHaveLength(1);
+  });
+
+  it('shouldReplaceNativeRemoteMediaStream — reconstruire quand la vidéo distante arrive après l’audio', () => {
+    const audioOnly = {
+      getAudioTracks: () => [{ id: 'a1', readyState: 'live' }],
+      getVideoTracks: () => [],
+    };
+    const audioAndVideo = [
+      { id: 'a1', kind: 'audio', readyState: 'live' },
+      { id: 'v1', kind: 'video', readyState: 'live' },
+    ];
+    expect(shouldReplaceNativeRemoteMediaStream(audioOnly, audioAndVideo)).toBe(true);
+    expect(receiverTracksBindingKey(audioAndVideo)).not.toBe(
+      receiverTracksBindingKey([{ id: 'a1', kind: 'audio', readyState: 'live' }]),
+    );
+    expect(
+      shouldReplaceNativeRemoteMediaStream(
+        {
+          getAudioTracks: () => [{ id: 'a1', readyState: 'live' }],
+          getVideoTracks: () => [{ id: 'v1', readyState: 'live' }],
+        },
+        audioAndVideo,
+      ),
+    ).toBe(false);
+  });
+
+  it('scénario appelant — piste vidéo new puis live force resync', () => {
+    const audioBound = {
+      getAudioTracks: () => [{ id: 'a1', readyState: 'live' }],
+      getVideoTracks: () => [],
+    };
+    const withVideoNew = [
+      { id: 'a1', kind: 'audio', readyState: 'live' },
+      { id: 'v1', kind: 'video', readyState: 'new' },
+    ];
+    expect(shouldReplaceNativeRemoteMediaStream(audioBound, withVideoNew)).toBe(true);
+    const withVideoLive = [
+      { id: 'a1', kind: 'audio', readyState: 'live' },
+      { id: 'v1', kind: 'video', readyState: 'live' },
+    ];
+    expect(
+      shouldReplaceNativeRemoteMediaStream(
+        {
+          getAudioTracks: () => [{ id: 'a1', readyState: 'live' }],
+          getVideoTracks: () => [{ id: 'v1', readyState: 'new' }],
+        },
+        withVideoLive,
+      ),
+    ).toBe(true);
   });
 
   it('shouldSyncRemoteReceiverTracks attend le SDP distant (anti faux distant Android)', () => {

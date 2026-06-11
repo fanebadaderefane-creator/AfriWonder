@@ -278,6 +278,33 @@ export function shouldBindNativeRemoteStreamUrl(input: {
   return (input.stream?.getAudioTracks?.()?.length ?? 0) > 0;
 }
 
+/** Clé de liaison audio+vidéo distantes (ids + readyState) — compare receivers PC vs flux unifié natif. */
+export function receiverTracksBindingKey(tracks: ReceiverTrackLike[]): string {
+  return mediaStreamBindingKey({
+    getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+    getVideoTracks: () => tracks.filter((t) => t.kind === 'video'),
+  });
+}
+
+/**
+ * react-native-webrtc : `addTrack` sur le MediaStream unifié existant ne rafraîchit pas RTCView
+ * quand la vidéo arrive après l’audio (asymétrie appelant). Reconstruire le MediaStream.
+ */
+export function shouldReplaceNativeRemoteMediaStream(
+  current: MediaStreamLike | null | undefined,
+  receiverTracks: ReceiverTrackLike[],
+): boolean {
+  if (!receiverTracks.length) return false;
+  if (!current) return true;
+  const nextKey = receiverTracksBindingKey(receiverTracks);
+  if (nextKey !== mediaStreamBindingKey(current)) return true;
+  const tracks = [
+    ...(current.getAudioTracks?.() ?? []),
+    ...(current.getVideoTracks?.() ?? []),
+  ];
+  return tracks.length === 0 || tracks.every((t) => t.readyState === 'ended');
+}
+
 export function dedupeRemoteReceiverTracks<T extends ReceiverTrackLike>(tracks: T[]): T[] {
   const audio = tracks.filter((t) => t.kind === 'audio');
   const video = tracks.filter((t) => t.kind === 'video');

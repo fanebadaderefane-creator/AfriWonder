@@ -149,7 +149,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5d875c26-f610-4105-a241-1dc03c4edcc8"
+        "projectId": "fca8d6ba-0ea4-4918-8e31-3264d31de669"
       }
     },
     "experiments": {
@@ -158,6 +158,6 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "owner": "fanebadaderefane"
+    "owner": "global-production"
   }
 }

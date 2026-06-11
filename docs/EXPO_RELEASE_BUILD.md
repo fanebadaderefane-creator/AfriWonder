@@ -24,12 +24,16 @@ npm run verify
 
 ## EAS Build (recommandé)
 
+**Organisation** : `global-production` — **Projet** : `@global-production/afriwonder-production`  
+**Project ID** : `fca8d6ba-0ea4-4918-8e31-3264d31de669` (dans `app.json` → `extra.eas.projectId`)
+
 1. Installer EAS CLI : `npm i -g eas-cli`
-2. `cd frontend && eas login && eas build:configure`
-3. Définir les secrets dans le projet EAS pour `EXPO_PUBLIC_BACKEND_URL`, etc.
-4. Builds typiques :
-   - `eas build --platform android --profile production`
-   - `eas build --platform ios --profile production`
+2. `cd frontend && eas login` (accès org **global-production**)
+3. Vérifier : `npm run verify:eas-org`
+4. Définir les secrets dans le projet EAS pour `EXPO_PUBLIC_BACKEND_URL`, etc.
+5. Builds typiques :
+   - `npm run eas:android:callDiagnostic` — APK tests appels
+   - `npm run eas:android:production` — AAB Play Store
 
 Les profils (`eas.json`) doivent injecter les `env` ou utiliser les secrets EAS pour les `EXPO_PUBLIC_*`.
 

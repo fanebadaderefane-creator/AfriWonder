@@ -2,7 +2,7 @@
 
 ## 1. Générer l'APK diagnostic (EAS)
 
-Depuis la machine avec compte Expo `fanebadaderefane` :
+Depuis la machine avec accès à l’organisation Expo **`global-production`** :
 
 ```powershell
 cd frontend

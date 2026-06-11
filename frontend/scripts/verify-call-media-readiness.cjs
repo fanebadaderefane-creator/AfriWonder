@@ -72,6 +72,8 @@ const checks = [
   ['streamHasActiveMediaTracks (URI invalide web)', /streamHasActiveMediaTracks/],
   ['callSetupGenRef anti double bootstrap', /callSetupGenRef/],
   ['Fusion pistes distantes (mergeRemoteTrackIntoStream)', /mergeRemoteTrackIntoStream/],
+  ['Natif — reconstruire MediaStream distant (fix vidéo appelant)', /shouldReplaceNativeRemoteMediaStream/],
+  ['Logs REMOTE_STREAM / REMOTE_TRACK (diagnostic vidéo)', /logRemoteStreamReceived|REMOTE_STREAM_RECEIVED/],
   ['joinUserRoom au bootstrap appel', /joinUserRoom\(myUserId\)/],
   ['call:missed ignoré après décrochage', /shouldFinishCallAsMissed/],
   ['call:invite:ack sync callId', /call:invite:ack/],

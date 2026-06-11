@@ -28,6 +28,7 @@
     "generate:call-sounds": "node ./scripts/generate-call-sounds.cjs",
     "verify:call-media": "node ./scripts/verify-call-media-readiness.cjs",
     "verify:mobile-call": "node ./scripts/verify-mobile-call-native.cjs",
+    "verify:eas-org": "node ./scripts/verify-eas-org.cjs",
     "verify:crash-safety": "node ./scripts/verify-prod-crash-safety.cjs",
     "verify": "expo lint && npm run typecheck && npm run verify:android-boot && npm run verify:expo-fs && npm run test:coverage",
     "quality": "npm run verify",

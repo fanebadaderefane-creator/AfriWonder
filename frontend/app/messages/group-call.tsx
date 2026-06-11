@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import apiClient from '../../src/api/client';
-import { useGroupCallRtc } from '../../src/hooks/useGroupCallRtc.native';
+import { useGroupCallRtc } from '../../src/hooks/useGroupCallRtc';
 import { Colors, FontSizes, Spacing } from '../../src/theme/colors';
 import { safeRouterBack } from '../../src/utils/safeRouter';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';

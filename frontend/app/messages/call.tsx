@@ -143,6 +143,8 @@ import {
   logIceRemote,
   logSdpReceived,
   logSdpSend,
+  logRemoteStreamReceived,
+  logRemoteTrackReceived,
   logSetLocalDescription,
   logSetRemoteDescription,
   summarizeCallSdp,
@@ -164,8 +166,10 @@ import {
   mergeRemoteTrackIntoStream,
   type RemoteStreamUnified,
   remoteStreamReadyForConnectedUi,
+  receiverTracksBindingKey,
   shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
+  shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
   streamHasLiveVideo,
@@ -856,6 +860,17 @@ function CallScreenInner() {
       mergeRemoteTrackIntoStream(unified as unknown as RemoteStreamUnified, track);
       remoteStreamRef.current = unified;
 
+      logRemoteTrackReceived({
+        callId: callIdRef.current,
+        role,
+        streamId: unified?.id,
+        trackId: track.id,
+        trackKind: track.kind,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        muted: (track as { muted?: boolean }).muted,
+      });
+
       const publishRemotePlayback = () => {
         setupRemoteEl(unified, trackKind ?? track.kind);
         if (!isWebRuntime && track.kind === 'audio') {
@@ -933,9 +948,23 @@ function CallScreenInner() {
         }
         const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
         const url = (stream as { toURL?: () => string })?.toURL?.();
+        const videoTrackCount = stream.getVideoTracks?.().length ?? 0;
         if (isValidNativeRtcStreamUrl(url, { localUrl })) {
           setRemoteStreamUrl(url!);
           setRemoteStreamKey((k) => k + 1);
+          if (isVideoCallRef.current && videoTrackCount > 0) {
+            logRemoteStreamReceived({
+              callId: callIdRef.current,
+              role,
+              phase: 'rtcview_bind',
+              streamId: stream.id,
+              streamURL: url,
+              audioTracks: stream.getAudioTracks?.().length ?? 0,
+              videoTracks: videoTrackCount,
+              bindingKey: mediaStreamBindingKey(stream),
+              callState: callStateRef.current,
+            });
+          }
         } else if (!url) {
           bindNativeStreamUrlWithRetry(
             stream,
@@ -982,6 +1011,10 @@ function CallScreenInner() {
           remoteAudio: streamHasLiveAudio(remote),
           remoteVideo: streamHasLiveVideo(remote),
         });
+        /** Natif vidéo : resync receivers avant le 1er rendu RTCView (vidéo souvent après audio chez l’appelant). */
+        if (!isWebRuntime && isVideoCallRef.current && pc) {
+          syncRemoteTracksFromPeerConnection(pc);
+        }
         setErrorMsg(null);
         setCallState('connected');
         ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
@@ -1096,14 +1129,63 @@ function CallScreenInner() {
           return;
         }
 
-        const seen = new Set<string>();
-        for (const receiver of pc.getReceivers?.() ?? []) {
-          const track = receiver.track;
-          if (!track || track.readyState === 'ended' || seen.has(track.id)) continue;
-          if (isTrackFromLocalCapture(track, localTrackIdsRef.current)) continue;
-          seen.add(track.id);
-          applyRemoteTrack(track, track.kind);
+        const tracks = dedupeRemoteReceiverTracks(
+          (pc.getReceivers?.() ?? [])
+            .map((receiver) => receiver.track)
+            .filter(
+              (track): track is MediaStreamTrack =>
+                Boolean(
+                  track &&
+                    track.readyState !== 'ended' &&
+                    !isTrackFromLocalCapture(track, localTrackIdsRef.current),
+                ),
+            ),
+        );
+        if (!tracks.length) return;
+
+        const current = remoteStreamRef.current as MediaStream | null;
+        if (
+          !shouldReplaceNativeRemoteMediaStream(current, tracks) &&
+          current &&
+          streamHasPlayableMediaTracks(current)
+        ) {
+          return;
         }
+
+        for (const track of tracks) {
+          logRemoteTrackReceived({
+            callId,
+            role,
+            streamId: current?.id,
+            trackId: track.id,
+            trackKind: track.kind,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            muted: (track as { muted?: boolean }).muted,
+          });
+        }
+
+        const next = new nativeWebRTC.MediaStream();
+        for (const track of tracks) {
+          next.addTrack(track);
+          track.onunmute = () => {
+            syncRemoteTracksFromPeerConnection(pc);
+          };
+        }
+        remoteStreamRef.current = next;
+        logRemoteStreamReceived({
+          callId,
+          role,
+          streamId: next.id,
+          streamURL: (next as { toURL?: () => string }).toURL?.() || '',
+          audioTracks: next.getAudioTracks?.().length ?? 0,
+          videoTracks: next.getVideoTracks?.().length ?? 0,
+          bindingKey: receiverTracksBindingKey(tracks),
+        });
+        const leadKind = tracks.find((t) => t.kind === 'video')?.kind ?? tracks[0]?.kind;
+        setupRemoteEl(next, leadKind);
+        maybeMarkCallConnected(next, leadKind);
+        void optimizeCallAudioPipeline(pc, voiceBitrateRef.current);
       } catch {
         /* ignore */
       }

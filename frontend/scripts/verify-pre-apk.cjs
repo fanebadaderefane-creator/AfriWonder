@@ -96,6 +96,16 @@ function checkStaticManifest() {
     if (url && /^https:\/\//.test(url)) pass('manifest', `EAS ${profile}: EXPO_PUBLIC_BACKEND_URL=${url}`);
     else fail('manifest', `EAS ${profile}: EXPO_PUBLIC_BACKEND_URL HTTPS manquant`);
   }
+
+  const owner = appJson.expo?.owner;
+  const pid = appJson.expo?.extra?.eas?.projectId;
+  const slug = appJson.expo?.slug;
+  if (owner === 'global-production') pass('manifest', 'EAS owner = global-production');
+  else fail('manifest', `EAS owner = "${owner || ''}" (attendu global-production — pas FBF/fanebadaderefane)`);
+  if (slug === 'afriwonder-production') pass('manifest', 'EAS slug = afriwonder-production');
+  else fail('manifest', `EAS slug = "${slug || ''}"`);
+  if (pid === 'fca8d6ba-0ea4-4918-8e31-3264d31de669') pass('manifest', 'EAS projectId AfriWonder-Production');
+  else fail('manifest', `EAS projectId = "${pid || ''}" (quota FBF si ancien ID)`);
 }
 
 function checkStaticModulesAndFiles() {
@@ -317,6 +327,11 @@ function checkProdBackend() {
 
 function checkScripts() {
   section('5/6 Scripts régression natif');
+  if (run('node', [path.join(__dirname, 'verify-eas-org.cjs')])) {
+    pass('scripts', 'verify-eas-org (GLOBAL PRODUCTION)');
+  } else {
+    fail('scripts', 'verify-eas-org — org/projet EAS incorrect');
+  }
   if (run('node', [path.join(__dirname, 'verify-android-boot-safety.cjs')])) {
     pass('scripts', 'verify-android-boot-safety');
   } else {

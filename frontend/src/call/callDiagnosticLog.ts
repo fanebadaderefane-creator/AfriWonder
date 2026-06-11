@@ -71,6 +71,16 @@ export function logCreateOffer(meta: Record<string, unknown>): void {
   logAfwCall('createOffer', meta);
 }
 
+/** Piste distante reçue (ontrack / sync receivers). */
+export function logRemoteTrackReceived(meta: Record<string, unknown>): void {
+  console.error('[REMOTE_TRACK_RECEIVED]', serialize(meta));
+}
+
+/** MediaStream distant reconstruit ou mis à jour avant RTCView natif. */
+export function logRemoteStreamReceived(meta: Record<string, unknown>): void {
+  console.error('[REMOTE_STREAM_RECEIVED]', serialize(meta));
+}
+
 /** État senders/transceivers juste avant createOffer (debug mid=0 Android). */
 export function logPreCreateOfferPeerConnection(meta: Record<string, unknown>): void {
   logAfwCall('pre_create_offer', meta);

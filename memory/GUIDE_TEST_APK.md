@@ -7,14 +7,17 @@ Tester les appels audio/vidéo + incoming calls en background sur 2 vrais télé
 
 ## 📋 Pré-requis
 
-### 1. Compte Expo (déjà configuré)
-- Votre `eas.json` est lié au compte `abdoulaye_fane`
-- Projet EAS ID : `f4715a6b-9779-4ec1-841a-9dd7cb73e2b3`
+### 1. Organisation Expo (obligatoire depuis juin 2026)
+- **Organisation** : `global-production` (GLOBAL PRODUCTION)
+- **Projet** : `afriwonder-production` (AfriWonder-Production)
+- **Project ID** : `fca8d6ba-0ea4-4918-8e31-3264d31de669`
+- **Ne plus utiliser** l’ancien compte `fanebadaderefane` / FBF — quota builds gratuit épuisé.
 
 ### 2. Outils locaux à installer (sur votre PC)
 ```bash
 npm install -g eas-cli
-eas login    # connectez-vous avec abdoulaye_fane
+eas login    # compte membre de global-production
+cd frontend && npm run verify:eas-org
 ```
 
 ### 3. Configuration Render avant build

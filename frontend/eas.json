@@ -17,7 +17,8 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane"
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "global-production",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "fca8d6ba-0ea4-4918-8e31-3264d31de669"
       }
     },
     "callDiagnostic": {
@@ -33,7 +34,8 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "global-production",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "fca8d6ba-0ea4-4918-8e31-3264d31de669",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
@@ -51,7 +53,8 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "global-production",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "fca8d6ba-0ea4-4918-8e31-3264d31de669",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
@@ -69,7 +72,8 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "global-production",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "fca8d6ba-0ea4-4918-8e31-3264d31de669",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
@@ -86,7 +90,8 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "777976865742-n1ij65icbjucklt3hb6bilpc43gf2rji.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "777976865742-adc2srg5m3omceglol1aqrcogd9rtl7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_FACEBOOK_APP_ID": "1461264728859875",
-        "EXPO_PUBLIC_EXPO_ACCOUNT": "fanebadaderefane",
+        "EXPO_PUBLIC_EXPO_ACCOUNT": "global-production",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "fca8d6ba-0ea4-4918-8e31-3264d31de669",
         "EXPO_PUBLIC_APPLE_SIGN_IN": "on",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"
       }
