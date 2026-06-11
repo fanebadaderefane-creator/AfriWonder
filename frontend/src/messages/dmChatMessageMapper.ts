@@ -16,10 +16,13 @@ export type ChatUiMessage = {
   text: string;
   isMine: boolean;
   time: string;
+  /** ISO — tri et fusion cache / pagination. */
+  createdAt?: string;
   status: 'read' | 'delivered' | 'sent' | 'failed' | 'sending';
   type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'document' | 'location' | 'contact' | 'call';
   imageUri?: string;
   thumbnailUri?: string;
+  voiceDuration?: string;
   replyTo?: { id: string; name: string; text: string };
   forwarded?: boolean;
   edited?: boolean;
@@ -38,6 +41,71 @@ export type ChatUiMessage = {
 
 function formatMsgTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function parseVoiceDurationLabel(content: string): string | undefined {
+  const match = content.trim().match(/^Vocal\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
+}
+
+export function isThreadDateSeparator(msg: { id: string }): boolean {
+  return msg.id.startsWith('date-');
+}
+
+/** Retire les séparateurs de date avant fusion / tri. */
+export function stripThreadDateSeparators<T extends { id: string }>(messages: T[]): T[] {
+  return messages.filter((m) => !isThreadDateSeparator(m));
+}
+
+/** Fusionne par id ; entrées ultérieures écrasent les champs (serveur > cache). */
+export function mergeThreadMessagesById<T extends { id: string; createdAt?: string }>(
+  ...lists: T[][]
+): T[] {
+  const byId = new Map<string, T>();
+  for (const list of lists) {
+    for (const m of list) {
+      if (!m?.id || isThreadDateSeparator(m)) continue;
+      const prev = byId.get(m.id);
+      byId.set(m.id, prev ? { ...prev, ...m } : m);
+    }
+  }
+  const sortKey = (m: T) => {
+    const t = Date.parse(m.createdAt || '');
+    return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER;
+  };
+  return [...byId.values()].sort((a, b) => {
+    const ta = sortKey(a);
+    const tb = sortKey(b);
+    if (ta !== tb) return ta - tb;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+/** Réinjecte les pastilles de date après fusion ou chargement paginé. */
+export function injectDateSeparators<T extends ChatUiMessage>(
+  messages: T[],
+  formatDateLabel: (date: Date) => string,
+): ThreadMessageWithDate[] {
+  const out: ThreadMessageWithDate[] = [];
+  let lastDate = '';
+  for (const msg of messages) {
+    const iso = msg.createdAt || new Date().toISOString();
+    const dateStr = formatDateLabel(new Date(iso));
+    if (dateStr !== lastDate) {
+      out.push({
+        id: `date-${msg.id}`,
+        text: '',
+        isMine: false,
+        time: '',
+        status: 'read',
+        type: 'text',
+        date: dateStr,
+      });
+      lastDate = dateStr;
+    }
+    out.push(msg);
+  }
+  return out;
 }
 
 function mapLocationFields(m: Record<string, unknown>) {
@@ -134,6 +202,7 @@ export function mapApiMessageToChatUi(
         text: formatCallLogTitle(callLog, currentUserId),
         isMine,
         time: formatMsgTime(createdAt),
+        createdAt,
         status: 'read',
         type: 'call',
         callLog,
@@ -162,15 +231,19 @@ export function mapApiMessageToChatUi(
     ? String(sender?.full_name || sender?.username || sender?.group_tag || 'Membre')
     : undefined;
 
+  const content = isDeleted ? 'Ce message a été supprimé' : String(m.content || '');
+
   return {
     id: String(m.id),
-    text: isDeleted ? 'Ce message a été supprimé' : String(m.content || ''),
+    text: content,
     isMine,
-    time: formatMsgTime(String(m.created_at || new Date().toISOString())),
+    time: formatMsgTime(createdAt),
+    createdAt,
     status: mapApiMessageStatus(m.status),
     type: uiType,
     imageUri: hasMedia ? mediaUrl : undefined,
     thumbnailUri: thumbUrl || undefined,
+    ...(uiType === 'audio' && !isDeleted ? { voiceDuration: parseVoiceDurationLabel(content) } : {}),
     replyTo: rt
       ? {
           id: String(rt.id),

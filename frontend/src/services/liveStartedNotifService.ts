@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import socketService from './socketService';
 import { devLog, devWarn } from '../utils/devLog';
 import apiClient from '../api/client';
+import { ANDROID_NOTIFEE_SMALL_ICON } from './incomingCallService';
 
 const LIVE_CHANNEL_ID = 'afriwonder-live-bell';
 let initialized = false;
@@ -98,7 +99,7 @@ export async function initLiveStartedNotifService(): Promise<() => void> {
         },
         android: {
           channelId: LIVE_CHANNEL_ID,
-          smallIcon: 'ic_notification',
+          smallIcon: ANDROID_NOTIFEE_SMALL_ICON,
           color: '#FF6B00',
           largeIcon: data.creatorAvatar || undefined,
           pressAction: { id: 'default', launchActivity: 'default' },

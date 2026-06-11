@@ -63,6 +63,17 @@ function hasMeteredUrl(iceServers) {
   return flat.includes('metered.ca') || flat.includes('metered.live');
 }
 
+function hasTlsTurnUrl(iceServers) {
+  if (!Array.isArray(iceServers)) return false;
+  for (const entry of iceServers) {
+    const urls = Array.isArray(entry.urls) ? entry.urls : [entry.urls];
+    for (const u of urls) {
+      if (String(u || '').toLowerCase().startsWith('turns:')) return true;
+    }
+  }
+  return false;
+}
+
 async function main() {
   console.log(`\n🔍 TURN dev — origine ${ORIGIN}\n`);
 
@@ -113,6 +124,14 @@ async function main() {
     console.error('\n❌ turnConfigured=false — copier METERED_TURN_API_KEY (ou TURN_URL/USERNAME/CREDENTIAL) dans backend/.env');
     process.exit(1);
   }
+
+  const tlsTurn = hasTlsTurnUrl(iceServers);
+  if (!tlsTurn) {
+    console.error('\n❌ Aucun relais turns: dans iceServers — les appels Android 4G (Mali) seront bloqués.');
+    console.error('   Vérifiez METERED_TURN_API_KEY ou ajoutez turns:…:443?transport=tcp dans TURN_URL.');
+    process.exit(1);
+  }
+  console.log('✅ Relais TLS turns: présent (requis Android 4G)');
 
   console.log('\n📋 ICE servers (résumé) :');
   for (const row of summarizeIceServers(iceServers)) {

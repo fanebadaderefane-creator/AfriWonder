@@ -91,10 +91,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } catch {
         /* logout should not fail on push unregister */
       }
+      const prevUserId = get().user?.id;
       await secureStorage.deleteItem('accessToken');
       await secureStorage.deleteItem('refreshToken');
       await secureStorage.deleteItem('user');
       set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, isLoading: false });
+      void import('../messages/inboxConversationsCache')
+        .then((m) => m.clearInboxConversationsCache(prevUserId))
+        .catch(() => {});
     } catch (error) {
       console.error('Error clearing auth:', error);
     }

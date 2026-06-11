@@ -609,6 +609,9 @@ export function peerConnectionHasActiveAudioSender(
   );
 }
 
+/** Volume react-native-webrtc `_setVolume` — 6 était trop bas sur Xiaomi/Samsung Mali. */
+export const NATIVE_REMOTE_AUDIO_TRACK_VOLUME = 10;
+
 /** Active les pistes audio distantes et monte le volume natif si disponible. */
 export function enableRemoteAudioTracks(stream: MediaStream | null | undefined): void {
   if (!stream?.getAudioTracks) return;
@@ -617,7 +620,7 @@ export function enableRemoteAudioTracks(stream: MediaStream | null | undefined):
       track.enabled = true;
       const vol = (track as { _setVolume?: (v: number) => void })._setVolume;
       if (typeof vol === 'function') {
-        vol.call(track, 6);
+        vol.call(track, NATIVE_REMOTE_AUDIO_TRACK_VOLUME);
       }
     } catch {
       /* ignore */
@@ -636,6 +639,15 @@ export async function requestNativeCallPermissions(isVideo: boolean): Promise<bo
       if (isVideo) {
         const cam = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
         if (cam !== PermissionsAndroid.RESULTS.GRANTED) return false;
+      }
+      if (Number(Platform.Version) >= 31) {
+        try {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          );
+        } catch {
+          /* Casque BT optionnel — ne bloque pas l’appel */
+        }
       }
       return true;
     }

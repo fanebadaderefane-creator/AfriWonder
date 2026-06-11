@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mergeThreadMessagesById, stripThreadDateSeparators } from './dmChatMessageMapper';
 
 const KEY_PREFIX = 'afw_dm_thread_cache:';
-const MAX_MESSAGES = 80;
+const MAX_MESSAGES = 500;
 
 /** Message fil DM sérialisable (sans retryMeta / URIs locales éphémères). */
 export type CachedThreadMessage = {
@@ -9,6 +10,7 @@ export type CachedThreadMessage = {
   text: string;
   isMine: boolean;
   time: string;
+  createdAt?: string;
   status: 'read' | 'delivered' | 'sent' | 'failed' | 'sending';
   type: string;
   imageUri?: string;
@@ -79,7 +81,13 @@ export async function saveThreadMessageCache(
   messages: CachedThreadMessage[],
 ): Promise<void> {
   if (!conversationId) return;
-  const cacheable = messages.filter(isCacheableThreadMessage).slice(-MAX_MESSAGES);
+  const incoming = messages.filter(isCacheableThreadMessage);
+  const existing = await loadThreadMessageCache(conversationId);
+  const merged = mergeThreadMessagesById(
+    stripThreadDateSeparators(existing),
+    stripThreadDateSeparators(incoming),
+  );
+  const cacheable = merged.slice(-MAX_MESSAGES);
   if (cacheable.length === 0) {
     await AsyncStorage.removeItem(storageKey(conversationId));
     return;

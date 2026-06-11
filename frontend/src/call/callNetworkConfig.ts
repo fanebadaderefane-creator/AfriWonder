@@ -33,6 +33,33 @@ export function isCellularNetwork(net: NetworkSnapshot | null | undefined): bool
   return String(net?.type || '').toLowerCase() === 'cellular';
 }
 
+/**
+ * Réseau probablement derrière CGNAT opérateur (Mali / Afrique de l’Ouest).
+ * Sur Android natif, NetInfo renvoie souvent `unknown` sur données mobiles (Xiaomi, Samsung…)
+ * alors que le Wi‑Fi est en général `wifi` — on force TURN relay dans ce cas, pas sur Wi‑Fi.
+ */
+export function shouldTreatAsMobileCgnatNetwork(
+  net: NetworkSnapshot | null | undefined,
+  isWeb: boolean,
+): boolean {
+  const type = String(net?.type || '').toLowerCase();
+  if (type === 'wifi' || type === 'ethernet') return false;
+  if (isCellularNetwork(net)) return true;
+  if (!isWeb && (type === 'unknown' || !type)) return true;
+  return false;
+}
+
+/** Intervalle entre retentes `MediaStream#toURL()` avant montage RTCView natif. */
+export const NATIVE_RTC_BIND_RETRY_INTERVAL_MS = 200;
+
+/** Retentes `toURL()` — 2G/3G et NetInfo `unknown` (Mali) ont besoin de plus de temps. */
+export function nativeRtcBindRetryAttempts(net: NetworkSnapshot | null | undefined): number {
+  if (isSlowCellularNetwork(net)) return 45;
+  const type = String(net?.type || '').toLowerCase();
+  if (type === 'cellular' || type === 'unknown') return 30;
+  return 15;
+}
+
 /** 2G ou 3G opérateur — profils bas débit et délais ICE plus longs. */
 export function isSlowCellularNetwork(net: NetworkSnapshot | null | undefined): boolean {
   if (!isCellularNetwork(net)) return false;
@@ -55,16 +82,20 @@ export function pickVoiceOpusBitrateForNetwork(net: NetworkSnapshot | null | und
 /** Watchdog « connexion média » — TURN + 2G/3G nécessitent plus de temps qu’en Wi‑Fi. */
 export function callConnectionWatchdogMs(net: NetworkSnapshot | null | undefined): number {
   const gen = String(net?.cellularGeneration || '').toLowerCase();
+  const type = String(net?.type || '').toLowerCase();
   if (isCellularNetwork(net) && gen === '2g') return 90_000;
   if (isCellularNetwork(net) && gen === '3g') return 75_000;
+  if (type === 'unknown') return 75_000;
   return 60_000;
 }
 
 /** Délai avant message « connexion lente » après acceptation. */
 export function callMediaReadyHintMs(net: NetworkSnapshot | null | undefined): number {
   const gen = String(net?.cellularGeneration || '').toLowerCase();
+  const type = String(net?.type || '').toLowerCase();
   if (isCellularNetwork(net) && gen === '2g') return 35_000;
   if (isCellularNetwork(net) && gen === '3g') return 28_000;
+  if (type === 'unknown') return 28_000;
   return 20_000;
 }
 
@@ -92,13 +123,14 @@ export function outboundVideoDowngradeMessage(net: NetworkSnapshot | null | unde
   return null;
 }
 
-/** Sans TURN, le cellulaire Afrique (CGNAT) ne passe presque jamais l’audio — web inclus. */
+/** Sans TURN, le cellulaire Afrique (CGNAT) ne passe presque jamais l’audio. */
 export function shouldBlockCellularWithoutTurn(input: {
   turnConfigured: boolean;
   net: NetworkSnapshot | null | undefined;
+  isWeb?: boolean;
 }): boolean {
   if (input.turnConfigured) return false;
-  return isCellularNetwork(input.net);
+  return shouldTreatAsMobileCgnatNetwork(input.net, input.isWeb ?? false);
 }
 
 /**
@@ -131,7 +163,7 @@ export function shouldForceTurnRelay(input: {
   net?: NetworkSnapshot | null | undefined;
 }): boolean {
   if (!input.turnConfigured) return false;
-  return isCellularNetwork(input.net);
+  return shouldTreatAsMobileCgnatNetwork(input.net, input.isWeb);
 }
 
 function iceServerUrlList(entry: RTCIceServer): string[] {

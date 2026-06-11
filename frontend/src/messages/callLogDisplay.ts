@@ -37,14 +37,23 @@ function callKindLabel(media: 'audio' | 'video'): string {
   return media === 'video' ? 'Appel vidéo' : 'Appel vocal';
 }
 
-/** Durée affichée sous le titre (ex. « 20 secondes », « 1 minute »). */
+/**
+ * Durée style WhatsApp FR — « 45 s », « 2 min », « 1 h et 27 min » (pas « 507 min 4 s »).
+ */
 export function formatCallDurationFr(sec: number): string {
-  if (!sec || sec < 1) return '';
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  if (m <= 0) return s === 1 ? '1 seconde' : `${s} secondes`;
-  if (s === 0) return m === 1 ? '1 minute' : `${m} minutes`;
-  return m === 1 ? `1 min ${s} s` : `${m} min ${s} s`;
+  const total = Math.max(0, Math.floor(Number(sec) || 0));
+  if (total < 1) return '';
+  if (total < 60) return total === 1 ? '1 s' : `${total} s`;
+
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+
+  if (h > 0) {
+    if (m <= 0) return h === 1 ? '1 h' : `${h} h`;
+    return h === 1 ? `1 h et ${m} min` : `${h} h et ${m} min`;
+  }
+
+  return m === 1 ? '1 min' : `${m} min`;
 }
 
 /** Bulle à droite (sortant) ou à gauche (reçu / manqué) — comme WhatsApp. */
@@ -94,7 +103,7 @@ export function formatCallLogTitle(meta: CallLogMeta, viewerUserId: string): str
 /** Sous-titre (durée, « Cliquez pour rappeler », etc.). */
 export function formatCallLogSubtitle(meta: CallLogMeta, viewerUserId: string): string {
   if (callLogIsMissedForViewer(meta, viewerUserId)) {
-    return 'Cliquez pour rappeler';
+    return '';
   }
   if (meta.outcome === 'completed' && meta.durationSec > 0) {
     return formatCallDurationFr(meta.durationSec);

@@ -49,6 +49,8 @@ export default function CallAddPeopleScreen() {
   const [query, setQuery] = useState('');
   const [frequent, setFrequent] = useState<RowUser[]>([]);
   const [others, setOthers] = useState<RowUser[]>([]);
+  const [groupCallId, setGroupCallId] = useState<string | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   const excludeIds = useMemo(() => new Set([myUserId, otherUserId].filter(Boolean)), [myUserId, otherUserId]);
 
@@ -134,6 +136,24 @@ export default function CallAddPeopleScreen() {
 
   const totalContacts = frequent.length + others.length;
 
+  const ensureGroupCall = useCallback(async (): Promise<string | null> => {
+    if (groupCallId) return groupCallId;
+    setCreatingGroup(true);
+    try {
+      const res = await apiClient.post('/group-calls', { type: callType });
+      const id = String(res.data?.data?.id || res.data?.id || '').trim();
+      if (!id) return null;
+      await apiClient.post(`/group-calls/${encodeURIComponent(id)}/join`);
+      setGroupCallId(id);
+      return id;
+    } catch (e: unknown) {
+      Alert.alert('Appel groupe', getAlertMessageForCaughtError(e));
+      return null;
+    } finally {
+      setCreatingGroup(false);
+    }
+  }, [callType, groupCallId]);
+
   const invite = useCallback(
     (row: RowUser) => {
       const label = row.full_name || row.username || 'Contact';
@@ -146,19 +166,30 @@ export default function CallAddPeopleScreen() {
           onPress: () => {
             void (async () => {
               try {
-                const ok = await socketService.ensureConnectedEmit('call:participant-invite', {
-                  callId,
-                  fromUserId: myUserId,
-                  invitedUserId: row.id,
-                  peerUserId: otherUserId,
-                  type: callType,
-                  inviterName,
-                });
-                if (!ok) {
-                  Alert.alert('Invitation', 'Connexion temps réel indisponible. Réessayez.');
-                  return;
+                const gid = await ensureGroupCall();
+                if (!gid) return;
+                const targets = [row.id, otherUserId].filter(
+                  (uid, idx, arr) => uid && uid !== myUserId && arr.indexOf(uid) === idx,
+                );
+                for (const invitedUserId of targets) {
+                  const ok = await socketService.ensureConnectedEmit('call:participant-invite', {
+                    callId,
+                    groupCallId: gid,
+                    fromUserId: myUserId,
+                    invitedUserId,
+                    peerUserId: otherUserId,
+                    type: callType,
+                    inviterName,
+                  });
+                  if (!ok) {
+                    Alert.alert('Invitation', 'Connexion temps réel indisponible. Réessayez.');
+                    return;
+                  }
                 }
-                router.back();
+                router.replace({
+                  pathname: '/messages/group-call',
+                  params: { callId: gid, type: callType },
+                });
               } catch (e: unknown) {
                 Alert.alert('Invitation', getAlertMessageForCaughtError(e));
               }
@@ -167,7 +198,7 @@ export default function CallAddPeopleScreen() {
         },
       ]);
     },
-    [callId, callType, inviterName, myUserId, otherUserId],
+    [callId, callType, ensureGroupCall, inviterName, myUserId, otherUserId],
   );
 
   const filteredTotal = sections.reduce((acc, s) => acc + s.data.length, 0);

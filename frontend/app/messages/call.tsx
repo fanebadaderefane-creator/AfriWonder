@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  Linking,
 } from 'react-native';
 import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,6 +71,7 @@ import {
   prepareIceServersForPlatform,
   pickVideoProfileForNetwork,
   pickVoiceOpusBitrateForNetwork,
+  nativeRtcBindRetryAttempts,
   resolveIceNetworkSnapshot,
   shouldBlockCellularWithoutTurn,
   shouldBlockNativeCellularWithoutTlsTurn,
@@ -77,6 +79,10 @@ import {
   type VideoQualityProfile as NetVideoQualityProfile,
 } from '../../src/call/callNetworkConfig';
 import { parseTurnCredentialsResponse } from '../../src/call/parseTurnCredentialsResponse';
+import {
+  getPrefetchedTurnCredentials,
+  prefetchTurnCredentials,
+} from '../../src/call/prefetchTurnCredentials';
 import { formatCallStatusLine } from '../../src/call/callStatusLine';
 import {
   peerConnectionHasLocalOffer,
@@ -181,6 +187,8 @@ import { CallScreenErrorBoundary } from '../../src/components/call/CallScreenErr
 import {
   isValidNativeRtcStreamUrl,
   shouldShowNativeRemoteAudioRtc,
+  shouldShowNativeRemoteVideoAudioBackup,
+  shouldShowNativeRemoteVideoRtc,
 } from '../../src/call/callRtcStreamUrl';
 import NetInfo from '@react-native-community/netinfo';
 
@@ -420,6 +428,7 @@ function CallScreenInner() {
   const connectionWatchdogMsRef = useRef(60_000);
   const mediaReadyHintMsRef = useRef(20_000);
   const voiceBitrateRef = useRef(32_000);
+  const iceNetSnapshotRef = useRef<NetworkSnapshot>({ type: 'unknown' });
 
   /** Refs PeerConnection + flux média (web et natif lorsque l’appel démarre). */
   const pcRef = useRef<any>(null);
@@ -540,6 +549,10 @@ function CallScreenInner() {
   useEffect(() => {
     peerAnsweredRef.current = peerAnswered;
   }, [peerAnswered]);
+
+  useEffect(() => {
+    void prefetchTurnCredentials();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -934,7 +947,7 @@ function CallScreenInner() {
               if (!shouldApplyNativeRtcUrl()) return;
               setRemoteStreamKey((k) => k + 1);
             },
-            10,
+            nativeRtcBindRetryAttempts(iceNetSnapshotRef.current),
             shouldApplyNativeRtcUrl,
           );
         }
@@ -998,7 +1011,7 @@ function CallScreenInner() {
         }
         if (!isWebRuntime) {
           void applyNativeCallSpeakerRoute(speakerOnRef.current);
-          void startActiveCallForeground(name || 'Contact', isVideoCallRef.current);
+          /* FGS déjà démarré au bootstrap — ne pas relancer (crash Notifee « no valid small icon »). */
         }
         void apiClient
           .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
@@ -1189,7 +1202,7 @@ function CallScreenInner() {
               if (!shouldApplyNativeRtcUrl()) return;
               setLocalStreamKey((k) => k + 1);
             },
-            10,
+            nativeRtcBindRetryAttempts(iceNetSnapshotRef.current),
             shouldApplyNativeRtcUrl,
           );
         }
@@ -1566,7 +1579,7 @@ function CallScreenInner() {
       setIsVideoCall(true);
       setErrorMsg(null);
       if (!isWebRuntime) {
-        void startActiveCallForeground(name || 'Contact', true);
+        await startActiveCallForeground(name || 'Contact', true);
       }
 
       if (!isWebRuntime) {
@@ -2321,6 +2334,8 @@ function CallScreenInner() {
         let iceServers: RTCIceServer[] = parseTurnCredentialsResponse(null).iceServers;
         let turnConfigured = false;
         const loadTurnCredentials = async () => {
+          const cached = getPrefetchedTurnCredentials();
+          if (cached) return cached;
           const res = await apiClient.get('/calls/turn-credentials');
           return parseTurnCredentialsResponse(res.data?.data || res.data);
         };
@@ -2360,9 +2375,53 @@ function CallScreenInner() {
         } catch {
           iceNetSnapshot = { type: 'unknown' };
         }
+        iceNetSnapshotRef.current = iceNetSnapshot;
+        if (
+          shouldBlockCellularWithoutTurn({
+            turnConfigured,
+            net: iceNetSnapshot,
+            isWeb: isWebRuntime,
+          })
+        ) {
+          devWarn('[Call] TURN non configuré — réseau mobile Afrique bloqué (CGNAT)');
+          setErrorMsg(
+            'Réseau mobile sans relais TURN — l’audio ne peut pas passer. Passez en Wi‑Fi ou contactez le support.',
+          );
+          finishCall('failed', 'turn_missing_cellular');
+          return;
+        }
+        if (
+          shouldBlockNativeCellularWithoutTlsTurn({
+            isWeb: isWebRuntime,
+            turnConfigured,
+            net: iceNetSnapshot,
+            iceServers,
+          })
+        ) {
+          devWarn('[Call] TURN sans relais TLS (turns:) — réseau mobile Android bloqué');
+          setErrorMsg(
+            'Relais TURN sécurisé indisponible pour le réseau mobile. Mettez à jour l’app ou contactez le support AfriWonder.',
+          );
+          finishCall('failed', 'turn_tls_missing_cellular');
+          return;
+        }
         connectionWatchdogMsRef.current = callConnectionWatchdogMs(iceNetSnapshot);
         mediaReadyHintMsRef.current = callMediaReadyHintMs(iceNetSnapshot);
         voiceBitrateRef.current = pickVoiceOpusBitrateForNetwork(iceNetSnapshot);
+
+        /** Micro + FGS avant PeerConnection — Xiaomi / Android 14 tuent le micro pendant ICE sinon. */
+        if (!isWebRuntime) {
+          await releaseExpoAvForWebRtcCall();
+          const permitted = await requestNativeCallPermissions(startedAsVideo);
+          if (!permitted) {
+            throw new Error('NOTALLOWED');
+          }
+          await startNativeCallAudioSession(startedAsVideo, speakerOnRef.current, {
+            outgoingRingback: role === 'caller',
+          });
+          await startActiveCallForeground(name || 'Contact', startedAsVideo);
+        }
+
         const pcConfig = buildCallIceConfig({
           iceServers,
           turnConfigured,
@@ -2550,43 +2609,6 @@ function CallScreenInner() {
             })();
           }
         };
-
-        if (!isWebRuntime) {
-          await releaseExpoAvForWebRtcCall();
-          const permitted = await requestNativeCallPermissions(startedAsVideo);
-          if (!permitted) {
-            throw new Error('NOTALLOWED');
-          }
-          /** InCallManager avant capture micro — sinon HP / écouteur parfois muets sur Android. */
-          await startNativeCallAudioSession(startedAsVideo, speakerOnRef.current, {
-            outgoingRingback: role === 'caller',
-          });
-        }
-
-        if (shouldBlockCellularWithoutTurn({ turnConfigured, net: iceNetSnapshot })) {
-          devWarn('[Call] TURN non configuré — cellulaire Afrique bloqué (CGNAT)');
-          setErrorMsg(
-            'Réseau mobile sans relais TURN — l’audio ne peut pas passer. Passez en Wi‑Fi ou contactez le support.',
-          );
-          finishCall('failed');
-          return;
-        }
-
-        if (
-          shouldBlockNativeCellularWithoutTlsTurn({
-            isWeb: isWebRuntime,
-            turnConfigured,
-            net: iceNetSnapshot,
-            iceServers,
-          })
-        ) {
-          devWarn('[Call] TURN sans relais TLS (turns:) — cellulaire Android bloqué');
-          setErrorMsg(
-            'Relais TURN sécurisé indisponible pour le réseau mobile. Mettez à jour l’app ou contactez le support AfriWonder.',
-          );
-          finishCall('failed');
-          return;
-        }
 
         const videoProfile = startedAsVideo ? await detectVideoProfile() : null;
         if (videoProfile) {
@@ -2865,6 +2887,21 @@ function CallScreenInner() {
           setErrorMsg('WebRTC indisponible dans ce navigateur.');
         } else if (String(e?.message || '') === 'NOTALLOWED') {
           setErrorMsg('Permission micro / caméra refusée.');
+          Alert.alert(
+            'Permission requise',
+            startedAsVideo
+              ? 'Autorisez le micro et la caméra dans les réglages pour passer un appel vidéo.'
+              : 'Autorisez le micro dans les réglages pour passer un appel vocal.',
+            [
+              { text: 'Annuler', style: 'cancel' },
+              {
+                text: 'Ouvrir les réglages',
+                onPress: () => {
+                  void Linking.openSettings();
+                },
+              },
+            ],
+          );
         } else {
           setErrorMsg(callMediaErrorMessage(e, startedAsVideo));
         }
@@ -3388,14 +3425,32 @@ function CallScreenInner() {
 
   const isWeb = isWebRuntime;
 
-  /** RTCView distant : vocal dès `connecting` + URL valide (audio bidirectionnel Android). */
-  const showNativeRemoteRtc = shouldShowNativeRemoteAudioRtc({
+  const hasRemoteSdp = Boolean((pcRef.current as RTCPeerConnection | null)?.remoteDescription);
+  /** RTCView distant vocal — `connecting` dès URL valide. */
+  const showNativeRemoteVoiceRtc = shouldShowNativeRemoteAudioRtc({
     isWeb,
     nativeRtcUnmounting,
     callState,
     isVideoCall,
     remoteStreamUrl,
     localStreamUrl,
+  });
+  /** RTCView vidéo plein écran — `connected` uniquement (garde anti-crash sonnerie). */
+  const showNativeRemoteVideoMain = shouldShowNativeRemoteVideoRtc({
+    isWeb,
+    nativeRtcUnmounting,
+    callState,
+    remoteStreamUrl,
+    localStreamUrl,
+  });
+  /** Secours audio vidéo — dès SDP distant (Xiaomi/Samsung). */
+  const showNativeRemoteVideoAudioBackup = shouldShowNativeRemoteVideoAudioBackup({
+    isWeb,
+    nativeRtcUnmounting,
+    callState,
+    remoteStreamUrl,
+    localStreamUrl,
+    hasRemoteDescription: hasRemoteSdp,
   });
   const showNativeLocalRtc =
     !isWeb &&
@@ -3428,7 +3483,7 @@ function CallScreenInner() {
         : null}
 
       {/* Natif : RTCView caché pour l’audio distant — appels vocaux uniquement (évite double décodeur en vidéo). */}
-      {showNativeRemoteRtc && !isVideoCall ? (
+      {showNativeRemoteVoiceRtc ? (
         <SafeNativeRtcView
           debugLabel="remote-audio"
           key={`remote-audio-${remoteStreamKey}`}
@@ -3440,7 +3495,7 @@ function CallScreenInner() {
       ) : null}
 
       {/* Natif vidéo : secours audio si le RTCView vidéo ne route pas le son (Samsung/Xiaomi). */}
-      {showNativeRemoteRtc && isVideoCall ? (
+      {showNativeRemoteVideoAudioBackup ? (
         <SafeNativeRtcView
           debugLabel="remote-audio-video-backup"
           key={`remote-audio-video-backup-${remoteStreamKey}`}
@@ -3518,7 +3573,7 @@ function CallScreenInner() {
                   </View>
                 ) : null}
               </View>
-            ) : showNativeRemoteRtc ? (
+            ) : showNativeRemoteVideoMain ? (
               <View style={StyleSheet.absoluteFill}>
                 <SafeNativeRtcView
                   debugLabel="remote-video"

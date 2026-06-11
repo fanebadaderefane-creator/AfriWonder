@@ -337,15 +337,15 @@ router.post('/:id/block', authenticate, async (req: AuthRequest, res, next) => {
       prisma.follow.deleteMany({ where: { follower_id: userId, following_id: targetId } }),
       prisma.follow.deleteMany({ where: { follower_id: targetId, following_id: userId } }),
     ]);
-    /** Best effort : insérer dans `UserBlock` si la table existe. */
-    try {
-      const dyn = prisma as unknown as { userBlock?: { create: (args: { data: unknown }) => Promise<unknown> } };
-      if (dyn.userBlock) {
-        await dyn.userBlock.create({ data: { user_id: userId, blocked_user_id: targetId } }).catch(() => null);
-      }
-    } catch {
-      /* ignore */
-    }
+    await prisma.userBlock
+      .upsert({
+        where: {
+          blocker_id_blocked_id: { blocker_id: userId, blocked_id: targetId },
+        },
+        create: { id: crypto.randomUUID(), blocker_id: userId, blocked_id: targetId },
+        update: {},
+      })
+      .catch(() => null);
     return res.json({ success: true });
   } catch (e) {
     return next(e);

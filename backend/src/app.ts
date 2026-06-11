@@ -540,6 +540,8 @@ app.use('/api/proxy/news', newsRoutes);
 app.use('/api/proxy/communities', communitiesRoutes);
 /** Appels WebRTC / TURN — client Expo (`GET …/api/proxy/calls/turn-credentials`). */
 app.use('/api/proxy/calls', callsRoutes);
+/** Appels groupe Agora — client Expo (`POST/GET …/api/proxy/group-calls`). */
+app.use('/api/proxy/group-calls', groupCallsRoutes);
 /** Métriques feed / playback — client Expo (`apiClient` → `POST …/api/proxy/analytics`). */
 app.use('/api/proxy/analytics', analyticsRoutes);
 /** Commandes marketplace — client Expo (`GET/POST …/api/proxy/orders`). */

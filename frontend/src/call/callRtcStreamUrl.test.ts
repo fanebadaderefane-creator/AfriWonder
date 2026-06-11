@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isValidNativeRtcStreamUrl, shouldShowNativeRemoteAudioRtc } from './callRtcStreamUrl';
+import {
+  isValidNativeRtcStreamUrl,
+  shouldShowNativeRemoteAudioRtc,
+  shouldShowNativeRemoteVideoAudioBackup,
+  shouldShowNativeRemoteVideoRtc,
+} from './callRtcStreamUrl';
 
 describe('callRtcStreamUrl', () => {
   it('rejette URL vide, locale ou invalide', () => {
@@ -37,6 +42,34 @@ describe('callRtcStreamUrl', () => {
         localStreamUrl: 'blob:local-1',
       }),
     ).toBe(false);
+    expect(
+      shouldShowNativeRemoteVideoAudioBackup({
+        isWeb: false,
+        nativeRtcUnmounting: false,
+        callState: 'connecting',
+        remoteStreamUrl: 'blob:remote-1',
+        localStreamUrl: 'blob:local-1',
+        hasRemoteDescription: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowNativeRemoteVideoRtc({
+        isWeb: false,
+        nativeRtcUnmounting: false,
+        callState: 'connecting',
+        remoteStreamUrl: 'blob:remote-1',
+        localStreamUrl: 'blob:local-1',
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowNativeRemoteVideoRtc({
+        isWeb: false,
+        nativeRtcUnmounting: false,
+        callState: 'connected',
+        remoteStreamUrl: 'blob:remote-1',
+        localStreamUrl: 'blob:local-1',
+      }),
+    ).toBe(true);
     expect(
       shouldShowNativeRemoteAudioRtc({
         isWeb: false,

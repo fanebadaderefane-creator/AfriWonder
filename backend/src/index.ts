@@ -8,7 +8,7 @@ import { initSentry } from './config/sentry.js';
 import app from './app.js';
 import prisma from './config/database.js';
 import { logger } from './utils/logger.js';
-import { setMessageIo, broadcastPresence } from './services/message.service.js';
+import messageService, { setMessageIo, broadcastPresence } from './services/message.service.js';
 import notificationService from './services/notification.service.js';
 import { recordCallLogMessage } from './services/callLogMessage.service.js';
 import { dispatchIncomingCallMobileWakePush } from './services/incomingCallPush.service.js';
@@ -371,9 +371,21 @@ io.on('connection', (socket) => {
     logger.info('WebSocket client disconnected', { socketId: socket.id });
   });
 
-  // Messages: conversation room (new_message, typing, read)
+  // Messages: conversation room (new_message, typing, read) — membre vérifié côté serveur.
   socket.on('message:join-conversation', (conversationId: string) => {
-    if (conversationId) socket.join(`conversation:${conversationId}`);
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!conversationId || !userId) return;
+    void messageService
+      .canUserJoinConversationRoom(userId, conversationId)
+      .then((allowed) => {
+        if (allowed) socket.join(`conversation:${conversationId}`);
+      })
+      .catch((e) =>
+        logger.warn('message:join-conversation refusé', {
+          err: e instanceof Error ? e.message : String(e),
+          conversationId,
+        }),
+      );
   });
 
   socket.on('message:leave-conversation', (conversationId: string) => {
@@ -381,7 +393,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('message:join-group', (groupId: string) => {
-    if (groupId) socket.join(`group:${groupId}`);
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!groupId || !userId) return;
+    void messageService
+      .canUserJoinGroupRoom(userId, groupId)
+      .then((allowed) => {
+        if (allowed) socket.join(`group:${groupId}`);
+      })
+      .catch((e) =>
+        logger.warn('message:join-group refusé', {
+          err: e instanceof Error ? e.message : String(e),
+          groupId,
+        }),
+      );
   });
 
   socket.on('message:leave-group', (groupId: string) => {
@@ -471,37 +495,41 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('message:typing-start', (payload: { conversationId: string; userId: string; name?: string }) => {
-    if (payload?.conversationId) {
-      socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, name: payload.name, typing: true });
-    }
+  socket.on('message:typing-start', (payload: { conversationId: string; userId?: string; name?: string }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.conversationId || !userId) return;
+    socket.to(`conversation:${payload.conversationId}`).emit('message:typing', {
+      userId,
+      name: payload.name,
+      typing: true,
+    });
   });
 
-  socket.on('message:typing-stop', (payload: { conversationId: string; userId: string }) => {
-    if (payload?.conversationId) {
-      socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, typing: false });
-    }
+  socket.on('message:typing-stop', (payload: { conversationId: string; userId?: string }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.conversationId || !userId) return;
+    socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId, typing: false });
   });
 
-  socket.on('message:group-typing-start', (payload: { groupId: string; userId: string; name?: string }) => {
-    if (payload?.groupId) {
-      socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
-        groupId: payload.groupId,
-        userId: payload.userId,
-        name: payload.name,
-        typing: true,
-      });
-    }
+  socket.on('message:group-typing-start', (payload: { groupId: string; userId?: string; name?: string }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.groupId || !userId) return;
+    socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
+      groupId: payload.groupId,
+      userId,
+      name: payload.name,
+      typing: true,
+    });
   });
 
-  socket.on('message:group-typing-stop', (payload: { groupId: string; userId: string }) => {
-    if (payload?.groupId) {
-      socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
-        groupId: payload.groupId,
-        userId: payload.userId,
-        typing: false,
-      });
-    }
+  socket.on('message:group-typing-stop', (payload: { groupId: string; userId?: string }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.groupId || !userId) return;
+    socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
+      groupId: payload.groupId,
+      userId,
+      typing: false,
+    });
   });
 
   socket.on('message:group-recording-start', (payload: { groupId: string; userId: string; name?: string }) => {

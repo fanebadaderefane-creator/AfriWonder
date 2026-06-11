@@ -30,6 +30,7 @@ import { subscribeInboxConversationPatch } from '../../src/messages/inboxSync';
 import {
   loadInboxConversationsCache,
   saveInboxConversationsCache,
+  clearLegacyInboxConversationsCache,
 } from '../../src/messages/inboxConversationsCache';
 import { shouldApplyServerInboxList } from '../../src/messages/dmInboxPersistence';
 import { alertDmAccessDenied, isDmAccessDeniedError } from '../../src/messages/dmAccess';
@@ -292,10 +293,10 @@ export default function MessagesListScreen() {
         mapApiGroupToInboxRow(g as Parameters<typeof mapApiGroupToInboxRow>[0], formatTimeAgo, currentUser?.id),
       );
       const merged = sortConversationsByRecency(mergeInboxDmAndGroups(transformed, groupRows));
-      const cached = await loadInboxConversationsCache();
+      const cached = await loadInboxConversationsCache(currentUser?.id);
       if (shouldApplyServerInboxList(merged.length, cached.length)) {
         setConversations(merged);
-        void saveInboxConversationsCache(merged);
+        void saveInboxConversationsCache(merged, currentUser?.id);
       } else {
         devLog('[inbox] API conversations vide — conservation du cache local', {
           cached: cached.length,
@@ -315,7 +316,7 @@ export default function MessagesListScreen() {
       }
     } catch (err) {
       devLog('Error loading conversations:', err);
-      const cached = await loadInboxConversationsCache();
+      const cached = await loadInboxConversationsCache(currentUser?.id);
       if (cached.length > 0) {
         setConversations(cached);
       } else {
@@ -358,7 +359,12 @@ export default function MessagesListScreen() {
   }, [applyInboxPatch]);
 
   useEffect(() => {
-    void loadInboxConversationsCache().then((cached) => {
+    if (!currentUser?.id) {
+      setConversations([]);
+      return;
+    }
+    void clearLegacyInboxConversationsCache();
+    void loadInboxConversationsCache(currentUser.id).then((cached) => {
       if (cached.length > 0) {
         setConversations((prev) => (prev.length > 0 ? prev : cached));
       }
@@ -367,12 +373,12 @@ export default function MessagesListScreen() {
     void loadRealUsers();
     void loadRequestCount();
     void loadStories();
-  }, [loadConversations, loadRealUsers, loadRequestCount, loadStories]);
+  }, [currentUser?.id, loadConversations, loadRealUsers, loadRequestCount, loadStories]);
 
   useEffect(() => {
-    if (conversations.length === 0) return;
-    void saveInboxConversationsCache(conversations);
-  }, [conversations]);
+    if (!currentUser?.id || conversations.length === 0) return;
+    void saveInboxConversationsCache(conversations, currentUser.id);
+  }, [conversations, currentUser?.id]);
 
   /** Rafraîchit la liste à chaque retour sur l'écran (badge non-lu, dernier message, stories). */
   useFocusEffect(

@@ -35,7 +35,7 @@
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 30,
+      "versionCode": 32,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -80,6 +80,7 @@
       "./plugins/withAndroidLargeHeap.js",
       "./plugins/withAndroidNotifeeMaven.js",
       "./plugins/withAndroidNotifeeForegroundService.js",
+      "./plugins/withAndroidNotificationIconDrawable.js",
       [
         "expo-build-properties",
         {

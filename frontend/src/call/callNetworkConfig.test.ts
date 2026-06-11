@@ -9,6 +9,8 @@ import {
   callMediaReadyHintMs,
   isCellularNetwork,
   isSlowCellularNetwork,
+  nativeRtcBindRetryAttempts,
+  shouldTreatAsMobileCgnatNetwork,
   outboundVideoDowngradeMessage,
   pickVideoProfileForNetwork,
   pickVoiceOpusBitrateForNetwork,
@@ -80,6 +82,28 @@ describe('pickVideoProfileForNetwork — Afrique 2G/3G/4G', () => {
   });
 });
 
+describe('shouldTreatAsMobileCgnatNetwork — Mali / NetInfo unknown', () => {
+  it('natif unknown → CGNAT probable (TURN relay)', () => {
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, false)).toBe(true);
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'cellular', cellularGeneration: '4g' }, false)).toBe(
+      true,
+    );
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, false)).toBe(false);
+  });
+  it('web unknown → pas de supposition cellulaire', () => {
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, true)).toBe(false);
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'cellular' }, true)).toBe(true);
+  });
+});
+
+describe('nativeRtcBindRetryAttempts', () => {
+  it('plus de retentes sur 2G/3G et NetInfo unknown', () => {
+    expect(nativeRtcBindRetryAttempts({ type: 'cellular', cellularGeneration: '2g' })).toBe(45);
+    expect(nativeRtcBindRetryAttempts({ type: 'unknown' })).toBe(30);
+    expect(nativeRtcBindRetryAttempts({ type: 'wifi' })).toBe(15);
+  });
+});
+
 describe('shouldForceTurnRelay — CGNAT Afrique', () => {
   it('TURN configuré → relais forcé sur cellulaire (natif + web), pas sur Wi‑Fi', () => {
     expect(
@@ -103,6 +127,11 @@ describe('shouldForceTurnRelay — CGNAT Afrique', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: false, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(false);
+  });
+  it('natif + NetInfo unknown + TURN → relais forcé', () => {
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
+    ).toBe(true);
   });
 });
 
@@ -156,6 +185,24 @@ describe('réseaux lents 2G/3G — vocal et délais', () => {
       shouldBlockCellularWithoutTurn({ turnConfigured: true, net: { type: 'cellular' } }),
     ).toBe(false);
     expect(shouldBlockCellularWithoutTurn({ turnConfigured: false, net: { type: 'wifi' } })).toBe(false);
+    expect(
+      shouldBlockCellularWithoutTurn({
+        turnConfigured: false,
+        net: { type: 'unknown' },
+        isWeb: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockCellularWithoutTurn({
+        turnConfigured: false,
+        net: { type: 'unknown' },
+        isWeb: true,
+      }),
+    ).toBe(false);
+  });
+  it('watchdog et hint plus longs sur NetInfo unknown', () => {
+    expect(callConnectionWatchdogMs({ type: 'unknown' })).toBe(75_000);
+    expect(callMediaReadyHintMs({ type: 'unknown' })).toBe(28_000);
   });
 });
 
@@ -284,6 +331,14 @@ describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
         iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
       }),
     ).toBe(false);
+    expect(
+      shouldBlockNativeCellularWithoutTlsTurn({
+        isWeb: false,
+        turnConfigured: true,
+        net: { type: 'unknown' },
+        iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
+      }),
+    ).toBe(true);
   });
 });
 

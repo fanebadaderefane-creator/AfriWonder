@@ -37,6 +37,12 @@ const ANDROID_CHANNEL_NAME = 'Appels entrants AfriWonder';
 const ANDROID_ACTIVE_CALL_CHANNEL_ID = 'afriwonder-active-call';
 const ANDROID_ACTIVE_CALL_NOTIF_ID = 'afriwonder-active-call-session';
 
+/** @drawable/notification_icon — copié au prebuild par withAndroidNotificationIconDrawable.js */
+export const ANDROID_NOTIFEE_SMALL_ICON = 'notification_icon';
+
+let activeCallForegroundRunning = false;
+let activeCallForegroundPromise: Promise<void> | null = null;
+
 const IOS_CALLKEEP_OPTIONS = {
   ios: {
     appName: 'AfriWonder',
@@ -56,7 +62,7 @@ const IOS_CALLKEEP_OPTIONS = {
       channelId: ANDROID_CHANNEL_ID,
       channelName: ANDROID_CHANNEL_NAME,
       notificationTitle: 'AfriWonder est actif',
-      notificationIcon: 'ic_notification',
+      notificationIcon: ANDROID_NOTIFEE_SMALL_ICON,
     },
   },
 };
@@ -184,7 +190,7 @@ export async function displayIncomingCall(payload: IncomingCallPayload): Promise
           visibility: AndroidVisibility.PUBLIC,
           ongoing: true,
           autoCancel: false,
-          smallIcon: 'ic_notification',
+          smallIcon: ANDROID_NOTIFEE_SMALL_ICON,
           color: '#FF6B00',
           largeIcon: payload.callerAvatar || undefined,
           fullScreenAction: {
@@ -341,38 +347,51 @@ export function wireIncomingCallSocket(): () => void {
  */
 export async function startActiveCallForeground(peerName: string, isVideo: boolean): Promise<void> {
   if (Platform.OS !== 'android') return;
-  try {
-    await notifee.createChannel({
-      id: ANDROID_ACTIVE_CALL_CHANNEL_ID,
-      name: 'Appel en cours',
-      importance: AndroidImportance.LOW,
-    });
-    const fgTypes = isVideo
-      ? [
-          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
-        ]
-      : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE];
-    await notifee.displayNotification({
-      id: ANDROID_ACTIVE_CALL_NOTIF_ID,
-      title: 'Appel en cours',
-      body: peerName ? `Avec ${peerName}` : 'AfriWonder',
-      android: {
-        channelId: ANDROID_ACTIVE_CALL_CHANNEL_ID,
-        ongoing: true,
-        asForegroundService: true,
-        foregroundServiceTypes: fgTypes,
-        pressAction: { id: 'default' },
-        smallIcon: 'ic_notification',
-      },
-    });
-  } catch (e) {
-    devWarn('[IncomingCall] Active call foreground failed', e);
+  if (activeCallForegroundRunning) return;
+  if (activeCallForegroundPromise) {
+    await activeCallForegroundPromise;
+    return;
   }
+  activeCallForegroundPromise = (async () => {
+    try {
+      await notifee.createChannel({
+        id: ANDROID_ACTIVE_CALL_CHANNEL_ID,
+        name: 'Appel en cours',
+        importance: AndroidImportance.LOW,
+      });
+      const fgTypes = isVideo
+        ? [
+            AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+            AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
+          ]
+        : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE];
+      await notifee.displayNotification({
+        id: ANDROID_ACTIVE_CALL_NOTIF_ID,
+        title: 'Appel en cours',
+        body: peerName ? `Avec ${peerName}` : 'AfriWonder',
+        android: {
+          channelId: ANDROID_ACTIVE_CALL_CHANNEL_ID,
+          ongoing: true,
+          asForegroundService: true,
+          foregroundServiceTypes: fgTypes,
+          pressAction: { id: 'default' },
+          smallIcon: ANDROID_NOTIFEE_SMALL_ICON,
+          color: '#FF6B00',
+        },
+      });
+      activeCallForegroundRunning = true;
+    } catch (e) {
+      devWarn('[IncomingCall] Active call foreground failed', e);
+    } finally {
+      activeCallForegroundPromise = null;
+    }
+  })();
+  await activeCallForegroundPromise;
 }
 
 export async function stopActiveCallForeground(): Promise<void> {
   if (Platform.OS !== 'android') return;
+  activeCallForegroundRunning = false;
   try {
     await notifee.stopForegroundService();
     await notifee.cancelNotification(ANDROID_ACTIVE_CALL_NOTIF_ID);

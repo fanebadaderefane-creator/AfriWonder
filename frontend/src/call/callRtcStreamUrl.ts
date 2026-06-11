@@ -18,7 +18,6 @@ export function isValidNativeRtcStreamUrl(
 
 /**
  * RTCView audio distant : vocal en `connecting` dès URL valide (décodeur natif Android).
- * Vidéo : attendre `connected` pour limiter les crashs RTCView en sonnerie.
  */
 export function shouldShowNativeRemoteAudioRtc(input: {
   isWeb: boolean;
@@ -28,12 +27,47 @@ export function shouldShowNativeRemoteAudioRtc(input: {
   remoteStreamUrl: string;
   localStreamUrl: string;
 }): boolean {
-  if (input.isWeb || input.nativeRtcUnmounting) return false;
+  if (input.isWeb || input.nativeRtcUnmounting || input.isVideoCall) return false;
   if (input.callState === 'ended' || input.callState === 'ringing') return false;
   const urlOk = isValidNativeRtcStreamUrl(input.remoteStreamUrl, {
     localUrl: input.localStreamUrl,
   });
   if (!urlOk) return false;
-  if (input.callState === 'connected') return true;
-  return input.callState === 'connecting' && !input.isVideoCall;
+  return input.callState === 'connecting' || input.callState === 'connected';
+}
+
+/**
+ * RTCView vidéo distant plein écran — `connected` uniquement (évite crash RTCView en sonnerie).
+ */
+export function shouldShowNativeRemoteVideoRtc(input: {
+  isWeb: boolean;
+  nativeRtcUnmounting: boolean;
+  callState: 'ringing' | 'connecting' | 'connected' | 'ended';
+  remoteStreamUrl: string;
+  localStreamUrl: string;
+}): boolean {
+  if (input.isWeb || input.nativeRtcUnmounting) return false;
+  if (input.callState !== 'connected') return false;
+  return isValidNativeRtcStreamUrl(input.remoteStreamUrl, {
+    localUrl: input.localStreamUrl,
+  });
+}
+
+/**
+ * Secours audio caché en appel vidéo — dès SDP distant + URL (Samsung/Xiaomi sans son sur RTCView vidéo).
+ */
+export function shouldShowNativeRemoteVideoAudioBackup(input: {
+  isWeb: boolean;
+  nativeRtcUnmounting: boolean;
+  callState: 'ringing' | 'connecting' | 'connected' | 'ended';
+  remoteStreamUrl: string;
+  localStreamUrl: string;
+  hasRemoteDescription: boolean;
+}): boolean {
+  if (input.isWeb || input.nativeRtcUnmounting) return false;
+  if (!input.hasRemoteDescription) return false;
+  if (input.callState === 'ended' || input.callState === 'ringing') return false;
+  return isValidNativeRtcStreamUrl(input.remoteStreamUrl, {
+    localUrl: input.localStreamUrl,
+  });
 }

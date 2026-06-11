@@ -103,7 +103,10 @@ const nativeChecks = [
   ['attachNativeAudioTrackToPeerConnection (call.tsx)', /attachLocalTracksToPeerConnection/],
   ['PATCH_AUDIO_FIX_ACTIVE Logcat', /logPatchAudioFixActive/],
   ['Web listen-only recvonly', /addTransceiver\('audio', \{ direction: 'recvonly' \}/],
-  ['SafeNativeRtcView distant', /showNativeRemoteRtc[\s\S]*SafeNativeRtcView/],
+  ['SafeNativeRtcView distant vocal', /showNativeRemoteVoiceRtc[\s\S]*SafeNativeRtcView/],
+  ['FGS appel actif tôt (Xiaomi/Android 14)', /await startActiveCallForeground[\s\S]*new RTCPeerConnection|startNativeCallAudioSession[\s\S]*await startActiveCallForeground[\s\S]*buildCallIceConfig/],
+  ['Précharge TURN (4G Mali)', /prefetchTurnCredentials/],
+  ['Vidéo RTCView + secours audio séparés', /shouldShowNativeRemoteVideoRtc/],
   ['RTC audio caché (vocal)', /hiddenRemoteRtc/],
   ['RTC secours audio (vidéo)', /hiddenRemoteRtcVideoBackup/],
   ['zOrder Android vidéo', /zOrderMediaOverlay.*android/],
@@ -135,6 +138,27 @@ if (/attachNativeAudioTrackToPeerConnection/.test(callNativeMedia)) {
 } else {
   fail('attachNativeAudioTrackToPeerConnection (callNativeMedia.ts)');
 }
+const netCfg = read('src/call/callNetworkConfig.ts');
+if (/shouldTreatAsMobileCgnatNetwork/.test(netCfg) && /type === 'unknown'/.test(netCfg)) {
+  ok('NetInfo unknown → TURN relay Mali (shouldTreatAsMobileCgnatNetwork)');
+} else {
+  fail('NetInfo unknown Mali — shouldTreatAsMobileCgnatNetwork manquant');
+}
+if (/nativeRtcBindRetryAttempts/.test(netCfg)) {
+  ok('Retentes RTCView adaptées au réseau (nativeRtcBindRetryAttempts)');
+} else {
+  fail('nativeRtcBindRetryAttempts manquant');
+}
+if (/NATIVE_REMOTE_AUDIO_TRACK_VOLUME/.test(callNativeMedia)) {
+  ok('Volume audio distant natif (NATIVE_REMOTE_AUDIO_TRACK_VOLUME)');
+} else {
+  fail('NATIVE_REMOTE_AUDIO_TRACK_VOLUME manquant');
+}
+if (/BLUETOOTH_CONNECT/.test(callNativeMedia)) {
+  ok('Bluetooth CONNECT Android 12+ (callNativeMedia.ts)');
+} else {
+  fail('Bluetooth CONNECT manquant dans callNativeMedia.ts');
+}
 
 console.log('\n━━ Plugin Notifee FGS (microphone) ━━');
 const plugins = appJson.expo?.plugins || [];
@@ -143,6 +167,11 @@ if (pluginPaths.some((p) => String(p).includes('withAndroidNotifeeForegroundServ
   ok('withAndroidNotifeeForegroundService enregistré (manifest FGS microphone|camera)');
 } else {
   fail('withAndroidNotifeeForegroundService manquant dans app.json');
+}
+if (pluginPaths.some((p) => String(p).includes('withAndroidNotificationIconDrawable'))) {
+  ok('withAndroidNotificationIconDrawable enregistré (drawable notification_icon)');
+} else {
+  fail('withAndroidNotificationIconDrawable manquant — crash FGS « no valid small icon »');
 }
 const notifeeFgPlugin = read('plugins/withAndroidNotifeeForegroundService.js');
 if (/microphone\|camera\|shortService/.test(notifeeFgPlugin) && /app\.notifee\.core\.ForegroundService/.test(notifeeFgPlugin)) {
@@ -157,6 +186,17 @@ if (/FOREGROUND_SERVICE_PHONE_CALL/.test(incoming) || /AndroidForegroundServiceT
   ok('Android foreground service appel actif');
 } else {
   fail('Android foreground service appel');
+}
+if (/ANDROID_NOTIFEE_SMALL_ICON\s*=\s*['"]notification_icon['"]/.test(incoming)) {
+  ok('Notifee smallIcon = notification_icon (expo-notifications)');
+} else {
+  fail('Notifee smallIcon — utiliser notification_icon, pas ic_notification');
+}
+if (/ic_notification/.test(incoming)) {
+  fail('ic_notification encore référencé — crash FGS « no valid small icon »');
+}
+if (!/activeCallForegroundRunning/.test(incoming)) {
+  fail('startActiveCallForeground doit être idempotent (activeCallForegroundRunning)');
 }
 const voip = read('src/services/voipPushService.ts');
 if (/Platform\.OS !== 'ios'/.test(voip) && /displayIncomingCall/.test(voip)) {

@@ -79,7 +79,7 @@ const checks = [
   ['RTCView secours audio vidéo natif', /hiddenRemoteRtcVideoBackup/],
   ['ICE restart changement réseau', /triggerIceRestartRef|ice_restart_network_change/],
   ['Foreground service appel actif', /startActiveCallForeground/],
-  ['showNativeRemoteRtc (RTC distant après connected)', /showNativeRemoteRtc/],
+  ['showNativeRemoteRtc (RTC distant après connected)', /showNativeRemoteRtc|shouldShowNativeRemoteVideoRtc/],
   ['isValidNativeRtcStreamUrl', /isValidNativeRtcStreamUrl/],
   ['prepareCallSessionMemory (RAM avant WebRTC)', /prepareCallSessionMemory/],
   ['canPromoteCallToConnected (vocal + vidéo)', /canPromoteCallToConnected/],

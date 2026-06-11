@@ -43,8 +43,10 @@ import {
 } from '../../src/messages/dmThreadApi';
 import {
   applyDeletedForAllUi,
-  buildThreadMessageList,
+  injectDateSeparators,
   mapApiMessageToChatUi,
+  mergeThreadMessagesById,
+  stripThreadDateSeparators,
 } from '../../src/messages/dmChatMessageMapper';
 import { callLogTapToRedial, type CallLogMeta } from '../../src/messages/callLogDisplay';
 import { CallLogBubble } from '../../src/messages/CallLogBubble';
@@ -69,18 +71,29 @@ import {
   mergeThreadWithLocalOutbound,
   saveThreadMessageCache,
 } from '../../src/messages/dmThreadMessageCache';
-import { pickThreadMessageSource } from '../../src/messages/dmInboxPersistence';
+import { mergeThreadMessageSources } from '../../src/messages/dmInboxPersistence';
 import { navigateToReceiverCallScreen, openNativeCallScreen } from '../../src/call/openNativeCallScreen';
+import { prefetchTurnCredentials } from '../../src/call/prefetchTurnCredentials';
 import { callUserIdsEqual } from '../../src/call/callSignalingPayload';
 import { safeRouterBack, safeRouterPush } from '../../src/utils/safeRouter';
+import { ChatWallpaperPattern } from '../../src/components/messages/ChatWallpaperPattern';
+import { ReplyQuoteBlock } from '../../src/components/messages/ReplyQuoteBlock';
+import { VoiceMessageBubble } from '../../src/components/messages/VoiceMessageBubble';
 import { MediaViewerModal, type MediaViewerItem } from '../../src/components/messages/MediaViewerModal';
 import { MediaCaptionComposer, type MediaComposerDraft } from '../../src/components/messages/MediaCaptionComposer';
 import {
   MessageBubbleMenuChevron,
   MessageContextMenu,
 } from '../../src/components/messages/MessageContextMenu';
+import {
+  parseDmRequestFromApi,
+  parsePeerBlockFromApi,
+  type DmRequestState,
+  type PeerBlockState,
+} from '../../src/messages/dmRequestState';
 
 const { width } = Dimensions.get('window');
+const THREAD_MESSAGES_PAGE_SIZE = 50;
 
 interface Message {
   id: string;
@@ -122,6 +135,7 @@ interface Message {
   callLogSubtitle?: string;
   callLogIcon?: 'call' | 'videocam' | 'call-outline' | 'arrow-redo';
   callLogTint?: string;
+  createdAt?: string;
 }
 
 /** Langues supportées par GPT-5.2 pour la traduction des transcriptions vocales. */
@@ -230,6 +244,10 @@ export default function ChatScreen() {
   );
   const { user, accessToken, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const currentUserId = user?.id || '';
+  const myAvatarUri = profileAvatarUri(
+    user?.profile_image as string | undefined,
+    String(user?.full_name || user?.username || 'Moi').trim(),
+  );
   const ensureAuthenticated = useCallback((action: string): boolean => {
     if (isAuthenticated) return true;
     Alert.alert('Connexion', `Connectez-vous pour ${action}.`, [
@@ -251,14 +269,10 @@ export default function ChatScreen() {
     otherUserId: (paramOtherUserId as string) || '',
   });
 
-  type DmRequestState = {
-    pending_for_viewer: boolean;
-    pending_for_user_id: string | null;
-    initiator_user_id: string | null;
-    initiator_messages_remaining: number;
-    max_messages_before_accept: number;
-  };
   const [dmRequest, setDmRequest] = useState<DmRequestState | null>(null);
+  const [peerBlock, setPeerBlock] = useState<PeerBlockState | null>(null);
+  const [peerMenuOpen, setPeerMenuOpen] = useState(false);
+  const [wonderBackLoading, setWonderBackLoading] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [dmActionLoading, setDmActionLoading] = useState(false);
 
@@ -273,6 +287,10 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<'session' | 'network' | 'not_found' | null>(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const nextCursorRef = useRef<string | null>(null);
+  const skipScrollToEndRef = useRef(false);
   const [sending, setSending] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -312,6 +330,8 @@ export default function ChatScreen() {
   // Audio playback state
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
+  const [listenedAudioIds, setListenedAudioIds] = useState<Set<string>>(() => new Set());
+  const quoteFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   // Ephemeral messages
@@ -405,30 +425,35 @@ export default function ChatScreen() {
       if (cached.length > 0 && messagesRef.current.length === 0) {
         setMessages(await mergeThreadWithOutboundLocal(cached as Message[]));
       }
-      const response = await apiClient.get(threadApi.messagesPath, { params: { limit: 40 } });
+      const response = await apiClient.get(threadApi.messagesPath, {
+        params: { limit: THREAD_MESSAGES_PAGE_SIZE },
+      });
       const data = response.data?.data || response.data;
       const backendMsgs = (data?.messages || []) as Record<string, unknown>[];
+      nextCursorRef.current = typeof data?.nextCursor === 'string' ? data.nextCursor : null;
+      setHasMoreMessages(Boolean(data?.hasMore));
       const peerName = String(contact.name || 'Contact');
-      const transformed =
+      const serverCore =
         backendMsgs.length > 0
-          ? (buildThreadMessageList(
-              backendMsgs,
-              currentUserId,
-              peerName,
-              formatDateLabel,
-              { isGroup: isGroupThread },
-            ) as Message[])
+          ? backendMsgs.map((m) =>
+              mapApiMessageToChatUi(m, currentUserId, peerName, { isGroup: isGroupThread }),
+            )
           : [];
-      const source = pickThreadMessageSource(transformed, cached, messagesRef.current);
+      const source = mergeThreadMessageSources(
+        serverCore,
+        cached as Message[],
+        messagesRef.current,
+      );
       if (backendMsgs.length === 0 && source.length > 0) {
         devLog('[dm] API messages vide — conservation cache / UI', {
           conversationId,
           sourceCount: source.length,
         });
       }
-      const merged = await mergeThreadWithOutboundLocal(source as Message[]);
+      const withDates = injectDateSeparators(source, formatDateLabel) as Message[];
+      const merged = await mergeThreadWithOutboundLocal(withDates);
       setMessages(merged);
-      if (transformed.length > 0) {
+      if (backendMsgs.length > 0) {
         void saveThreadMessageCache(conversationId, merged);
       } else if (merged.length > 0) {
         void saveThreadMessageCache(conversationId, merged);
@@ -454,6 +479,42 @@ export default function ChatScreen() {
       }
     } finally { setLoading(false); }
   }, [authLoading, isAuthenticated, conversationId, currentUserId, threadApi.messagesPath, contact.name, isGroupThread, mergeThreadWithOutboundLocal]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const cursor = nextCursorRef.current;
+    if (!cursor || loadingOlder || !hasMoreMessages) return;
+    skipScrollToEndRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const response = await apiClient.get(threadApi.messagesPath, {
+        params: { limit: THREAD_MESSAGES_PAGE_SIZE, cursor },
+      });
+      const data = response.data?.data || response.data;
+      const backendMsgs = (data?.messages || []) as Record<string, unknown>[];
+      nextCursorRef.current = typeof data?.nextCursor === 'string' ? data.nextCursor : null;
+      setHasMoreMessages(Boolean(data?.hasMore));
+      if (backendMsgs.length === 0) return;
+      const peerName = String(contact.name || 'Contact');
+      const olderUi = backendMsgs.map((m) =>
+        mapApiMessageToChatUi(m, currentUserId, peerName, { isGroup: isGroupThread }),
+      );
+      setMessages((prev) => {
+        const core = mergeThreadMessagesById(stripThreadDateSeparators(prev), olderUi);
+        return injectDateSeparators(core, formatDateLabel) as Message[];
+      });
+    } catch (err) {
+      devLog('Error loading older messages:', err);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [
+    contact.name,
+    currentUserId,
+    hasMoreMessages,
+    isGroupThread,
+    loadingOlder,
+    threadApi.messagesPath,
+  ]);
 
   const ensureRecipientUserId = useCallback(async (): Promise<string | null> => {
     if (recipientUserId) return recipientUserId;
@@ -532,6 +593,10 @@ export default function ChatScreen() {
       unsubApp.remove();
     };
   }, [flushFailedOutboundQueue]);
+
+  useEffect(() => {
+    void prefetchTurnCredentials();
+  }, [conversationId]);
 
   // Socket.IO real-time connection
   useEffect(() => {
@@ -854,20 +919,8 @@ export default function ChatScreen() {
             otherUserId: other.id || c.otherUserId,
           }));
         }
-        const dr = conv.dm_request;
-        if (dr && typeof dr === 'object') {
-          setDmRequest({
-            pending_for_viewer: !!dr.pending_for_viewer,
-            pending_for_user_id: dr.pending_for_user_id ?? null,
-            initiator_user_id: dr.initiator_user_id ?? null,
-            initiator_messages_remaining:
-              typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
-            max_messages_before_accept:
-              typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
-          });
-        } else {
-          setDmRequest(null);
-        }
+        setDmRequest(parseDmRequestFromApi(conv.dm_request));
+        setPeerBlock(parsePeerBlockFromApi(conv.peer_block));
       } catch {
         /* ignore */
       }
@@ -883,20 +936,8 @@ export default function ChatScreen() {
       await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/dm-request/accept`, {});
       const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
       const conv = resConv.data?.data;
-      const dr = conv?.dm_request;
-      if (dr && typeof dr === 'object') {
-        setDmRequest({
-          pending_for_viewer: !!dr.pending_for_viewer,
-          pending_for_user_id: dr.pending_for_user_id ?? null,
-          initiator_user_id: dr.initiator_user_id ?? null,
-          initiator_messages_remaining:
-            typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
-          max_messages_before_accept:
-            typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
-        });
-      } else {
-        setDmRequest(null);
-      }
+      setDmRequest(parseDmRequestFromApi(conv?.dm_request));
+      setPeerBlock(parsePeerBlockFromApi(conv?.peer_block));
     } catch (e: unknown) {
       Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
@@ -916,6 +957,61 @@ export default function ChatScreen() {
       setDmActionLoading(false);
     }
   };
+
+  const handleWonderBack = async () => {
+    if (!recipientUserId || wonderBackLoading) return;
+    setWonderBackLoading(true);
+    try {
+      await apiClient.post(`/users/${encodeURIComponent(recipientUserId)}/wonder`, {});
+      setDmRequest((prev) => (prev ? { ...prev, viewer_wonders_initiator: true } : prev));
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
+    } finally {
+      setWonderBackLoading(false);
+    }
+  };
+
+  const handleBlockPeer = () => {
+    if (!recipientUserId || isGroupThread) return;
+    Alert.alert(
+      'Bloquer ce contact',
+      `${contact.name} ne pourra plus vous écrire ni vous appeler.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Bloquer',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await apiClient.post('/messages/block', { userId: recipientUserId });
+                setPeerBlock({ viewer_blocked_peer: true, peer_blocked_viewer: false });
+                setPeerMenuOpen(false);
+                safeRouterBack('/messages');
+              } catch (e: unknown) {
+                Alert.alert('Erreur', getAlertMessageForCaughtError(e));
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleUnblockPeer = async () => {
+    if (!recipientUserId || isGroupThread) return;
+    try {
+      await apiClient.delete(`/me/settings/blocked/${encodeURIComponent(recipientUserId)}`);
+      setPeerBlock({ viewer_blocked_peer: false, peer_blocked_viewer: peerBlock?.peer_blocked_viewer ?? false });
+      setPeerMenuOpen(false);
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
+    }
+  };
+
+  const peerMessagingBlocked =
+    !isGroupThread &&
+    (peerBlock?.viewer_blocked_peer === true || peerBlock?.peer_blocked_viewer === true);
 
   const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || sending) return;
@@ -968,18 +1064,8 @@ export default function ChatScreen() {
         try {
           const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
           const conv = resConv.data?.data;
-          const dr = conv?.dm_request;
-          if (dr && typeof dr === 'object') {
-            setDmRequest({
-              pending_for_viewer: !!dr.pending_for_viewer,
-              pending_for_user_id: dr.pending_for_user_id ?? null,
-              initiator_user_id: dr.initiator_user_id ?? null,
-              initiator_messages_remaining:
-                typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
-              max_messages_before_accept:
-                typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
-            });
-          }
+          setDmRequest(parseDmRequestFromApi(conv?.dm_request));
+          setPeerBlock(parsePeerBlockFromApi(conv?.peer_block));
         } catch {
           /* ignore */
         }
@@ -1144,6 +1230,7 @@ export default function ChatScreen() {
           if (status.didJustFinish) {
             setPlayingAudioId(null);
             setAudioProgress(0);
+            setListenedAudioIds((prev) => new Set(prev).add(msg.id));
           }
         }
       });
@@ -1622,7 +1709,29 @@ export default function ChatScreen() {
     if (!contextMenuVisible) setHighlightedMessageId(null);
   }, [contextMenuVisible]);
 
-  useEffect(() => () => highlightDelayedReleaseRef.current.cancel(), []);
+  const scrollToQuotedMessage = useCallback(
+    (replyId: string) => {
+      const idx = messages.findIndex((m) => m.id === replyId && !m.id.startsWith('date-'));
+      if (idx < 0) return;
+      highlightDelayedReleaseRef.current.cancel();
+      if (quoteFlashTimerRef.current) clearTimeout(quoteFlashTimerRef.current);
+      setHighlightedMessageId(replyId);
+      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.45 });
+      quoteFlashTimerRef.current = setTimeout(() => {
+        setHighlightedMessageId((cur) => (cur === replyId ? null : cur));
+        quoteFlashTimerRef.current = null;
+      }, 2200);
+    },
+    [messages],
+  );
+
+  useEffect(
+    () => () => {
+      highlightDelayedReleaseRef.current.cancel();
+      if (quoteFlashTimerRef.current) clearTimeout(quoteFlashTimerRef.current);
+    },
+    [],
+  );
 
   const toggleMessageSelection = (messageId: string) => {
     setSelectedIds((prev) => {
@@ -1932,8 +2041,8 @@ export default function ChatScreen() {
 
   const renderStatus = (status: string) => {
     switch (status) {
-      case 'sent': return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.5)" />;
-      case 'delivered': return <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.5)" />;
+      case 'sent': return <Ionicons name="checkmark" size={14} color="#8696A0" />;
+      case 'delivered': return <Ionicons name="checkmark-done" size={14} color="#8696A0" />;
       case 'read': return <Ionicons name="checkmark-done" size={14} color="#53BDEB" />;
       case 'failed': return <Ionicons name="alert-circle" size={14} color="#FF8A80" />;
       default: return null;
@@ -2019,6 +2128,7 @@ export default function ChatScreen() {
               showTail && (item.isMine ? styles.tailMine : styles.tailTheirs),
               item.deleted && styles.deletedBubble,
               isSelected && styles.messageBubbleSelected,
+              highlightedMessageId === item.id && styles.messageBubbleFlash,
               !selectionMode && showMessageMenuChevron(item.id) && styles.messageBubbleMenuActive,
             ]}
             onPress={
@@ -2045,20 +2155,19 @@ export default function ChatScreen() {
           {item.forwarded && (
             <View style={styles.forwardedRow}>
               <Ionicons name="arrow-redo" size={12} color="rgba(255,255,255,0.4)" />
-              <Text style={styles.forwardedText}>Transfere</Text>
+              <Text style={styles.forwardedText}>Transféré</Text>
             </View>
           )}
 
           {/* Reply quote */}
-          {item.replyTo && (
-            <View style={styles.replyQuote}>
-              <View style={styles.replyBar} />
-              <View style={styles.replyContent}>
-                <Text style={styles.replyName}>{item.replyTo.name}</Text>
-                <Text style={styles.replyText} numberOfLines={2}>{item.replyTo.text}</Text>
-              </View>
-            </View>
-          )}
+          {item.replyTo ? (
+            <ReplyQuoteBlock
+              name={item.replyTo.name}
+              text={item.replyTo.text}
+              isMine={item.isMine}
+              onPress={() => scrollToQuotedMessage(item.replyTo!.id)}
+            />
+          ) : null}
 
           {/* Deleted message */}
           {item.deleted ? (
@@ -2103,20 +2212,16 @@ export default function ChatScreen() {
             </TouchableOpacity>
           ) : item.type === 'voice' || item.type === 'audio' ? (
             <View>
-              <TouchableOpacity style={styles.voiceBubble} onPress={() => playAudio(item)} activeOpacity={0.7}>
-                <Ionicons name={playingAudioId === item.id ? 'pause' : 'play'} size={28} color="#FFF" />
-                <View style={styles.voiceWaveContainer}>
-                  <View style={styles.voiceWaveTrack}>
-                    <View style={[styles.voiceWaveProgress, { width: playingAudioId === item.id ? `${audioProgress * 100}%` : '0%' }]} />
-                  </View>
-                  <Text style={styles.voiceDurationText}>
-                    {item.voiceDuration || (item.type === 'audio' ? 'Fichier audio' : '0:00')}
-                  </Text>
-                </View>
-                <View style={[styles.voiceMicBadge, { backgroundColor: item.isMine ? '#005C4B' : '#1F2C34' }]}>
-                  <Ionicons name="mic" size={14} color={Colors.primary} />
-                </View>
-              </TouchableOpacity>
+              <VoiceMessageBubble
+                messageId={item.id}
+                isMine={item.isMine}
+                avatarUri={item.isMine ? myAvatarUri : contact.avatar}
+                voiceDuration={item.voiceDuration || (item.type === 'audio' ? 'Audio' : '0:00')}
+                isPlaying={playingAudioId === item.id}
+                progress={playingAudioId === item.id ? audioProgress : 0}
+                listened={listenedAudioIds.has(item.id)}
+                onPress={() => void playAudio(item)}
+              />
               {item.transcribing ? (
                 <View style={styles.transcriptionRow}>
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -2227,7 +2332,7 @@ export default function ChatScreen() {
           )}
           <View style={styles.msgTimeRow}>
             {item.starred && <Ionicons name="star" size={11} color="#FFD700" style={{ marginRight: 3 }} />}
-            {item.edited && <Text style={styles.editedLabel}>modifie</Text>}
+            {item.edited && <Text style={styles.editedLabel}>modifié</Text>}
             <Text style={[styles.msgTimeText, item.isMine && styles.msgTimeTextMine]}>{item.time}</Text>
             {item.isMine && renderStatus(item.status)}
           </View>
@@ -2290,7 +2395,7 @@ export default function ChatScreen() {
         ) : (
           <>
         <TouchableOpacity onPress={() => safeRouterBack('/messages')} style={styles.backBtn} accessibilityLabel="Retour">
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          <Ionicons name="arrow-back" size={24} color="#111B21" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerProfile}>
           <Image source={{ uri: contact.avatar }} style={styles.headerAvatar} />
@@ -2317,16 +2422,25 @@ export default function ChatScreen() {
               onPress={() => openCallScreen('video')}
               disabled={!contact.otherUserId}
             >
-              <Ionicons name="videocam" size={22} color={Colors.text} />
+              <Ionicons name="videocam" size={22} color="#54656F" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerAction}
               onPress={() => openCallScreen('audio')}
               disabled={!contact.otherUserId}
             >
-              <Ionicons name="call" size={22} color={Colors.text} />
+              <Ionicons name="call" size={22} color="#54656F" />
             </TouchableOpacity>
           </>
+        ) : null}
+        {!isGroupThread ? (
+          <TouchableOpacity
+            style={styles.headerAction}
+            onPress={() => setPeerMenuOpen(true)}
+            accessibilityLabel="Options de conversation"
+          >
+            <Ionicons name="ellipsis-vertical" size={22} color="#54656F" />
+          </TouchableOpacity>
         ) : null}
           </>
         )}
@@ -2348,6 +2462,7 @@ export default function ChatScreen() {
 
       {/* Messages */}
       <View style={styles.chatArea}>
+        <ChatWallpaperPattern />
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
@@ -2439,26 +2554,128 @@ export default function ChatScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.messagesList}
             onScrollBeginDrag={clearMessageHighlight}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onScrollToIndexFailed={(info) => {
+              flatListRef.current?.scrollToOffset({
+                offset: Math.max(0, info.averageItemLength * info.index),
+                animated: true,
+              });
+            }}
+            onContentSizeChange={() => {
+              if (skipScrollToEndRef.current) {
+                skipScrollToEndRef.current = false;
+                return;
+              }
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }}
             ListHeaderComponent={
-              peerIncomingCall ? (
-                <Pressable
-                  style={styles.peerIncomingBanner}
-                  accessibilityLiveRegion="polite"
-                  accessibilityRole="button"
-                  accessibilityLabel="Accepter l'appel entrant"
-                  onPress={acceptPeerIncomingCall}
-                >
-                  <Ionicons
-                    name={peerIncomingCall.media === 'video' ? 'videocam' : 'call'}
-                    size={18}
-                    color={Colors.primary}
-                  />
-                  <Text style={styles.peerIncomingText}>
-                    {peerIncomingCall.media === 'video' ? 'Appel vidéo entrant' : 'Appel audio entrant'} · Touchez pour répondre
-                  </Text>
-                </Pressable>
-              ) : null
+              <View>
+                {hasMoreMessages ? (
+                  <TouchableOpacity
+                    style={styles.loadOlderButton}
+                    onPress={() => void loadOlderMessages()}
+                    disabled={loadingOlder}
+                    accessibilityRole="button"
+                    accessibilityLabel="Charger les anciens messages"
+                  >
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.loadOlderButtonText}>Charger les anciens messages</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+                {peerIncomingCall ? (
+                  <Pressable
+                    style={styles.peerIncomingBanner}
+                    accessibilityLiveRegion="polite"
+                    accessibilityRole="button"
+                    accessibilityLabel="Accepter l'appel entrant"
+                    onPress={acceptPeerIncomingCall}
+                  >
+                    <Ionicons
+                      name={peerIncomingCall.media === 'video' ? 'videocam' : 'call'}
+                      size={18}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.peerIncomingText}>
+                      {peerIncomingCall.media === 'video' ? 'Appel vidéo entrant' : 'Appel audio entrant'} · Touchez pour répondre
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {!isGroupThread && dmRequest?.pending_for_viewer ? (
+                  <View style={styles.dmRequestCard}>
+                    <Text style={styles.dmRequestTitle}>
+                      {contact.name} souhaite vous écrire
+                    </Text>
+                    {dmRequest.initiator_wondered_you ? (
+                      <Text style={styles.dmRequestBody}>
+                        {contact.name} vous a ajouté dans son Wonder ✨
+                        {!dmRequest.viewer_wonders_initiator
+                          ? ' — Vous pouvez l’ajouter en retour si vous le souhaitez.'
+                          : ' — Vous faites aussi partie de son Wonder.'}
+                      </Text>
+                    ) : (
+                      <Text style={styles.dmRequestBody}>
+                        Vous n’êtes pas encore dans le Wonder l’un de l’autre. Acceptez pour discuter ou refusez pour
+                        ignorer la demande.
+                      </Text>
+                    )}
+                    {dmRequest.initiator_wondered_you && !dmRequest.viewer_wonders_initiator ? (
+                      <TouchableOpacity
+                        style={styles.dmWonderBtn}
+                        onPress={() => void handleWonderBack()}
+                        disabled={wonderBackLoading}
+                      >
+                        {wonderBackLoading ? (
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                          <Text style={styles.dmWonderBtnText}>Ajouter en retour dans mon Wonder</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                    <Text style={styles.dmRequestBody}>
+                      Cette personne peut envoyer jusqu’à {dmRequest.max_messages_before_accept} messages avant
+                      acceptation.{' '}
+                      <Text style={styles.dmReportLink} onPress={() => setReportOpen(true)}>
+                        Signaler
+                      </Text>
+                    </Text>
+                    <View style={styles.dmActionsRow}>
+                      <TouchableOpacity
+                        style={styles.dmDeclineBtn}
+                        onPress={handleDeclineDm}
+                        disabled={dmActionLoading}
+                      >
+                        <Text style={styles.dmDeclineBtnText}>Refuser</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.dmAcceptBtn}
+                        onPress={handleAcceptDm}
+                        disabled={dmActionLoading}
+                      >
+                        <Text style={styles.dmAcceptBtnText}>Accepter</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+                {peerBlock?.peer_blocked_viewer ? (
+                  <View style={styles.peerBlockBanner}>
+                    <Text style={styles.peerBlockBannerText}>
+                      Ce contact vous a bloqué. Vous ne pouvez plus lui écrire.
+                    </Text>
+                  </View>
+                ) : null}
+                {peerBlock?.viewer_blocked_peer ? (
+                  <View style={styles.peerBlockBanner}>
+                    <Text style={styles.peerBlockBannerText}>
+                      Vous avez bloqué {contact.name}.{' '}
+                      <Text style={styles.dmReportLink} onPress={() => void handleUnblockPeer()}>
+                        Débloquer
+                      </Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             }
           />
           </View>
@@ -2496,7 +2713,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input Bar */}
-      {!dmRequest?.pending_for_viewer && !selectionMode ? (
+      {!dmRequest?.pending_for_viewer && !selectionMode && !peerMessagingBlocked ? (
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + Spacing.xs }]}>
         {isRecording ? (
           /* Recording Mode */
@@ -2528,7 +2745,7 @@ export default function ChatScreen() {
                 testID="message-input"
                 style={styles.textInput}
                 placeholder="Message"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor="#8696A0"
                 value={newMessage}
                 onFocus={clearMessageHighlight}
                 onChangeText={(text) => {
@@ -2571,8 +2788,13 @@ export default function ChatScreen() {
                 <Ionicons name="send" size={20} color="#FFF" />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.sendBtn} onPress={startRecording} onLongPress={startRecording}>
-                <Ionicons name="mic" size={22} color="#FFF" />
+              <TouchableOpacity
+                style={styles.micBtn}
+                onPress={startRecording}
+                onLongPress={startRecording}
+                accessibilityLabel="Message vocal"
+              >
+                <Ionicons name="mic" size={24} color="#FFF" />
               </TouchableOpacity>
             )}
           </>
@@ -2580,38 +2802,33 @@ export default function ChatScreen() {
       </View>
       ) : null}
 
-      {!isGroupThread && dmRequest?.pending_for_viewer ? (
-        <View style={[styles.dmRequestFooter, { paddingBottom: insets.bottom + Spacing.md }]}>
-          <Text style={styles.dmRequestTitle}>
-            {contact.name} veut t&apos;envoyer un message
-          </Text>
-          <Text style={styles.dmRequestBody}>
-            Si tu acceptes, tu pourras chatter immédiatement avec cet utilisateur. Si tu supprimes, ce chat sera retiré
-            de tes demandes de messages.{'\n\n'}
-            Remarque : cet utilisateur peut envoyer jusqu&apos;à {dmRequest.max_messages_before_accept} messages.{' '}
-            <Text style={styles.dmReportLink} onPress={() => setReportOpen(true)}>
-              Signaler cet utilisateur
-            </Text>{' '}
-            si tu en reçois un suspect.
-          </Text>
-          <View style={styles.dmActionsRow}>
+      <Modal visible={peerMenuOpen} transparent animationType="fade" onRequestClose={() => setPeerMenuOpen(false)}>
+        <Pressable style={styles.contextOverlay} onPress={() => setPeerMenuOpen(false)}>
+          <View style={styles.peerMenuSheet}>
             <TouchableOpacity
-              style={styles.dmDeclineBtn}
-              onPress={handleDeclineDm}
-              disabled={dmActionLoading}
+              style={styles.peerMenuItem}
+              onPress={() => {
+                setPeerMenuOpen(false);
+                router.push(`/user/${recipientUserId}` as never);
+              }}
             >
-              <Text style={styles.dmDeclineBtnText}>Supprimer</Text>
+              <Ionicons name="person-outline" size={20} color={Colors.text} />
+              <Text style={styles.peerMenuItemText}>Voir le profil</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.dmAcceptBtn}
-              onPress={handleAcceptDm}
-              disabled={dmActionLoading}
-            >
-              <Text style={styles.dmAcceptBtnText}>Accepter</Text>
-            </TouchableOpacity>
+            {peerBlock?.viewer_blocked_peer ? (
+              <TouchableOpacity style={styles.peerMenuItem} onPress={() => void handleUnblockPeer()}>
+                <Ionicons name="checkmark-circle-outline" size={20} color={Colors.primary} />
+                <Text style={[styles.peerMenuItemText, { color: Colors.primary }]}>Débloquer</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.peerMenuItem} onPress={handleBlockPeer}>
+                <Ionicons name="ban-outline" size={20} color={Colors.error} />
+                <Text style={[styles.peerMenuItemText, { color: Colors.error }]}>Bloquer</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
-      ) : null}
+        </Pressable>
+      </Modal>
 
       <ReportModal visible={reportOpen} onClose={() => setReportOpen(false)} targetType="user" targetId={recipientUserId || ''} />
 
@@ -2741,16 +2958,24 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  // Header
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xs, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: '#E5DDD5' },
+  // Header — barre WhatsApp claire
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#D1D7DB',
+    backgroundColor: '#F0F2F5',
+  },
   backBtn: { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerProfile: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   headerAvatar: { width: 40, height: 40, borderRadius: 20 },
   headerInfo: { flex: 1 },
-  headerName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
-  headerHandle: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 1 },
-  headerStatus: { color: Colors.success, fontSize: FontSizes.xs },
+  headerName: { color: '#111B21', fontSize: 16, fontWeight: '600' },
+  headerHandle: { color: '#667781', fontSize: FontSizes.xs, marginTop: 1 },
+  headerStatus: { color: '#667781', fontSize: 12 },
   dmInitiatorBanner: {
     backgroundColor: 'rgba(255,106,0,0.12)',
     paddingHorizontal: Spacing.md,
@@ -2761,9 +2986,9 @@ const styles = StyleSheet.create({
   dmInitiatorText: { color: Colors.text, fontSize: FontSizes.xs, lineHeight: 18 },
   headerAction: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
   // Chat area
-  chatArea: { flex: 1, backgroundColor: '#0B141A' },
+  chatArea: { flex: 1, backgroundColor: '#E5DDD5' },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: Spacing.lg },
-  loadingText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center' },
+  loadingText: { color: '#667781', fontSize: 13, textAlign: 'center' },
   loadErrorButton: {
     marginTop: 8,
     paddingHorizontal: 20,
@@ -2784,6 +3009,19 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(252,211,77,0.25)',
   },
   offlineBannerText: { flex: 1, color: '#FCD34D', fontSize: 12 },
+  loadOlderButton: {
+    alignSelf: 'center',
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  loadOlderButtonText: { color: 'rgba(255,255,255,0.85)', fontSize: FontSizes.sm, fontWeight: '500' },
   peerIncomingBanner: {
     alignSelf: 'center',
     flexDirection: 'row',
@@ -2798,13 +3036,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
   },
   peerIncomingText: { color: 'rgba(255,255,255,0.92)', fontSize: FontSizes.sm, fontWeight: '600' },
-  messagesList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, paddingBottom: Spacing.lg },
-  // Date separator
-  dateSeparator: { alignItems: 'center', marginVertical: Spacing.md },
-  dateBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.sm },
-  dateText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.xs },
+  messagesList: { paddingHorizontal: 10, paddingVertical: 8, paddingBottom: Spacing.lg },
+  // Date separator — pilule centrée WhatsApp
+  dateSeparator: { alignItems: 'center', marginVertical: 10 },
+  dateBadge: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dateText: { color: '#54656F', fontSize: 12, fontWeight: '500' },
   // Message bubble
-  messageRow: { flexDirection: 'row', marginBottom: 2 },
+  messageRow: { flexDirection: 'row', marginBottom: 3 },
   messageRowMine: { justifyContent: 'flex-end' },
   groupSenderLabel: {
     color: Colors.primary,
@@ -2814,14 +3061,24 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   messageBubble: {
-    maxWidth: '80%',
-    borderRadius: 8,
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
+    maxWidth: '82%',
+    borderRadius: 7.5,
+    paddingHorizontal: 9,
+    paddingTop: 6,
     paddingBottom: 4,
     position: 'relative',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 1,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   messageBubbleSelected: { borderWidth: 1.5, borderColor: Colors.primary },
+  messageBubbleFlash: {
+    backgroundColor: 'rgba(255,235,59,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,193,7,0.5)',
+  },
   messageBubbleMenuActive: { paddingRight: 28 },
   selectionCheckWrap: {
     width: 36,
@@ -2836,16 +3093,24 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: '600',
   },
-  bubbleMine: { backgroundColor: '#005C4B', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
-  bubbleTheirs: { backgroundColor: '#1F2C34', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
-  tailMine: { borderTopRightRadius: 0 },
-  tailTheirs: { borderTopLeftRadius: 0 },
-  deletedBubble: { opacity: 0.6 },
-  messageText: { color: '#E9EDEF', fontSize: FontSizes.md, lineHeight: 22 },
-  messageTextMine: { color: '#E9EDEF' },
-  msgTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 3, marginTop: 2, marginBottom: 2 },
-  msgTimeText: { color: 'rgba(255,255,255,0.45)', fontSize: 11 },
-  msgTimeTextMine: { color: 'rgba(255,255,255,0.45)' },
+  bubbleMine: { backgroundColor: '#D9FDD3', borderTopRightRadius: 7.5, borderTopLeftRadius: 7.5 },
+  bubbleTheirs: { backgroundColor: '#FFFFFF', borderTopRightRadius: 7.5, borderTopLeftRadius: 7.5 },
+  tailMine: { borderTopRightRadius: 2 },
+  tailTheirs: { borderTopLeftRadius: 2 },
+  deletedBubble: { opacity: 0.65 },
+  messageText: { color: '#111B21', fontSize: 15, lineHeight: 21 },
+  messageTextMine: { color: '#111B21' },
+  msgTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 3,
+    marginTop: 1,
+    marginBottom: 1,
+    marginLeft: 8,
+  },
+  msgTimeText: { color: '#667781', fontSize: 11 },
+  msgTimeTextMine: { color: '#667781' },
   retryBtn: {
     marginTop: 8,
     alignSelf: 'flex-end',
@@ -2858,19 +3123,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,107,0,0.9)',
   },
   retryBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  editedLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontStyle: 'italic', marginRight: 3 },
+  editedLabel: { color: '#8696A0', fontSize: 10, fontStyle: 'italic', marginRight: 3 },
   // Forwarded
   forwardedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  forwardedText: { color: 'rgba(255,255,255,0.4)', fontSize: 11, fontStyle: 'italic' },
-  // Reply quote in message
-  replyQuote: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 6, marginBottom: 6, overflow: 'hidden' },
-  replyBar: { width: 3, backgroundColor: Colors.primary },
-  replyContent: { flex: 1, paddingHorizontal: 8, paddingVertical: 4 },
-  replyName: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
-  replyText: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
+  forwardedText: { color: '#667781', fontSize: 11, fontStyle: 'italic' },
   // Deleted message
   deletedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  deletedText: { color: 'rgba(255,255,255,0.4)', fontSize: FontSizes.md, fontStyle: 'italic' },
+  deletedText: { color: '#8696A0', fontSize: FontSizes.md, fontStyle: 'italic' },
   // Reactions
   reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
   reactionBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2 },
@@ -2884,19 +3143,53 @@ const styles = StyleSheet.create({
   attachIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   attachLabel: { color: Colors.textSecondary, fontSize: FontSizes.xs },
   // Reply bar (input area)
-  replyBar2: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
-  replyBarIndicator: { width: 3, height: 36, backgroundColor: Colors.primary, borderRadius: 1.5, marginRight: Spacing.sm },
+  replyBar2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F2F5',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#D1D7DB',
+  },
+  replyBarIndicator: { width: 4, height: 36, backgroundColor: '#00A884', borderRadius: 2, marginRight: Spacing.sm },
   replyBarContent: { flex: 1 },
-  replyBarName: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
-  replyBarText: { color: Colors.textSecondary, fontSize: 13 },
+  replyBarName: { color: '#00A884', fontSize: 12, fontWeight: '600' },
+  replyBarText: { color: '#667781', fontSize: 13 },
   replyBarClose: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   // Input
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: Spacing.sm, paddingTop: Spacing.sm, gap: Spacing.sm, backgroundColor: Colors.background },
-  inputRow: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', backgroundColor: Colors.surface, borderRadius: 24, paddingHorizontal: Spacing.sm, paddingVertical: Platform.OS === 'ios' ? 8 : 4, gap: 4 },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 6,
+    paddingTop: 6,
+    gap: 6,
+    backgroundColor: '#F0F2F5',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#D1D7DB',
+  },
+  inputRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 4,
+    paddingVertical: Platform.OS === 'ios' ? 6 : 3,
+    gap: 2,
+  },
   emojiBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  textInput: { flex: 1, color: Colors.text, fontSize: FontSizes.md, maxHeight: 100, paddingVertical: Platform.OS === 'ios' ? 4 : 2, paddingHorizontal: 4 },
+  textInput: {
+    flex: 1,
+    color: '#111B21',
+    fontSize: 15,
+    maxHeight: 100,
+    paddingVertical: Platform.OS === 'ios' ? 6 : 4,
+    paddingHorizontal: 6,
+  },
   cameraInlineBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  sendBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00A884', alignItems: 'center', justifyContent: 'center' },
+  micBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00A884', alignItems: 'center', justifyContent: 'center' },
   // Context menu
   contextOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   contextMenu: { backgroundColor: Colors.surface || '#1a1a2e', borderRadius: 16, width: width * 0.8, maxWidth: 320, paddingVertical: 8, overflow: 'hidden' },
@@ -2919,11 +3212,11 @@ const styles = StyleSheet.create({
   forwardAvatar: { width: 44, height: 44, borderRadius: 22 },
   forwardName: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
   locationBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, maxWidth: 280 },
-  locationBubbleText: { color: '#E9EDEF', fontSize: FontSizes.md, flex: 1 },
+  locationBubbleText: { color: '#111B21', fontSize: FontSizes.md, flex: 1 },
   contactBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, maxWidth: 280 },
-  contactBubbleText: { color: '#E9EDEF', fontSize: FontSizes.md, flex: 1 },
+  contactBubbleText: { color: '#111B21', fontSize: FontSizes.md, flex: 1 },
   fileBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, maxWidth: 280 },
-  fileBubbleName: { color: '#E9EDEF', fontSize: FontSizes.sm, flex: 1 },
+  fileBubbleName: { color: '#111B21', fontSize: FontSizes.sm, flex: 1 },
   contactPickerModal: { flex: 1, backgroundColor: Colors.background, marginTop: 72 },
   contactPickerHeader: {
     flexDirection: 'row',
@@ -2947,11 +3240,29 @@ const styles = StyleSheet.create({
   contactPickName: { color: Colors.text, fontSize: FontSizes.md },
   contactPickEmpty: { color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl, paddingHorizontal: Spacing.lg },
   // Voice bubble
-  voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 200 },
-  voiceWaveContainer: { flex: 1 },
-  voiceWaveTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 2, overflow: 'hidden' },
-  voiceWaveProgress: { height: '100%', backgroundColor: Colors.primary, borderRadius: 2 },
-  voiceDurationText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 3 },
+  voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 210, paddingVertical: 2 },
+  voicePlayBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  voiceWaveContainer: { flex: 1, minWidth: 88 },
+  voiceWaveTrack: { height: 3, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
+  voiceWaveProgress: { height: '100%', borderRadius: 2 },
+  voiceWaveProgressMine: { backgroundColor: 'rgba(255,255,255,0.85)' },
+  voiceWaveProgressTheirs: { backgroundColor: '#53BDEB' },
+  voiceDurationText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 4 },
+  voiceAvatarWrap: { width: 34, height: 34, position: 'relative' },
+  voiceAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#2A3942' },
+  voiceMicBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#202C33',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   transcriptionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 },
   transcriptionPending: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic' },
   transcriptionBox: {
@@ -3007,7 +3318,6 @@ const styles = StyleSheet.create({
     borderLeftColor: '#9C27B0',
     borderRadius: 6,
   },
-  voiceMicBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Image bubble
   imageBubble: { marginBottom: 2, position: 'relative', overflow: 'hidden', borderRadius: 8 },
   chatImage: { width: 220, height: 280, borderRadius: 8, marginBottom: 4 },
@@ -3029,13 +3339,55 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   videoLocalPlaceholderText: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
-  dmRequestFooter: {
-    backgroundColor: Colors.background,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
+  dmRequestCard: {
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    marginTop: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#FFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#D1D7DB',
   },
+  dmWonderBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255,45,85,0.1)',
+  },
+  dmWonderBtnText: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '700' },
+  peerBlockBanner: {
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  peerBlockBannerText: { color: '#54656F', fontSize: FontSizes.sm, lineHeight: 20 },
+  peerMenuSheet: {
+    position: 'absolute',
+    right: Spacing.md,
+    top: '18%',
+    minWidth: 220,
+    backgroundColor: '#FFF',
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.sm,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  peerMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  peerMenuItemText: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
   dmRequestTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700', marginBottom: Spacing.sm },
   dmRequestBody: { color: Colors.textSecondary, fontSize: FontSizes.sm, lineHeight: 20, marginBottom: Spacing.sm },
   dmReportLink: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '600', marginBottom: Spacing.md },

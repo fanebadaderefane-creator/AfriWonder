@@ -145,22 +145,80 @@ class MessageService {
     });
   }
 
+  private async getBlockedPeerIds(userId: string): Promise<Set<string>> {
+    const rows = await prisma.userBlock.findMany({
+      where: { OR: [{ blocker_id: userId }, { blocked_id: userId }] },
+      select: { blocker_id: true, blocked_id: true },
+    });
+    const peers = new Set<string>();
+    for (const row of rows) {
+      peers.add(row.blocker_id === userId ? row.blocked_id : row.blocker_id);
+    }
+    return peers;
+  }
+
+  private async appendPeerBlockMeta(
+    conversation: Record<string, any>,
+    viewerId: string,
+  ): Promise<Record<string, any>> {
+    if (conversation.is_group) {
+      return { ...conversation, peer_block: null };
+    }
+    const otherId =
+      conversation.user1_id === viewerId ? conversation.user2_id : conversation.user1_id;
+    if (!otherId) return { ...conversation, peer_block: null };
+    const [blockedByViewer, blockedByPeer] = await Promise.all([
+      prisma.userBlock.findFirst({
+        where: { blocker_id: viewerId, blocked_id: otherId },
+        select: { id: true },
+      }),
+      prisma.userBlock.findFirst({
+        where: { blocker_id: otherId, blocked_id: viewerId },
+        select: { id: true },
+      }),
+    ]);
+    return {
+      ...conversation,
+      peer_block: {
+        viewer_blocked_peer: !!blockedByViewer,
+        peer_blocked_viewer: !!blockedByPeer,
+      },
+    };
+  }
+
   private async appendDmRequestMeta(
     conversation: Record<string, any> | null,
     viewerId: string
   ): Promise<Record<string, any> | null> {
     if (!conversation) return conversation;
-    if (conversation.is_group) {
-      return { ...conversation, dm_request: null };
+    const withBlock = await this.appendPeerBlockMeta(conversation, viewerId);
+    if (withBlock.is_group) {
+      return { ...withBlock, dm_request: null };
     }
-    const initiatorId = conversation.dm_request_initiator_id as string | null | undefined;
+    const initiatorId = withBlock.dm_request_initiator_id as string | null | undefined;
     let initiator_sent_count = 0;
     if (initiatorId) {
-      initiator_sent_count = await this.countNonScheduledMessagesFromSender(conversation.id, initiatorId);
+      initiator_sent_count = await this.countNonScheduledMessagesFromSender(withBlock.id, initiatorId);
     }
-    const pending = conversation.dm_request_pending_for_user_id as string | null | undefined;
+    const pending = withBlock.dm_request_pending_for_user_id as string | null | undefined;
+    let initiator_wondered_you = false;
+    let viewer_wonders_initiator = false;
+    if (initiatorId) {
+      const [w1, w2] = await Promise.all([
+        prisma.wonderRelation.findFirst({
+          where: { follower_id: initiatorId, creator_id: viewerId, status: 'active' },
+          select: { id: true },
+        }),
+        prisma.wonderRelation.findFirst({
+          where: { follower_id: viewerId, creator_id: initiatorId, status: 'active' },
+          select: { id: true },
+        }),
+      ]);
+      initiator_wondered_you = !!w1;
+      viewer_wonders_initiator = !!w2;
+    }
     return {
-      ...conversation,
+      ...withBlock,
       dm_request: {
         max_messages_before_accept: DM_REQUEST_MAX_INITIATOR_MESSAGES,
         pending_for_viewer: pending === viewerId,
@@ -171,8 +229,38 @@ class MessageService {
           initiatorId && pending
             ? Math.max(0, DM_REQUEST_MAX_INITIATOR_MESSAGES - initiator_sent_count)
             : 0,
+        initiator_wondered_you,
+        viewer_wonders_initiator,
       },
     };
+  }
+
+  async canUserJoinConversationRoom(userId: string, conversationId: string): Promise<boolean> {
+    const conv = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ user1_id: userId }, { user2_id: userId }],
+      },
+      select: { id: true, user1_id: true, user2_id: true, is_group: true },
+    });
+    if (!conv) return false;
+    if (conv.is_group) {
+      const member = await prisma.conversationGroupMember.findFirst({
+        where: { group_id: conversationId, user_id: userId },
+        select: { id: true },
+      });
+      return !!member;
+    }
+    const otherId = conv.user1_id === userId ? conv.user2_id : conv.user1_id;
+    return !(await this.isBlocked(userId, otherId));
+  }
+
+  async canUserJoinGroupRoom(userId: string, groupId: string): Promise<boolean> {
+    const member = await prisma.conversationGroupMember.findFirst({
+      where: { group_id: groupId, user_id: userId },
+      select: { id: true },
+    });
+    return !!member;
   }
 
   private async getConversationForViewer(conversationId: string, viewerId: string) {
@@ -197,6 +285,12 @@ class MessageService {
       },
     });
     if (!conversation) throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
+    if (!conversation.is_group) {
+      const otherId = conversation.user1_id === viewerId ? conversation.user2_id : conversation.user1_id;
+      if (await this.isBlocked(viewerId, otherId)) {
+        throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
+      }
+    }
     if ((conversation as any).pinned_message?.deleted_for_all_at) {
       (conversation as any).pinned_message.content = 'Ce message a été supprimé';
     }
@@ -256,6 +350,8 @@ class MessageService {
   ) {
     const skip = (page - 1) * limit;
     const take = Math.min(50, Math.max(1, limit));
+    const blockedPeerIds = await this.getBlockedPeerIds(userId);
+    const blockedList = Array.from(blockedPeerIds);
 
     const baseWhere = {
       OR: [
@@ -291,6 +387,24 @@ class MessageService {
     const andParts: object[] = [{ OR: [...baseWhere.OR] }];
     if (inboxClause) andParts.push(inboxClause);
     if (archiveFilter) andParts.push(archiveFilter);
+    if (blockedList.length > 0) {
+      andParts.push({
+        OR: [
+          { is_group: true },
+          {
+            AND: [
+              { is_group: false },
+              {
+                OR: [
+                  { user1_id: userId, NOT: { user2_id: { in: blockedList } } },
+                  { user2_id: userId, NOT: { user1_id: { in: blockedList } } },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
     const where = { AND: andParts };
 
     const [conversations, total] = await Promise.all([
@@ -449,6 +563,12 @@ class MessageService {
       },
     });
     if (!conv) throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
+    if (userId) {
+      const otherId = conv.user1_id === userId ? conv.user2_id : conv.user1_id;
+      if (await this.isBlocked(userId, otherId)) {
+        throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
+      }
+    }
 
     const take = Math.min(50, Math.max(1, limit)) + 1;
 

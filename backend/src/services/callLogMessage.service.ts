@@ -8,6 +8,7 @@ import messageService, { emitToConversationRoom } from './message.service.js';
 import {
   buildCallLogContent,
   callLogPreviewLabel,
+  formatCallDurationFr,
   parseCallLogContent,
   type CallLogOutcome,
 } from '../utils/callLogPayload.js';
@@ -66,12 +67,7 @@ function notificationCopy(
       };
     case 'completed':
     default: {
-      const dur =
-        durationSec >= 60
-          ? `${Math.floor(durationSec / 60)} min ${durationSec % 60 ? `${durationSec % 60} s` : ''}`.trim()
-          : durationSec > 0
-            ? `${durationSec} s`
-            : '';
+      const dur = formatCallDurationFr(durationSec);
       return {
         type: 'call_ended',
         title: 'Appel terminé',

@@ -40,7 +40,7 @@ function CallLogIconBadge({
   const direction = callLogIconDirection(callLog, viewerUserId);
   const isMissed = direction === 'missed';
   const isVideo = callLog.media === 'video';
-  const iconColor = isMissed ? '#F15C6D' : isMine ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.75)';
+  const iconColor = isMissed ? '#F15C6D' : isMine ? '#1DAA61' : '#54656F';
 
   const arrowName =
     direction === 'outgoing'
@@ -153,7 +153,7 @@ export function CallLogBubble({
 const styles = StyleSheet.create({
   messageRow: { flexDirection: 'row', marginBottom: 2 },
   messageRowMine: { justifyContent: 'flex-end' },
-  callLogBubbleWrap: { position: 'relative', maxWidth: '80%' },
+  callLogBubbleWrap: { position: 'relative', maxWidth: '72%' },
   messageBubble: {
     maxWidth: '80%',
     borderRadius: 8,
@@ -162,11 +162,11 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     position: 'relative',
   },
-  bubbleMine: { backgroundColor: '#005C4B', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
-  bubbleTheirs: { backgroundColor: '#1F2C34', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
+  bubbleMine: { backgroundColor: '#D9FDD3', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
+  bubbleTheirs: { backgroundColor: '#FFFFFF', borderTopRightRadius: 8, borderTopLeftRadius: 8 },
   tailMine: { borderTopRightRadius: 0 },
   tailTheirs: { borderTopLeftRadius: 0 },
-  callLogBubble: { minWidth: 188, paddingBottom: 6 },
+  callLogBubble: { minWidth: 168, maxWidth: 280, paddingBottom: 6 },
   callLogBubbleMenuActive: { paddingRight: 28 },
   callLogBubbleInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconCircle: {
@@ -177,8 +177,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  iconCircleMine: { backgroundColor: 'rgba(0,0,0,0.18)' },
-  iconCircleTheirs: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  iconCircleMine: { backgroundColor: 'rgba(0,92,75,0.1)' },
+  iconCircleTheirs: { backgroundColor: 'rgba(0,0,0,0.06)' },
   arrowBadge: {
     position: 'absolute',
     width: 14,
@@ -189,10 +189,10 @@ const styles = StyleSheet.create({
   arrowOutgoing: { top: 2, right: 2, transform: [{ rotate: '45deg' }] },
   arrowIncoming: { bottom: 2, left: 2, transform: [{ rotate: '-45deg' }] },
   callLogTextWrap: { flexShrink: 1, flex: 1, paddingVertical: 2 },
-  callLogTitle: { fontSize: FontSizes.md, fontWeight: '500', color: '#E9EDEF' },
+  callLogTitle: { fontSize: 15, fontWeight: '600', color: '#111B21', letterSpacing: 0.1 },
   callLogTitleAlert: { color: '#F15C6D' },
-  callLogSubtitle: { color: 'rgba(255,255,255,0.55)', fontSize: FontSizes.sm, marginTop: 2 },
-  callLogSubtitleAction: { color: 'rgba(255,255,255,0.72)' },
+  callLogSubtitle: { color: '#667781', fontSize: 14, marginTop: 3, fontWeight: '400' },
+  callLogSubtitleAction: { color: '#00A884' },
   msgTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,5 +200,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 2,
   },
-  msgTimeText: { color: 'rgba(255,255,255,0.45)', fontSize: 11 },
+  msgTimeText: { color: '#667781', fontSize: 11 },
 });

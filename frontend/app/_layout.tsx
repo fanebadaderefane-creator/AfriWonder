@@ -28,6 +28,7 @@ import { startBackendWarmupAtBoot } from '../src/api/backendWarmup';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
 import { initIncomingCallService, wireIncomingCallSocket, displayIncomingCall } from '../src/services/incomingCallService';
+import { wireGroupCallParticipantInvite } from '../src/call/wireGroupCallParticipantInvite';
 import { initVoipPushService } from '../src/services/voipPushService';
 import { initLiveStartedNotifService } from '../src/services/liveStartedNotifService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
@@ -228,6 +229,7 @@ function RootLayoutContent() {
     void initIncomingCallService();
     void initVoipPushService();
     const offIncomingSocket = wireIncomingCallSocket();
+    const offGroupInvite = wireGroupCallParticipantInvite();
 
     // Notif "ami en live" - écoute socket + affiche notif locale + tap = ouvre live
     let offLiveStarted: (() => void) | null = null;
@@ -313,6 +315,7 @@ function RootLayoutContent() {
       offlineSyncCleanup?.();
       uploadRecoveryService.stop();
       offIncomingSocket?.();
+      offGroupInvite?.();
       offPushReceived?.();
       offLiveStarted?.();
     };

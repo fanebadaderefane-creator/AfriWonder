@@ -42,7 +42,7 @@ describe('callLogDisplay', () => {
       JSON.stringify({ ...JSON.parse(SAMPLE), outcome: 'missed', durationSec: 0 }),
     )!;
     expect(formatCallLogTitle(missed, 'user-b')).toBe('Appel vocal manqué');
-    expect(formatCallLogSubtitle(missed, 'user-b')).toBe('Cliquez pour rappeler');
+    expect(formatCallLogSubtitle(missed, 'user-b')).toBe('');
     expect(callLogCanCallBack(missed, 'user-b')).toBe(true);
     expect(callLogBubbleIsMine(missed, 'user-b')).toBe(false);
 
@@ -52,13 +52,16 @@ describe('callLogDisplay', () => {
   });
 
   it('durée style WhatsApp', () => {
-    expect(formatCallDurationFr(1)).toBe('1 seconde');
-    expect(formatCallDurationFr(20)).toBe('20 secondes');
-    expect(formatCallDurationFr(60)).toBe('1 minute');
-    expect(formatCallDurationFr(125)).toBe('2 min 5 s');
+    expect(formatCallDurationFr(1)).toBe('1 s');
+    expect(formatCallDurationFr(45)).toBe('45 s');
+    expect(formatCallDurationFr(60)).toBe('1 min');
+    expect(formatCallDurationFr(125)).toBe('2 min');
+    expect(formatCallDurationFr(46 * 60)).toBe('46 min');
+    expect(formatCallDurationFr(3600 + 27 * 60)).toBe('1 h et 27 min');
+    expect(formatCallDurationFr(8 * 3600 + 27 * 60 + 4)).toBe('8 h et 27 min');
 
     const m = parseCallLogContent(SAMPLE)!;
-    expect(formatCallLogSubtitle(m, 'user-b')).toBe('2 min 5 s');
+    expect(formatCallLogSubtitle(m, 'user-b')).toBe('2 min');
   });
 
   it('icône direction et titre alerte', () => {

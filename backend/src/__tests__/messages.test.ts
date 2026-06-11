@@ -278,4 +278,65 @@ describe('Messages routes', () => {
     expect(row.preview).toContain('Rappel');
     expect(row.scheduled_at).toBeTruthy();
   });
+
+  it('refuses conversation access to non-participants', async () => {
+    const open = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ recipientId: sellerId, type: 'text', content: 'message privé' });
+    expect(open.status).toBe(200);
+    const convId = open.body.data.conversation_id as string;
+
+    const hash = await bcrypt.hash('MsgTest123!@#', 10);
+    const stranger = await prisma.user.create({
+      data: {
+        email: `stranger-msg-${Date.now()}@example.com`,
+        username: `stranger_msg_${Date.now()}`,
+        password_hash: hash,
+        full_name: 'Stranger',
+      },
+    });
+    const strangerLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: stranger.email, password: 'MsgTest123!@#' });
+    expect(strangerLogin.status).toBe(200);
+    const strangerToken = strangerLogin.body.data.accessToken as string;
+
+    const convRes = await request(app)
+      .get(`/api/messages/conversations/id/${convId}`)
+      .set('Authorization', `Bearer ${strangerToken}`);
+    expect(convRes.status).toBe(404);
+
+    const msgsRes = await request(app)
+      .get(`/api/messages/${convId}`)
+      .set('Authorization', `Bearer ${strangerToken}`);
+    expect(msgsRes.status).toBe(404);
+  });
+
+  it('hides blocked peers from inbox and message reads', async () => {
+    const open = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ recipientId: sellerId, type: 'text', content: 'salut vendeur' });
+    expect(open.status).toBe(200);
+    const convId = open.body.data.conversation_id as string;
+
+    const blockRes = await request(app)
+      .post('/api/messages/block')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ userId: sellerId });
+    expect(blockRes.status).toBe(200);
+
+    const buyerInbox = await request(app)
+      .get('/api/messages/conversations')
+      .set('Authorization', `Bearer ${buyerToken}`);
+    expect(buyerInbox.status).toBe(200);
+    const buyerIds = (buyerInbox.body.data.conversations as Array<{ id: string }>).map((c) => c.id);
+    expect(buyerIds).not.toContain(convId);
+
+    const sellerMsgs = await request(app)
+      .get(`/api/messages/${convId}`)
+      .set('Authorization', `Bearer ${sellerToken}`);
+    expect(sellerMsgs.status).toBe(404);
+  });
 });

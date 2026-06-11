@@ -39,6 +39,23 @@ export function parseCallLogContent(raw: string | null | undefined): CallLogCont
   }
 }
 
+/** Durée style WhatsApp FR — partagée avec le fil DM mobile (`callLogDisplay.ts`). */
+export function formatCallDurationFr(sec: number): string {
+  const total = Math.max(0, Math.floor(Number(sec) || 0));
+  if (total < 1) return '';
+  if (total < 60) return total === 1 ? '1 s' : `${total} s`;
+
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+
+  if (h > 0) {
+    if (m <= 0) return h === 1 ? '1 h' : `${h} h`;
+    return h === 1 ? `1 h et ${m} min` : `${h} h et ${m} min`;
+  }
+
+  return m === 1 ? '1 min' : `${m} min`;
+}
+
 export function callLogPreviewLabel(outcome: CallLogOutcome, media: 'audio' | 'video'): string {
   const kind = media === 'video' ? 'Appel vidéo' : 'Appel audio';
   switch (outcome) {
