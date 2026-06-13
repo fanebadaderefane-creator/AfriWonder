@@ -82,17 +82,18 @@ describe('pickVideoProfileForNetwork — Afrique 2G/3G/4G', () => {
   });
 });
 
-describe('shouldTreatAsMobileCgnatNetwork — Mali / NetInfo unknown', () => {
-  it('natif unknown → CGNAT probable (TURN relay)', () => {
-    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, false)).toBe(true);
+describe('shouldTreatAsMobileCgnatNetwork — parité Web/Android', () => {
+  it('cellular explicite → CGNAT (relais forcé si TURN configuré)', () => {
     expect(shouldTreatAsMobileCgnatNetwork({ type: 'cellular', cellularGeneration: '4g' }, false)).toBe(
       true,
     );
-    expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, false)).toBe(false);
-  });
-  it('web unknown → pas de supposition cellulaire', () => {
-    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, true)).toBe(false);
     expect(shouldTreatAsMobileCgnatNetwork({ type: 'cellular' }, true)).toBe(true);
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, false)).toBe(false);
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, true)).toBe(false);
+  });
+  it('unknown → pas de supposition cellulaire (Web et Android)', () => {
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, false)).toBe(false);
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, true)).toBe(false);
   });
 });
 
@@ -128,9 +129,14 @@ describe('shouldForceTurnRelay — CGNAT Afrique', () => {
       shouldForceTurnRelay({ turnConfigured: false, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(false);
   });
-  it('natif + NetInfo unknown + TURN → relais forcé', () => {
+  it('natif + NetInfo unknown + TURN → pas de relais forcé (parité Web)', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
+    ).toBe(false);
+  });
+  it('cellular + TURN → relais forcé natif et web', () => {
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(true);
   });
 });
@@ -191,7 +197,7 @@ describe('réseaux lents 2G/3G — vocal et délais', () => {
         net: { type: 'unknown' },
         isWeb: false,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldBlockCellularWithoutTurn({
         turnConfigured: false,
@@ -342,7 +348,7 @@ describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
         net: { type: 'unknown' },
         iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

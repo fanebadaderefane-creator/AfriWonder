@@ -96,6 +96,11 @@ export function logIceSelectedCandidate(meta: Record<string, unknown>): void {
   console.error('[ICE_SELECTED]', serialize(meta));
 }
 
+/** RTP entrant/sortant par kind — preuve média réel (packets, bytes, framesDecoded). */
+export function logRtpMediaStats(meta: Record<string, unknown>): void {
+  console.error('[RTP_MEDIA_STATS]', serialize(meta));
+}
+
 /** État senders/transceivers juste avant createOffer (debug mid=0 Android). */
 export function logPreCreateOfferPeerConnection(meta: Record<string, unknown>): void {
   logAfwCall('pre_create_offer', meta);

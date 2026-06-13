@@ -34,19 +34,21 @@ export function isCellularNetwork(net: NetworkSnapshot | null | undefined): bool
 }
 
 /**
- * Réseau probablement derrière CGNAT opérateur (Mali / Afrique de l’Ouest).
- * Sur Android natif, NetInfo renvoie souvent `unknown` sur données mobiles (Xiaomi, Samsung…)
- * alors que le Wi‑Fi est en général `wifi` — on force TURN relay dans ce cas, pas sur Wi‑Fi.
+ * Réseau probablement derrière CGNAT opérateur (cellulaire explicite).
+ *
+ * Parité Web/Android (juin 2026) : `unknown` ne force plus le relais — sur Android,
+ * NetInfo `unknown` arrive aussi en Wi‑Fi mal détecté (Samsung/Xiaomi), ce qui
+ * imposait TURN TLS-only à tort. Seul `cellular` déclenche `iceTransportPolicy:
+ * 'relay'`. Les serveurs TURN restent dans iceServers : ICE peut toujours choisir
+ * un relais si le P2P échoue.
  */
 export function shouldTreatAsMobileCgnatNetwork(
   net: NetworkSnapshot | null | undefined,
-  isWeb: boolean,
+  _isWeb: boolean,
 ): boolean {
   const type = String(net?.type || '').toLowerCase();
   if (type === 'wifi' || type === 'ethernet') return false;
-  if (isCellularNetwork(net)) return true;
-  if (!isWeb && (type === 'unknown' || !type)) return true;
-  return false;
+  return isCellularNetwork(net);
 }
 
 /** Intervalle entre retentes `MediaStream#toURL()` avant montage RTCView natif. */

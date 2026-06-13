@@ -63,7 +63,11 @@ import {
   webCallAudioProbeHint,
   type WebCallAudioProbe,
 } from '../../src/call/callNativeMedia';
-import { connectionQualityFromRtcStatsReport, iceSelectedCandidateFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
+import {
+  connectionQualityFromRtcStatsReport,
+  iceSelectedCandidateFromRtcStatsReport,
+  rtpMediaStatsFromRtcStatsReport,
+} from '../../src/call/webrtcConnectionQuality';
 import {
   buildCallIceConfig,
   callConnectionWatchdogMs,
@@ -148,6 +152,7 @@ import {
   logRemoteRtcBindSkipped,
   logRemoteMediaAudit,
   logIceSelectedCandidate,
+  logRtpMediaStats,
   logSetLocalDescription,
   logSetRemoteDescription,
   summarizeCallSdp,
@@ -3389,6 +3394,7 @@ function CallScreenInner() {
       void pc.getStats().then((report) => {
         const q = connectionQualityFromRtcStatsReport(report);
         const ice = iceSelectedCandidateFromRtcStatsReport(report);
+        const rtp = rtpMediaStatsFromRtcStatsReport(report);
         setConnectionDisplay({
           labelFr: q.labelFr,
           bars: q.bars,
@@ -3404,6 +3410,11 @@ function CallScreenInner() {
           remoteType: ice.remoteType,
           protocol: ice.protocol,
           relayUsed: ice.relayUsed,
+        });
+        logRtpMediaStats({
+          callId: callIdRef.current,
+          audio: rtp.audio,
+          video: rtp.video,
         });
       });
     };

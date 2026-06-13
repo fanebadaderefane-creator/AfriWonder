@@ -139,10 +139,15 @@ if (/attachNativeAudioTrackToPeerConnection/.test(callNativeMedia)) {
   fail('attachNativeAudioTrackToPeerConnection (callNativeMedia.ts)');
 }
 const netCfg = read('src/call/callNetworkConfig.ts');
-if (/shouldTreatAsMobileCgnatNetwork/.test(netCfg) && /type === 'unknown'/.test(netCfg)) {
-  ok('NetInfo unknown → TURN relay Mali (shouldTreatAsMobileCgnatNetwork)');
+if (/shouldTreatAsMobileCgnatNetwork/.test(netCfg) && /isCellularNetwork\(net\)/.test(netCfg)) {
+  ok('CGNAT cellulaire explicite — parité Web/Android (shouldTreatAsMobileCgnatNetwork)');
 } else {
-  fail('NetInfo unknown Mali — shouldTreatAsMobileCgnatNetwork manquant');
+  fail('shouldTreatAsMobileCgnatNetwork — détection cellulaire manquante');
+}
+if (/rtpMediaStatsFromRtcStatsReport/.test(read('src/call/webrtcConnectionQuality.ts')) && /logRtpMediaStats/.test(callTsx)) {
+  ok('Logs RTP média (packets/bytes/framesDecoded)');
+} else {
+  fail('Logs RTP média — rtpMediaStatsFromRtcStatsReport / logRtpMediaStats manquants');
 }
 if (/nativeRtcBindRetryAttempts/.test(netCfg)) {
   ok('Retentes RTCView adaptées au réseau (nativeRtcBindRetryAttempts)');

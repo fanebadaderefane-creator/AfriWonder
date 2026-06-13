@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { connectionQualityFromRtcStatsReport, iceSelectedCandidateFromRtcStatsReport } from './webrtcConnectionQuality';
+import {
+  connectionQualityFromRtcStatsReport,
+  iceSelectedCandidateFromRtcStatsReport,
+  rtpMediaStatsFromRtcStatsReport,
+} from './webrtcConnectionQuality';
 
 function mockReport(entries: Record<string, unknown>[]) {
   return {
@@ -53,5 +57,63 @@ describe('iceSelectedCandidateFromRtcStatsReport', () => {
     );
     expect(ice.relayUsed).toBe(true);
     expect(ice.localType).toBe('relay');
+  });
+});
+
+describe('rtpMediaStatsFromRtcStatsReport', () => {
+  it('agrège inbound et outbound par kind', () => {
+    const rtp = rtpMediaStatsFromRtcStatsReport(
+      mockReport([
+        {
+          type: 'inbound-rtp',
+          kind: 'audio',
+          packetsReceived: 120,
+          bytesReceived: 48000,
+        },
+        {
+          type: 'inbound-rtp',
+          kind: 'video',
+          packetsReceived: 800,
+          bytesReceived: 900000,
+          framesDecoded: 240,
+        },
+        {
+          type: 'outbound-rtp',
+          kind: 'audio',
+          packetsSent: 115,
+          bytesSent: 46000,
+        },
+        {
+          type: 'outbound-rtp',
+          kind: 'video',
+          packetsSent: 750,
+          bytesSent: 850000,
+        },
+      ]),
+    );
+    expect(rtp.audio).toEqual({
+      kind: 'audio',
+      packetsReceived: 120,
+      bytesReceived: 48000,
+      packetsSent: 115,
+      bytesSent: 46000,
+      framesDecoded: 0,
+    });
+    expect(rtp.video).toEqual({
+      kind: 'video',
+      packetsReceived: 800,
+      bytesReceived: 900000,
+      packetsSent: 750,
+      bytesSent: 850000,
+      framesDecoded: 240,
+    });
+  });
+
+  it('retourne null si aucune entrée RTP', () => {
+    const rtp = rtpMediaStatsFromRtcStatsReport(
+      mockReport([{ type: 'candidate-pair', state: 'succeeded' }]),
+    );
+    expect(rtp.audio).toBeNull();
+    expect(rtp.video).toBeNull();
   });
 });
