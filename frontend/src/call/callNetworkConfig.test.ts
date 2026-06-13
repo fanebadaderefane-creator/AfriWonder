@@ -270,10 +270,11 @@ describe('buildCallIceConfig', () => {
 });
 
 describe('optimizeIceServersForNativeRelay', () => {
-  it('préfère turns: et regroupe les URLs Metered', () => {
+  it('priorise le relais UDP puis garde turns: TLS (fix vidéo/audio international)', () => {
     const meteredLike: RTCIceServer[] = [
       { urls: 'stun:stun.relay.metered.ca:80' },
       { urls: 'turn:global.relay.metered.ca:80', username: 'u1', credential: 'c1' },
+      { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'u1', credential: 'c1' },
       { urls: 'turn:global.relay.metered.ca:443', username: 'u1', credential: 'c1' },
       { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'u1', credential: 'c1' },
     ];
@@ -281,8 +282,11 @@ describe('optimizeIceServersForNativeRelay', () => {
     expect(out).toHaveLength(2);
     const turnEntry = out[1];
     const urls = Array.isArray(turnEntry.urls) ? turnEntry.urls : [turnEntry.urls];
-    expect(urls[0]).toMatch(/^turns:/);
-    expect(urls.length).toBeGreaterThanOrEqual(1);
+    // 1er candidat = relais UDP (média temps réel, pas de HOL blocking TCP).
+    expect(urls[0]).toBe('turn:global.relay.metered.ca:80');
+    expect(urls.some((u) => /^turn:/.test(u) && !u.includes('transport=tcp'))).toBe(true);
+    // Garde au moins un turns: TLS (repli + garde shouldBlockNativeCellularWithoutTlsTurn).
+    expect(urls.some((u) => /^turns:/.test(u))).toBe(true);
     expect(turnEntry.username).toBe('u1');
     expect(turnEntry.credential).toBe('c1');
   });

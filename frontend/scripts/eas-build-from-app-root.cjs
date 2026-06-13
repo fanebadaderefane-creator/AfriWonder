@@ -7,6 +7,7 @@
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const appRoot = path.resolve(__dirname, '..');
 process.env.EAS_NO_VCS = '1';
@@ -18,6 +19,50 @@ const easArgs = ['build', ...passthrough];
 function readArgValue(args, flag) {
   const i = args.indexOf(flag);
   return i >= 0 && args[i + 1] ? args[i + 1] : null;
+}
+
+function profileUsesLocalAndroidCredentials(profileName) {
+  if (!profileName) return false;
+  const easJsonPath = path.join(appRoot, 'eas.json');
+  let easJson;
+  try {
+    easJson = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
+  } catch {
+    return false;
+  }
+  const profile = easJson?.build?.[profileName];
+  if (!profile) return false;
+  const androidSource = profile?.android?.credentialsSource;
+  const rootSource = profile?.credentialsSource;
+  return androidSource === 'local' || rootSource === 'local';
+}
+
+const platform = readArgValue(passthrough, '--platform');
+const profile = readArgValue(passthrough, '--profile');
+
+function runNodeScript(scriptName) {
+  return spawnSync('node', [path.join(__dirname, scriptName)], {
+    cwd: appRoot,
+    stdio: 'inherit',
+    env: process.env,
+    shell: process.platform === 'win32',
+  });
+}
+
+if (platform === 'android' && profileUsesLocalAndroidCredentials(profile)) {
+  const { resolveKeystorePath } = require('./check-android-keystore.cjs');
+  const keystoreCheck = resolveKeystorePath();
+  if (!keystoreCheck.ok) {
+    console.log('[eas] Keystore locale absente — téléchargement depuis EAS…');
+    const sync = runNodeScript('sync-android-keystore-from-eas.cjs');
+    if (sync.status !== 0) {
+      process.exit(sync.status === null ? 1 : sync.status);
+    }
+  }
+  const check = runNodeScript('check-android-keystore.cjs');
+  if (check.status !== 0) {
+    process.exit(check.status === null ? 1 : check.status);
+  }
 }
 
 const result = spawnSync('eas', easArgs, {

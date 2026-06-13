@@ -81,6 +81,7 @@
       "./plugins/withAndroidNotifeeMaven.js",
       "./plugins/withAndroidNotifeeForegroundService.js",
       "./plugins/withAndroidNotificationIconDrawable.js",
+      "./plugins/withAndroidTurnCleartext.js",
       [
         "expo-build-properties",
         {

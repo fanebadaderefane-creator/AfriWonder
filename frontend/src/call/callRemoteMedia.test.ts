@@ -12,11 +12,14 @@ import {
   remoteStreamReadyForConnectedUi,
   shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
+  shouldRefreshNativeRemoteRtcView,
   receiverTracksBindingKey,
   shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
   streamHasLiveVideo,
+  streamHasRemoteVideoTrack,
+  streamHasRenderableRemoteVideo,
 } from './callRemoteMedia';
 
 describe('callRemoteMedia', () => {
@@ -116,6 +119,7 @@ describe('callRemoteMedia', () => {
     expect(
       shouldMarkCallConnected({
         isVideo: true,
+        remoteSdpHasVideo: false,
         stream: {
           getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
           getVideoTracks: () => [],
@@ -330,6 +334,99 @@ describe('callRemoteMedia', () => {
         stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
       }),
     ).toBe(false);
+    expect(
+      shouldBindNativeRemoteStreamUrl({
+        isVideo: true,
+        hasRemoteDescription: true,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
+          getVideoTracks: () => [{ id: 'v1', enabled: true, readyState: 'new' }],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldMarkCallConnected — appel vidéo : pas connecté sur ICE + audio seul si SDP distant a vidéo', () => {
+    expect(
+      shouldMarkCallConnected({
+        isVideo: true,
+        hasRemoteDescription: true,
+        remoteSdpHasVideo: true,
+        iceConnectionState: 'connected',
+        peerConnectionState: 'connected',
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
+          getVideoTracks: () => [],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('shouldMarkCallConnected — appel vidéo : audio seul OK si SDP distant sans vidéo', () => {
+    expect(
+      shouldMarkCallConnected({
+        isVideo: true,
+        hasRemoteDescription: true,
+        remoteSdpHasVideo: false,
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live' }],
+          getVideoTracks: () => [],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('shouldRefreshNativeRemoteRtcView — vidéo ajoutée après bind audio', () => {
+    expect(
+      shouldRefreshNativeRemoteRtcView({
+        isVideo: true,
+        prevBindingKey: 'a1:live|',
+        nextBindingKey: 'a1:live|v1:live|',
+        prevVideoCount: 0,
+        nextVideoCount: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it('streamHasRemoteVideoTrack détecte new et live', () => {
+    expect(
+      streamHasRemoteVideoTrack({
+        getVideoTracks: () => [{ readyState: 'new' }],
+      }),
+    ).toBe(true);
+  });
+
+  it('streamHasRenderableRemoteVideo exige une piste live démutée (frames décodées)', () => {
+    // Piste présente mais muette → écran noir : NON affichable.
+    expect(
+      streamHasRenderableRemoteVideo({
+        getVideoTracks: () => [{ readyState: 'live', enabled: true, muted: true }],
+      }),
+    ).toBe(false);
+    // Piste seulement « new » → pas encore de frames.
+    expect(
+      streamHasRenderableRemoteVideo({
+        getVideoTracks: () => [{ readyState: 'new', enabled: true, muted: false }],
+      }),
+    ).toBe(false);
+    // Piste désactivée → NON affichable.
+    expect(
+      streamHasRenderableRemoteVideo({
+        getVideoTracks: () => [{ readyState: 'live', enabled: false, muted: false }],
+      }),
+    ).toBe(false);
+    // Piste live, activée, démutée → affichable.
+    expect(
+      streamHasRenderableRemoteVideo({
+        getVideoTracks: () => [{ readyState: 'live', enabled: true, muted: false }],
+      }),
+    ).toBe(true);
+    // `muted` absent (web track standard) → considéré affichable si live + enabled.
+    expect(
+      streamHasRenderableRemoteVideo({
+        getVideoTracks: () => [{ readyState: 'live', enabled: true }],
+      }),
+    ).toBe(true);
   });
 
   it('dedupeRemoteReceiverTracks garde une seule piste audio live', () => {

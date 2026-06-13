@@ -63,7 +63,7 @@ import {
   webCallAudioProbeHint,
   type WebCallAudioProbe,
 } from '../../src/call/callNativeMedia';
-import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
+import { connectionQualityFromRtcStatsReport, iceSelectedCandidateFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
 import {
   buildCallIceConfig,
   callConnectionWatchdogMs,
@@ -145,6 +145,9 @@ import {
   logSdpSend,
   logRemoteStreamReceived,
   logRemoteTrackReceived,
+  logRemoteRtcBindSkipped,
+  logRemoteMediaAudit,
+  logIceSelectedCandidate,
   logSetLocalDescription,
   logSetRemoteDescription,
   summarizeCallSdp,
@@ -155,6 +158,7 @@ import {
   startRemoteWebAudioPlayback,
 } from '../../src/call/callWebAudioPlayback';
 import {
+  auditPeerConnectionMedia,
   canPromoteCallToConnected,
   collectTrackIds,
   countLocalTracks,
@@ -169,10 +173,13 @@ import {
   receiverTracksBindingKey,
   shouldBindNativeRemoteStreamUrl,
   shouldMarkCallConnected,
+  shouldRefreshNativeRemoteRtcView,
   shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
   streamHasLiveVideo,
+  streamHasRemoteVideoTrack,
+  streamHasRenderableRemoteVideo,
 } from '../../src/call/callRemoteMedia';
 import {
   prepareCallSessionMemory,
@@ -455,6 +462,9 @@ function CallScreenInner() {
   const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
   const [localStreamKey, setLocalStreamKey] = useState(0);
   const [remoteStreamKey, setRemoteStreamKey] = useState(0);
+  /** Dernier bind RTCView distant — détecte vidéo ajoutée après bind audio-only. */
+  const remoteRtcBindRef = useRef({ bindingKey: '', videoCount: 0, url: '' });
+  const nativeRemoteRtcRebindTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pcTearingDownRef = useRef(false);
   const mediaStoppedRef = useRef(false);
   const mediaTeardownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -619,6 +629,11 @@ function CallScreenInner() {
     }
     remotePlaybackStreamRef.current = null;
     remoteWebAudioPlaybackKeyRef.current = '';
+    remoteRtcBindRef.current = { bindingKey: '', videoCount: 0, url: '' };
+    if (nativeRemoteRtcRebindTimerRef.current) {
+      clearTimeout(nativeRemoteRtcRebindTimerRef.current);
+      nativeRemoteRtcRebindTimerRef.current = null;
+    }
     if (isWebRuntime) {
       clearWebRtcMediaElement(localVideoElRef.current);
       clearWebRtcMediaElement(remoteVideoElRef.current);
@@ -838,6 +853,12 @@ function CallScreenInner() {
     const peerIceState = (): string =>
       String((pcRef.current as RTCPeerConnection | null)?.iceConnectionState || '');
 
+    const remoteSdpHasVideo = (): boolean | undefined => {
+      const sdp = (pcRef.current as RTCPeerConnection | null)?.remoteDescription?.sdp;
+      if (!sdp) return undefined;
+      return sdpContainsMedia(sdp, 'video');
+    };
+
     const applyLocalDescription = async (
       pc: RTCPeerConnection,
       desc: RTCSessionDescriptionInit,
@@ -915,6 +936,109 @@ function CallScreenInner() {
         callEnded: callStateRef.current === 'ended',
       });
 
+    const commitNativeRemoteRtcBind = (
+      stream: MediaStream,
+      url: string,
+      bindingKey: string,
+      videoTrackCount: number,
+      phase: string,
+    ) => {
+      remoteRtcBindRef.current = { bindingKey, videoCount: videoTrackCount, url };
+      setRemoteStreamUrl(url);
+      setRemoteStreamKey((k) => k + 1);
+      logRemoteStreamReceived({
+        callId: callIdRef.current,
+        role,
+        phase,
+        streamId: stream.id,
+        streamURL: url,
+        audioTracks: stream.getAudioTracks?.().length ?? 0,
+        videoTracks: videoTrackCount,
+        bindingKey,
+        callState: callStateRef.current,
+      });
+    };
+
+    const bindNativeRemoteStreamToRtcView = (stream: MediaStream) => {
+      const pcNow = pcRef.current as RTCPeerConnection | null;
+      if (
+        !shouldBindNativeRemoteStreamUrl({
+          isVideo: isVideoCallRef.current,
+          stream,
+          hasRemoteDescription: Boolean(pcNow?.remoteDescription),
+          iceConnectionState: peerIceState(),
+          peerConnectionState: peerPcState(),
+        })
+      ) {
+        logRemoteRtcBindSkipped({
+          callId: callIdRef.current,
+          role,
+          reason: 'should_bind_false',
+          isVideo: isVideoCallRef.current,
+          audioTracks: stream.getAudioTracks?.().length ?? 0,
+          videoTracks: stream.getVideoTracks?.().length ?? 0,
+        });
+        return;
+      }
+      const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
+      const url = (stream as { toURL?: () => string })?.toURL?.() || '';
+      const videoTrackCount = stream.getVideoTracks?.().length ?? 0;
+      const bindingKey = mediaStreamBindingKey(stream);
+      const prev = remoteRtcBindRef.current;
+      const mustRefresh = shouldRefreshNativeRemoteRtcView({
+        isVideo: isVideoCallRef.current,
+        prevBindingKey: prev.bindingKey,
+        nextBindingKey: bindingKey,
+        prevVideoCount: prev.videoCount,
+        nextVideoCount: videoTrackCount,
+      });
+
+      if (!isValidNativeRtcStreamUrl(url, { localUrl })) {
+        logRemoteRtcBindSkipped({
+          callId: callIdRef.current,
+          role,
+          reason: !url ? 'url_empty' : url === localUrl ? 'url_equals_local' : 'url_invalid',
+          streamURL: url,
+          localStreamURL: localUrl,
+          videoTracks: videoTrackCount,
+          bindingKey,
+        });
+        if (!url) {
+          bindNativeStreamUrlWithRetry(
+            stream,
+            (nextUrl) => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              if (!isValidNativeRtcStreamUrl(nextUrl, { localUrl })) return;
+              commitNativeRemoteRtcBind(stream, nextUrl, bindingKey, videoTrackCount, 'rtcview_bind_retry');
+            },
+            () => {
+              if (!shouldApplyNativeRtcUrl()) return;
+              setRemoteStreamKey((k) => k + 1);
+            },
+            nativeRtcBindRetryAttempts(iceNetSnapshotRef.current),
+            shouldApplyNativeRtcUrl,
+          );
+        }
+        return;
+      }
+
+      if (mustRefresh && prev.url === url) {
+        if (nativeRemoteRtcRebindTimerRef.current) {
+          clearTimeout(nativeRemoteRtcRebindTimerRef.current);
+        }
+        setRemoteStreamUrl('');
+        setRemoteStreamKey((k) => k + 1);
+        nativeRemoteRtcRebindTimerRef.current = setTimeout(() => {
+          nativeRemoteRtcRebindTimerRef.current = null;
+          if (!shouldApplyNativeRtcUrl()) return;
+          commitNativeRemoteRtcBind(stream, url, bindingKey, videoTrackCount, 'rtcview_rebind');
+        }, 48);
+        return;
+      }
+
+      commitNativeRemoteRtcBind(stream, url, bindingKey, videoTrackCount, 'rtcview_bind');
+    };
+
     const setupRemoteEl = (stream: MediaStream, trackKind?: string) => {
       if (!shouldApplyNativeRtcUrl()) return;
       const pcNow = pcRef.current as RTCPeerConnection | null;
@@ -934,52 +1058,7 @@ function CallScreenInner() {
         armRemoteWebAudioPlayback();
       }
       if (!isWebRuntime) {
-        const pcNow = pcRef.current as RTCPeerConnection | null;
-        if (
-          !shouldBindNativeRemoteStreamUrl({
-            isVideo: isVideoCallRef.current,
-            stream,
-            hasRemoteDescription: Boolean(pcNow?.remoteDescription),
-            iceConnectionState: peerIceState(),
-            peerConnectionState: peerPcState(),
-          })
-        ) {
-          return;
-        }
-        const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
-        const url = (stream as { toURL?: () => string })?.toURL?.();
-        const videoTrackCount = stream.getVideoTracks?.().length ?? 0;
-        if (isValidNativeRtcStreamUrl(url, { localUrl })) {
-          setRemoteStreamUrl(url!);
-          setRemoteStreamKey((k) => k + 1);
-          if (isVideoCallRef.current && videoTrackCount > 0) {
-            logRemoteStreamReceived({
-              callId: callIdRef.current,
-              role,
-              phase: 'rtcview_bind',
-              streamId: stream.id,
-              streamURL: url,
-              audioTracks: stream.getAudioTracks?.().length ?? 0,
-              videoTracks: videoTrackCount,
-              bindingKey: mediaStreamBindingKey(stream),
-              callState: callStateRef.current,
-            });
-          }
-        } else if (!url) {
-          bindNativeStreamUrlWithRetry(
-            stream,
-            (nextUrl) => {
-              if (!shouldApplyNativeRtcUrl()) return;
-              if (isValidNativeRtcStreamUrl(nextUrl, { localUrl })) setRemoteStreamUrl(nextUrl);
-            },
-            () => {
-              if (!shouldApplyNativeRtcUrl()) return;
-              setRemoteStreamKey((k) => k + 1);
-            },
-            nativeRtcBindRetryAttempts(iceNetSnapshotRef.current),
-            shouldApplyNativeRtcUrl,
-          );
-        }
+        bindNativeRemoteStreamToRtcView(stream);
       }
       const pcLog = pcRef.current as RTCPeerConnection | null;
       if (isWebRuntime || Boolean(pcLog?.remoteDescription)) {
@@ -987,6 +1066,7 @@ function CallScreenInner() {
           trackKind,
           audioTracks: stream.getAudioTracks?.().length ?? 0,
           videoTracks: stream.getVideoTracks?.().length ?? 0,
+          bindingKey: mediaStreamBindingKey(stream),
         });
       }
     };
@@ -1014,6 +1094,7 @@ function CallScreenInner() {
         /** Natif vidéo : resync receivers avant le 1er rendu RTCView (vidéo souvent après audio chez l’appelant). */
         if (!isWebRuntime && isVideoCallRef.current && pc) {
           syncRemoteTracksFromPeerConnection(pc);
+          bindNativeRemoteStreamToRtcView(remote);
         }
         setErrorMsg(null);
         setCallState('connected');
@@ -1074,6 +1155,7 @@ function CallScreenInner() {
           role,
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: true,
+          remoteSdpHasVideo: remoteSdpHasVideo(),
         })
       ) {
         return;
@@ -1143,13 +1225,25 @@ function CallScreenInner() {
         );
         if (!tracks.length) return;
 
+        logRemoteMediaAudit({
+          callId,
+          role,
+          phase: 'sync_receivers',
+          ...auditPeerConnectionMedia(pc),
+          receiverTrackIds: tracks.map((t) => ({ id: t.id, kind: t.kind, readyState: t.readyState })),
+        });
+
         const current = remoteStreamRef.current as MediaStream | null;
+        const receiversHaveVideo = tracks.some((t) => t.kind === 'video');
+        const currentHasVideo = (current?.getVideoTracks?.()?.length ?? 0) > 0;
         if (
           !shouldReplaceNativeRemoteMediaStream(current, tracks) &&
           current &&
           streamHasPlayableMediaTracks(current)
         ) {
-          return;
+          if (!(isVideoCallRef.current && receiversHaveVideo && !currentHasVideo)) {
+            return;
+          }
         }
 
         for (const track of tracks) {
@@ -1210,6 +1304,7 @@ function CallScreenInner() {
             role,
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: Boolean(pc?.remoteDescription),
+            remoteSdpHasVideo: remoteSdpHasVideo(),
           })
         ) {
           maybeMarkCallConnected(remote);
@@ -1461,6 +1556,7 @@ function CallScreenInner() {
           role,
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: Boolean(pc.remoteDescription),
+          remoteSdpHasVideo: remoteSdpHasVideo(),
         })) {
           maybeMarkCallConnected(remote, 'audio');
           clearConnectionWatchdog();
@@ -2597,6 +2693,7 @@ function CallScreenInner() {
                 role,
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
+                remoteSdpHasVideo: remoteSdpHasVideo(),
               })
             ) {
               clearConnectionWatchdog();
@@ -2639,6 +2736,7 @@ function CallScreenInner() {
                 role,
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
+                remoteSdpHasVideo: remoteSdpHasVideo(),
               })
             ) {
               clearConnectionWatchdog();
@@ -3014,6 +3112,7 @@ function CallScreenInner() {
             role,
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: true,
+            remoteSdpHasVideo: remoteSdpHasVideo(),
           })
         ) {
           maybeMarkCallConnected(remote, 'audio');
@@ -3289,6 +3388,7 @@ function CallScreenInner() {
       if (!pc?.getStats) return;
       void pc.getStats().then((report) => {
         const q = connectionQualityFromRtcStatsReport(report);
+        const ice = iceSelectedCandidateFromRtcStatsReport(report);
         setConnectionDisplay({
           labelFr: q.labelFr,
           bars: q.bars,
@@ -3297,6 +3397,13 @@ function CallScreenInner() {
         logCallPhase(callIdRef.current, 'stats', {
           quality: q.quality,
           labelFr: q.labelFr,
+        });
+        logIceSelectedCandidate({
+          callId: callIdRef.current,
+          localType: ice.localType,
+          remoteType: ice.remoteType,
+          protocol: ice.protocol,
+          relayUsed: ice.relayUsed,
         });
       });
     };
@@ -3492,6 +3599,17 @@ function CallScreenInner() {
   const peerVideoFullscreen = remoteVideoLive && videoLayoutFocus === 'remote';
   const hasRemoteVideoReady = remoteVideoLive;
   const showRemoteWaitingOverlay = !remoteVideoLive;
+  /**
+   * Connecté mais flux vidéo distant encore muet (frames pas décodées) → scrim
+   * léger « Vidéo en cours… » au lieu d'un écran noir trompeur. Recalculé à
+   * chaque tick du chronomètre (re-render 1 s). N'enlève PAS la RTCView : le
+   * scrim est translucide, donc aucun risque de masquer une vidéo qui peint.
+   */
+  const remoteVideoFramesLive =
+    remoteVideoLive &&
+    isVideoCall &&
+    streamHasRenderableRemoteVideo(remoteStreamRef.current as MediaStream | null);
+  const showRemoteVideoBuffering = remoteVideoLive && isVideoCall && !remoteVideoFramesLive;
 
   const openAddPeople = useCallback(() => {
     if (!otherUserId) return;
@@ -3653,6 +3771,11 @@ function CallScreenInner() {
                       {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
                     </Text>
                   </View>
+                ) : showRemoteVideoBuffering && peerVideoFullscreen ? (
+                  <View style={[styles.videoPlaceholder, styles.videoBufferingOverlay]} pointerEvents="none">
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.videoPlaceholderText}>Vidéo en cours…</Text>
+                  </View>
                 ) : null}
               </View>
             ) : showNativeRemoteVideoMain ? (
@@ -3672,6 +3795,11 @@ function CallScreenInner() {
                     <Text style={styles.videoPlaceholderText}>
                       {callState === 'ringing' ? 'En attente de réponse…' : 'Connexion vidéo…'}
                     </Text>
+                  </View>
+                ) : showRemoteVideoBuffering && peerVideoFullscreen ? (
+                  <View style={[styles.videoPlaceholder, styles.videoBufferingOverlay]} pointerEvents="none">
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.videoPlaceholderText}>Vidéo en cours…</Text>
                   </View>
                 ) : null}
               </View>
@@ -4146,6 +4274,12 @@ const styles = StyleSheet.create({
   videoPlaceholderOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(16,24,34,0.88)',
+    minHeight: 0,
+  },
+  /** Scrim translucide : visible si le flux vidéo distant est encore muet, sans masquer une vidéo qui peint. */
+  videoBufferingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,17,29,0.35)',
     minHeight: 0,
   },
   videoPlaceholderPip: { minHeight: 0, padding: 8 },

@@ -213,9 +213,23 @@ export function resolveIceNetworkSnapshot(input: {
   };
 }
 
+/** URL TURN en clair (`turn:`) sans `transport=tcp` → relais UDP (média temps réel). */
+function isUdpTurnUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.startsWith('turn:') && !lower.includes('transport=tcp');
+}
+
 /**
- * APK Android : `usesCleartextTraffic: false` bloque `turn:…:80` (Metered renvoie aussi du `turns:`).
- * Regroupe les entrées TURN Metered en une seule config TLS (`turns:`) pour react-native-webrtc.
+ * APK Android : `usesCleartextTraffic` est limité au domaine relais Metered via
+ * `network_security_config` (plugin `withAndroidTurnCleartext`) — on peut donc
+ * réintroduire un relais TURN **UDP** en plus du `turns:` TLS.
+ *
+ * Ordre des candidats relais (juin 2026, fix vidéo/audio international Maroc↔Mali) :
+ *   1. `turn:` UDP — média temps réel, pas de head-of-line blocking (vidéo passe).
+ *   2. `turns:` TLS/TCP — repli fiable si l'UDP est bloqué (réseau restrictif).
+ *   3. `turn:` TCP en clair — dernier repli.
+ * On garde TOUJOURS au moins un `turns:` quand il existe (garde
+ * `shouldBlockNativeCellularWithoutTlsTurn`).
  */
 export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RTCIceServer[] {
   if (iceServers.length === 0) return iceServers;
@@ -246,9 +260,15 @@ export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RT
     }
   }
 
-  const chosenTurnUrls = sortTurnUrlsPreferTls(
-    turnsUrls.length > 0 ? turnsUrls : plainTurnUrls,
-  );
+  const udpTurnUrls = plainTurnUrls.filter(isUdpTurnUrl);
+  const tcpPlainTurnUrls = plainTurnUrls.filter((u) => !isUdpTurnUrl(u));
+  const chosenTurnUrls = [
+    ...new Set([
+      ...udpTurnUrls,
+      ...sortTurnUrlsPreferTls(turnsUrls),
+      ...tcpPlainTurnUrls,
+    ]),
+  ];
   if (chosenTurnUrls.length === 0 || !username || !credential) {
     return iceServers;
   }

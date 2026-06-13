@@ -4,8 +4,8 @@
  */
 
 export type MediaStreamLike = {
-  getAudioTracks?: () => Array<{ id?: string; enabled?: boolean; readyState?: string }>;
-  getVideoTracks?: () => Array<{ id?: string; enabled?: boolean; readyState?: string }>;
+  getAudioTracks?: () => Array<{ id?: string; enabled?: boolean; readyState?: string; muted?: boolean }>;
+  getVideoTracks?: () => Array<{ id?: string; enabled?: boolean; readyState?: string; muted?: boolean }>;
 };
 
 export function streamHasLiveAudio(stream: MediaStreamLike | null | undefined): boolean {
@@ -16,6 +16,25 @@ export function streamHasLiveAudio(stream: MediaStreamLike | null | undefined): 
 export function streamHasLiveVideo(stream: MediaStreamLike | null | undefined): boolean {
   const tracks = stream?.getVideoTracks?.() ?? [];
   return tracks.some((t) => t.readyState === 'live' && t.enabled !== false);
+}
+
+/** Piste vidéo distante présente (même `new`) — évite RTCView audio-only sur appel vidéo natif. */
+export function streamHasRemoteVideoTrack(stream: MediaStreamLike | null | undefined): boolean {
+  const tracks = stream?.getVideoTracks?.() ?? [];
+  return tracks.some((t) => t.readyState !== 'ended');
+}
+
+/**
+ * Vidéo distante réellement AFFICHABLE — piste `live`, activée et **démutée**
+ * (frames décodées). Sert à distinguer « appel connecté mais flux vidéo encore
+ * muet » (écran noir) d'une vidéo qui peint vraiment. Ne modifie PAS la
+ * promotion `connected` (audio) : sert seulement à un overlay de chargement.
+ */
+export function streamHasRenderableRemoteVideo(stream: MediaStreamLike | null | undefined): boolean {
+  const tracks = stream?.getVideoTracks?.() ?? [];
+  return tracks.some(
+    (t) => t.readyState === 'live' && t.enabled !== false && t.muted !== true,
+  );
 }
 
 /** ICE prêt pour le média — `connected` ou `completed`. */
@@ -83,6 +102,8 @@ export function shouldMarkCallConnected(input: {
   peerAccepted?: boolean;
   /** SDP distant appliqué — évite pistes transceiver fantômes avant négociation. */
   hasRemoteDescription?: boolean;
+  /** SDP distant contient `m=video` — si false, audio seul suffit (correspondant sans caméra). */
+  remoteSdpHasVideo?: boolean;
 }): boolean {
   void input.trackKind;
   if (input.role === 'caller' && input.peerAccepted === false) return false;
@@ -99,9 +120,12 @@ export function shouldMarkCallConnected(input: {
    */
   if (iceReady || pcConnected) {
     if (!input.isVideo) return true;
-    if (streamHasLiveVideo(stream) || streamHasLiveAudio(stream)) return true;
-    if (iceReady && pcConnected) return true;
-    if (iceReady && (stream?.getAudioTracks?.()?.length ?? 0) > 0) return true;
+    if (streamHasLiveVideo(stream)) return true;
+    /** Appel vidéo : ne pas marquer connecté sur ICE seul + audio (RTCView lié sans vidéo → écran noir). */
+    if (streamHasRemoteVideoTrack(stream) && streamHasLiveAudio(stream)) return true;
+    if (streamHasRemoteVideoTrack(stream) && streamHasLiveRemoteTrack(stream?.getVideoTracks?.() ?? [])) {
+      return true;
+    }
   }
 
   if (!stream) return false;
@@ -127,7 +151,12 @@ export function shouldMarkCallConnected(input: {
   }
 
   /** Correspondant sans caméra ou caméra coupée — audio distant `live` suffit. */
-  if (remoteVideoTracks.length === 0 && hasAudio) return true;
+  if (remoteVideoTracks.length === 0 && hasAudio) {
+    if (input.isVideo && input.remoteSdpHasVideo !== false) {
+      return false;
+    }
+    return true;
+  }
   if (remoteVideoTracks.length > 0 && !streamHasLiveRemoteTrack(remoteVideoTracks) && hasAudio) {
     return true;
   }
@@ -176,8 +205,8 @@ export function remoteStreamReadyForConnectedUi(input: {
 
   if (input.hasRemoteDescription && (iceReady || pcConnected)) {
     if (!input.isVideo) return true;
-    if (streamHasLiveVideo(stream) || streamHasLiveAudio(stream)) return true;
-    if (iceReady) return true;
+    if (streamHasLiveVideo(stream)) return true;
+    if (streamHasRemoteVideoTrack(stream) && streamHasLiveAudio(stream)) return true;
   }
 
   if (!stream) return false;
@@ -202,6 +231,7 @@ export function canPromoteCallToConnected(input: {
   role?: 'caller' | 'receiver';
   peerAccepted?: boolean;
   hasRemoteDescription?: boolean;
+  remoteSdpHasVideo?: boolean;
 }): boolean {
   return (
     remoteStreamReadyForConnectedUi({
@@ -220,6 +250,7 @@ export function canPromoteCallToConnected(input: {
       role: input.role,
       peerAccepted: input.peerAccepted,
       hasRemoteDescription: input.hasRemoteDescription,
+      remoteSdpHasVideo: input.remoteSdpHasVideo,
     })
   );
 }
@@ -263,6 +294,9 @@ export function shouldBindNativeRemoteStreamUrl(input: {
   iceConnectionState?: string | null;
   peerConnectionState?: string;
 }): boolean {
+  if (input.isVideo && !streamHasRemoteVideoTrack(input.stream)) {
+    return false;
+  }
   if (
     remoteStreamReadyForConnectedUi({
       stream: input.stream,
@@ -276,6 +310,67 @@ export function shouldBindNativeRemoteStreamUrl(input: {
   }
   if (input.isVideo || !input.hasRemoteDescription) return false;
   return (input.stream?.getAudioTracks?.()?.length ?? 0) > 0;
+}
+
+/**
+ * react-native-webrtc : RTCView peut rester sur une surface audio-only si `toURL()` ne change pas
+ * quand la vidéo distante arrive après le 1er bind.
+ */
+export function shouldRefreshNativeRemoteRtcView(input: {
+  isVideo: boolean;
+  prevBindingKey: string;
+  nextBindingKey: string;
+  prevVideoCount: number;
+  nextVideoCount: number;
+}): boolean {
+  if (!input.isVideo || input.nextVideoCount <= 0) return false;
+  if (input.nextVideoCount > input.prevVideoCount) return true;
+  if (input.nextBindingKey !== input.prevBindingKey) return true;
+  return false;
+}
+
+export type PeerConnectionMediaAuditRow = {
+  kind: string | null;
+  id: string | null;
+  readyState: string | null;
+  enabled: boolean | null;
+  direction?: string | null;
+  currentDirection?: string | null;
+  mid?: string | null;
+};
+
+export type PeerConnectionMediaAudit = {
+  senders: PeerConnectionMediaAuditRow[];
+  receivers: PeerConnectionMediaAuditRow[];
+  transceivers: PeerConnectionMediaAuditRow[];
+};
+
+/** Snapshot receivers/transceivers pour Logcat — preuve réception média distante. */
+export function auditPeerConnectionMedia(
+  pc: RTCPeerConnection | null | undefined,
+): PeerConnectionMediaAudit {
+  const senders = (pc?.getSenders?.() ?? []).map((s) => ({
+    kind: s.track?.kind ?? null,
+    id: s.track?.id ?? null,
+    readyState: s.track?.readyState ?? null,
+    enabled: s.track?.enabled ?? null,
+  }));
+  const receivers = (pc?.getReceivers?.() ?? []).map((r) => ({
+    kind: r.track?.kind ?? null,
+    id: r.track?.id ?? null,
+    readyState: r.track?.readyState ?? null,
+    enabled: r.track?.enabled ?? null,
+  }));
+  const transceivers = (pc?.getTransceivers?.() ?? []).map((t) => ({
+    kind: t.sender?.track?.kind ?? t.receiver?.track?.kind ?? null,
+    id: null,
+    readyState: null,
+    enabled: null,
+    direction: t.direction != null ? String(t.direction) : null,
+    currentDirection: t.currentDirection != null ? String(t.currentDirection) : null,
+    mid: t.mid ?? null,
+  }));
+  return { senders, receivers, transceivers };
 }
 
 /** Clé de liaison audio+vidéo distantes (ids + readyState) — compare receivers PC vs flux unifié natif. */

@@ -82,3 +82,51 @@ export function connectionQualityFromRtcStatsReport(report: unknown): Connection
   }
   return { quality: 'poor', labelFr: 'Connexion faible', bars: 1 };
 }
+
+export type IceSelectedCandidateSummary = {
+  localType: string | null;
+  remoteType: string | null;
+  protocol: string | null;
+  relayUsed: boolean;
+};
+
+/** Extrait le type de candidat sélectionné (host/srflx/relay) depuis getStats(). */
+export function iceSelectedCandidateFromRtcStatsReport(report: unknown): IceSelectedCandidateSummary {
+  let localType: string | null = null;
+  let remoteType: string | null = null;
+  let protocol: string | null = null;
+  try {
+    const r = report as {
+      values?: () => IterableIterator<Record<string, unknown>>;
+      forEach?: (fn: (report: Record<string, unknown>) => void) => void;
+    };
+    let rows: Record<string, unknown>[] | null = null;
+    if (typeof r?.values === 'function') {
+      rows = Array.from(r.values());
+    } else if (typeof r?.forEach === 'function') {
+      rows = [];
+      r.forEach((entry) => rows!.push(entry));
+    }
+    if (!rows?.length) {
+      return { localType: null, remoteType: null, protocol: null, relayUsed: false };
+    }
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const id = String(row.id || '');
+      if (id) byId.set(id, row);
+    }
+    for (const row of rows) {
+      if (row.type !== 'candidate-pair' || row.state !== 'succeeded') continue;
+      const local = byId.get(String(row.localCandidateId || ''));
+      const remote = byId.get(String(row.remoteCandidateId || ''));
+      localType = String(local?.candidateType || localType || '') || null;
+      remoteType = String(remote?.candidateType || remoteType || '') || null;
+      protocol = String(local?.protocol || protocol || '') || null;
+      break;
+    }
+  } catch {
+    /* ignore */
+  }
+  const relayUsed = localType === 'relay' || remoteType === 'relay';
+  return { localType, remoteType, protocol, relayUsed };
+}

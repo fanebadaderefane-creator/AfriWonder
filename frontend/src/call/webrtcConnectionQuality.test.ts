@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectionQualityFromRtcStatsReport } from './webrtcConnectionQuality';
+import { connectionQualityFromRtcStatsReport, iceSelectedCandidateFromRtcStatsReport } from './webrtcConnectionQuality';
 
 function mockReport(entries: Record<string, unknown>[]) {
   return {
@@ -33,5 +33,25 @@ describe('connectionQualityFromRtcStatsReport', () => {
   it('handles empty stats', () => {
     const q = connectionQualityFromRtcStatsReport(mockReport([]));
     expect(q.bars).toBe(2);
+  });
+});
+
+describe('iceSelectedCandidateFromRtcStatsReport', () => {
+  it('détecte relay TURN', () => {
+    const ice = iceSelectedCandidateFromRtcStatsReport(
+      mockReport([
+        {
+          id: 'pair1',
+          type: 'candidate-pair',
+          state: 'succeeded',
+          localCandidateId: 'local1',
+          remoteCandidateId: 'remote1',
+        },
+        { id: 'local1', type: 'local-candidate', candidateType: 'relay', protocol: 'udp' },
+        { id: 'remote1', type: 'remote-candidate', candidateType: 'srflx' },
+      ]),
+    );
+    expect(ice.relayUsed).toBe(true);
+    expect(ice.localType).toBe('relay');
   });
 });

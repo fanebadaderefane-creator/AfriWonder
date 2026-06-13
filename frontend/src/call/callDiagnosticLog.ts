@@ -81,6 +81,21 @@ export function logRemoteStreamReceived(meta: Record<string, unknown>): void {
   console.error('[REMOTE_STREAM_RECEIVED]', serialize(meta));
 }
 
+/** RTCView natif — bind ignoré (URL locale, should_bind, etc.). */
+export function logRemoteRtcBindSkipped(meta: Record<string, unknown>): void {
+  console.error('[REMOTE_RTC_BIND_SKIPPED]', serialize(meta));
+}
+
+/** Audit senders/receivers/transceivers — preuve réception média. */
+export function logRemoteMediaAudit(meta: Record<string, unknown>): void {
+  console.error('[REMOTE_MEDIA_AUDIT]', serialize(meta));
+}
+
+/** Paire ICE sélectionnée (host/srflx/relay). */
+export function logIceSelectedCandidate(meta: Record<string, unknown>): void {
+  console.error('[ICE_SELECTED]', serialize(meta));
+}
+
 /** État senders/transceivers juste avant createOffer (debug mid=0 Android). */
 export function logPreCreateOfferPeerConnection(meta: Record<string, unknown>): void {
   logAfwCall('pre_create_offer', meta);

@@ -24,7 +24,8 @@
     "callDiagnostic": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "local"
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "call-diagnostic",
@@ -43,7 +44,8 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "local"
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
@@ -61,9 +63,9 @@
     },
     "production": {
       "autoIncrement": true,
-      "credentialsSource": "local",
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "credentialsSource": "local"
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
