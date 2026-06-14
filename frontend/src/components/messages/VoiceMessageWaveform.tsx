@@ -61,6 +61,8 @@ const styles = StyleSheet.create({
     gap: 2,
     height: 24,
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   bar: {
     width: 2.5,

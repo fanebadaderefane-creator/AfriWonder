@@ -1,7 +1,11 @@
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { VoiceMessageWaveform } from './VoiceMessageWaveform';
+
+// Largeur bornée et responsive : doit toujours tenir dans la bulle (maxWidth 82%).
+// On reste sous 60% de l'écran pour laisser de la marge (avatar + padding bulle).
+const VOICE_ROW_WIDTH = Math.min(258, Math.round(Dimensions.get('window').width * 0.6));
 
 type Props = {
   messageId: string;
@@ -66,7 +70,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    minWidth: 220,
+    width: VOICE_ROW_WIDTH,
+    maxWidth: '100%',
     paddingVertical: 2,
   },
   rowMine: { justifyContent: 'flex-end' },
@@ -77,7 +82,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  waveCol: { flex: 1, minWidth: 100 },
+  waveCol: { flex: 1, minWidth: 0, overflow: 'hidden' },
   duration: { color: '#667781', fontSize: 11, marginTop: 2 },
   avatarWrap: { width: 36, height: 36, position: 'relative' },
   avatar: {

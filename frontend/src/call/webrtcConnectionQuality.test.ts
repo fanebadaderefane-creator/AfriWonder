@@ -3,6 +3,7 @@ import {
   connectionQualityFromRtcStatsReport,
   iceSelectedCandidateFromRtcStatsReport,
   rtpMediaStatsFromRtcStatsReport,
+  transportStatsFromRtcStatsReport,
 } from './webrtcConnectionQuality';
 
 function mockReport(entries: Record<string, unknown>[]) {
@@ -115,5 +116,68 @@ describe('rtpMediaStatsFromRtcStatsReport', () => {
     );
     expect(rtp.audio).toBeNull();
     expect(rtp.video).toBeNull();
+  });
+});
+
+describe('transportStatsFromRtcStatsReport', () => {
+  it('détecte DTLS connecté et la paire sélectionnée', () => {
+    const t = transportStatsFromRtcStatsReport(
+      mockReport([
+        {
+          type: 'transport',
+          dtlsState: 'connected',
+          iceState: 'connected',
+          bytesSent: 120000,
+          bytesReceived: 98000,
+          selectedCandidatePairId: 'pair-1',
+        },
+        {
+          id: 'pair-1',
+          type: 'candidate-pair',
+          state: 'succeeded',
+          bytesSent: 119000,
+          bytesReceived: 97000,
+        },
+      ]),
+    );
+    expect(t.dtlsState).toBe('connected');
+    expect(t.iceState).toBe('connected');
+    expect(t.bytesReceived).toBe(98000);
+    expect(t.hasSelectedPair).toBe(true);
+    expect(t.selectedPairBytesReceived).toBe(97000);
+  });
+
+  it('reflète DTLS non terminé (connecté mais aucun média)', () => {
+    const t = transportStatsFromRtcStatsReport(
+      mockReport([
+        {
+          type: 'transport',
+          dtlsState: 'connecting',
+          iceState: 'connected',
+          bytesSent: 5000,
+          bytesReceived: 0,
+        },
+      ]),
+    );
+    expect(t.dtlsState).toBe('connecting');
+    expect(t.iceState).toBe('connected');
+    expect(t.bytesReceived).toBe(0);
+  });
+
+  it('utilise candidate-pair succeeded si pas de selectedCandidatePairId', () => {
+    const t = transportStatsFromRtcStatsReport(
+      mockReport([
+        { type: 'candidate-pair', state: 'succeeded', bytesSent: 10, bytesReceived: 20 },
+      ]),
+    );
+    expect(t.hasSelectedPair).toBe(true);
+    expect(t.selectedPairBytesReceived).toBe(20);
+  });
+
+  it('retourne des valeurs vides sans transport ni paire', () => {
+    const t = transportStatsFromRtcStatsReport(mockReport([{ type: 'inbound-rtp', kind: 'audio' }]));
+    expect(t.dtlsState).toBeNull();
+    expect(t.hasSelectedPair).toBe(false);
+    expect(t.bytesReceived).toBe(0);
   });
 });

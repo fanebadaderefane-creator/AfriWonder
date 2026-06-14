@@ -67,6 +67,7 @@ import {
   connectionQualityFromRtcStatsReport,
   iceSelectedCandidateFromRtcStatsReport,
   rtpMediaStatsFromRtcStatsReport,
+  transportStatsFromRtcStatsReport,
 } from '../../src/call/webrtcConnectionQuality';
 import {
   buildCallIceConfig,
@@ -153,6 +154,7 @@ import {
   logRemoteMediaAudit,
   logIceSelectedCandidate,
   logRtpMediaStats,
+  logCallTransportStats,
   logSetLocalDescription,
   logSetRemoteDescription,
   summarizeCallSdp,
@@ -3395,6 +3397,7 @@ function CallScreenInner() {
         const q = connectionQualityFromRtcStatsReport(report);
         const ice = iceSelectedCandidateFromRtcStatsReport(report);
         const rtp = rtpMediaStatsFromRtcStatsReport(report);
+        const transport = transportStatsFromRtcStatsReport(report);
         setConnectionDisplay({
           labelFr: q.labelFr,
           bars: q.bars,
@@ -3415,6 +3418,16 @@ function CallScreenInner() {
           callId: callIdRef.current,
           audio: rtp.audio,
           video: rtp.video,
+        });
+        logCallTransportStats({
+          callId: callIdRef.current,
+          dtlsState: transport.dtlsState,
+          iceState: transport.iceState,
+          bytesSent: transport.bytesSent,
+          bytesReceived: transport.bytesReceived,
+          selectedPairBytesSent: transport.selectedPairBytesSent,
+          selectedPairBytesReceived: transport.selectedPairBytesReceived,
+          hasSelectedPair: transport.hasSelectedPair,
         });
       });
     };

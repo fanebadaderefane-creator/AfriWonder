@@ -101,6 +101,14 @@ export function logRtpMediaStats(meta: Record<string, unknown>): void {
   console.error('[RTP_MEDIA_STATS]', serialize(meta));
 }
 
+/**
+ * État transport DTLS/ICE — preuve « connecté mais aucun média ».
+ * dtlsState != 'connected' ⇒ pas de SRTP ⇒ 0 packet audio ET vidéo.
+ */
+export function logCallTransportStats(meta: Record<string, unknown>): void {
+  console.error('[CALL_TRANSPORT_STATS]', serialize(meta));
+}
+
 /** État senders/transceivers juste avant createOffer (debug mid=0 Android). */
 export function logPreCreateOfferPeerConnection(meta: Record<string, unknown>): void {
   logAfwCall('pre_create_offer', meta);

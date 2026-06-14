@@ -225,3 +225,79 @@ export function rtpMediaStatsFromRtcStatsReport(report: unknown): RtpMediaStatsS
     video: sawVideo ? acc.video : null,
   };
 }
+
+export type CallTransportStatsSummary = {
+  /** État DTLS : si != 'connected' alors aucun média (SRTP) ne peut circuler. */
+  dtlsState: string | null;
+  iceState: string | null;
+  /** Octets vus au niveau transport (DTLS/SRTP), tous médias confondus. */
+  bytesSent: number;
+  bytesReceived: number;
+  /** Octets de la paire de candidats sélectionnée (niveau ICE). */
+  selectedPairBytesSent: number;
+  selectedPairBytesReceived: number;
+  hasSelectedPair: boolean;
+};
+
+/**
+ * Lit la couche transport de getStats() : DTLS + paire ICE sélectionnée.
+ *
+ * Cas « appel connecté mais aucun son/image » : si `dtlsState` n'atteint jamais
+ * `'connected'`, le canal SRTP n'est pas chiffré → packetsReceived reste 0 pour
+ * audio ET vidéo, même si ICE est `connected`. Ce résumé permet de le prouver
+ * dans Logcat sans toucher à la zone signalisation verrouillée.
+ */
+export function transportStatsFromRtcStatsReport(report: unknown): CallTransportStatsSummary {
+  const empty: CallTransportStatsSummary = {
+    dtlsState: null,
+    iceState: null,
+    bytesSent: 0,
+    bytesReceived: 0,
+    selectedPairBytesSent: 0,
+    selectedPairBytesReceived: 0,
+    hasSelectedPair: false,
+  };
+  try {
+    const rows = readRtcStatsRows(report);
+    if (!rows.length) return empty;
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const id = String(row.id || '');
+      if (id) byId.set(id, row);
+    }
+    const out: CallTransportStatsSummary = { ...empty };
+    let transportRow: Record<string, unknown> | null = null;
+    for (const row of rows) {
+      if (row.type === 'transport') {
+        transportRow = row;
+        const dtls = String(row.dtlsState || '');
+        const ice = String(row.iceState || '');
+        if (dtls) out.dtlsState = dtls;
+        if (ice) out.iceState = ice;
+        out.bytesSent = Math.max(out.bytesSent, asNonNegativeInt(row.bytesSent));
+        out.bytesReceived = Math.max(out.bytesReceived, asNonNegativeInt(row.bytesReceived));
+      }
+    }
+    // Paire sélectionnée : via transport.selectedCandidatePairId, sinon candidate-pair succeeded.
+    let pair: Record<string, unknown> | null = null;
+    const selectedId = transportRow ? String(transportRow.selectedCandidatePairId || '') : '';
+    if (selectedId && byId.has(selectedId)) {
+      pair = byId.get(selectedId) || null;
+    } else {
+      for (const row of rows) {
+        if (row.type === 'candidate-pair' && (row.selected === true || row.state === 'succeeded')) {
+          pair = row;
+          break;
+        }
+      }
+    }
+    if (pair) {
+      out.hasSelectedPair = true;
+      out.selectedPairBytesSent = asNonNegativeInt(pair.bytesSent);
+      out.selectedPairBytesReceived = asNonNegativeInt(pair.bytesReceived);
+    }
+    return out;
+  } catch {
+    return empty;
+  }
+}
