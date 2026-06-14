@@ -6,8 +6,10 @@ import {
   shouldClearCallerRingTimeoutOnAccept,
   shouldFinishCallAsMissed,
   shouldDowngradeVideoInviteToAudioAnswer,
+  shouldRecoverStalledConnectedCallMedia,
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
+  STALLED_CONNECTED_MEDIA_RECOVERY_MS,
 } from './callAcceptLifecycle';
 
 describe('callAcceptLifecycle', () => {
@@ -15,6 +17,50 @@ describe('callAcceptLifecycle', () => {
     expect(shouldArmMediaConnectionWatchdog({ role: 'caller', peerAccepted: false })).toBe(false);
     expect(shouldArmMediaConnectionWatchdog({ role: 'caller', peerAccepted: true })).toBe(true);
     expect(shouldArmMediaConnectionWatchdog({ role: 'receiver', peerAccepted: false })).toBe(true);
+  });
+
+  describe('récupération média post-connexion (Maroc↔Mali)', () => {
+    const base = {
+      role: 'caller' as const,
+      callConnected: true,
+      hasSelectedPair: true,
+      inboundBytesIncreased: false,
+      stalledMs: STALLED_CONNECTED_MEDIA_RECOVERY_MS,
+      alreadyRecovered: false,
+    };
+
+    it('déclenche un ICE restart appelant si média mort assez longtemps', () => {
+      expect(shouldRecoverStalledConnectedCallMedia(base)).toBe(true);
+    });
+
+    it('appel sain (octets reçus en hausse) → jamais de restart', () => {
+      expect(
+        shouldRecoverStalledConnectedCallMedia({ ...base, inboundBytesIncreased: true }),
+      ).toBe(false);
+    });
+
+    it('jamais avant le seuil de stagnation', () => {
+      expect(
+        shouldRecoverStalledConnectedCallMedia({ ...base, stalledMs: 3_000 }),
+      ).toBe(false);
+    });
+
+    it('une seule tentative par appel', () => {
+      expect(
+        shouldRecoverStalledConnectedCallMedia({ ...base, alreadyRecovered: true }),
+      ).toBe(false);
+    });
+
+    it('le receveur ne pilote pas le restart (anti-glare)', () => {
+      expect(
+        shouldRecoverStalledConnectedCallMedia({ ...base, role: 'receiver' }),
+      ).toBe(false);
+    });
+
+    it('pas de restart sans paire ICE mesurable, ni avant connexion', () => {
+      expect(shouldRecoverStalledConnectedCallMedia({ ...base, hasSelectedPair: false })).toBe(false);
+      expect(shouldRecoverStalledConnectedCallMedia({ ...base, callConnected: false })).toBe(false);
+    });
   });
 
   it('timer sonnerie appelant annulé à l’accept', () => {

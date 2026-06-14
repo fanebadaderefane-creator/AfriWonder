@@ -16,6 +16,7 @@ import {
   type ReceiverCallScreenInput,
 } from './openNativeCallScreenLogic';
 import { primeWebCallMediaCapture } from './webCallMediaSession';
+import { logAfwCall } from './callDiagnosticLog';
 
 export type { NativeCallLaunchBlockReason } from './openNativeCallScreenLogic';
 export { getNativeCallLaunchBlockReason, nativeCallLaunchBlockedMessage } from './openNativeCallScreenLogic';
@@ -27,11 +28,24 @@ export type OpenNativeCallScreenParams = {
   type: 'audio' | 'video';
 };
 
+/**
+ * Sonde réseau plafonnée : `NetInfo.fetch()` peut être lent sur réseaux dégradés
+ * (Mali / 4G instable). Sans plafond, la navigation vers l'écran d'appel attendait
+ * cette promesse pour un appel vidéo → « rien ne se passe après accepter ». On
+ * renvoie `null` après le délai pour ne jamais bloquer l'ouverture de l'appel.
+ */
+const NETWORK_SNAPSHOT_TIMEOUT_MS = 1_500;
+
 async function fetchCallNetworkSnapshot(): Promise<NetworkSnapshot | null> {
   try {
-    const st = await NetInfo.fetch();
-    const details = (st.details || {}) as { cellularGeneration?: string | null };
-    return { type: st.type, cellularGeneration: details.cellularGeneration };
+    const timed = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), NETWORK_SNAPSHOT_TIMEOUT_MS),
+    );
+    const fetched = NetInfo.fetch().then((st) => {
+      const details = (st.details || {}) as { cellularGeneration?: string | null };
+      return { type: st.type, cellularGeneration: details.cellularGeneration } as NetworkSnapshot;
+    });
+    return await Promise.race([fetched, timed]);
   } catch {
     return null;
   }
@@ -104,13 +118,27 @@ export function navigateToReceiverCallScreen(input: ReceiverCallScreenInput): vo
     if (Platform.OS === 'web') {
       primeWebCallMediaCapture(callType === 'video');
     }
-    try {
+    const pushReceiverScreen = () => {
       router.push({
         pathname: '/messages/call',
         params: buildReceiverCallRouteParams({ ...input, type: callType }),
       } as never);
-    } catch {
-      /* router pas prêt (cold start push) */
+    };
+    logAfwCall('receiver_nav_push', { callId: input.callId, type: callType });
+    try {
+      pushReceiverScreen();
+    } catch (e) {
+      // Cold start (accept depuis notif / écran verrouillé) : le router peut ne pas être
+      // monté au 1er push. On loggue (plus de catch silencieux) et on retente une fois.
+      logAfwCall('receiver_nav_push_failed', { callId: input.callId, error: String(e) });
+      setTimeout(() => {
+        try {
+          pushReceiverScreen();
+          logAfwCall('receiver_nav_push_retry_ok', { callId: input.callId });
+        } catch (e2) {
+          logAfwCall('receiver_nav_push_retry_failed', { callId: input.callId, error: String(e2) });
+        }
+      }, 400);
     }
   })();
 }

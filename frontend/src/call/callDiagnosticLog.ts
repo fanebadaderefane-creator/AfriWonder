@@ -109,6 +109,16 @@ export function logCallTransportStats(meta: Record<string, unknown>): void {
   console.error('[CALL_TRANSPORT_STATS]', serialize(meta));
 }
 
+/**
+ * Verdict média consolidé (cause racine en UNE ligne).
+ * Ex. Maroc↔Mali « connecté mais personne n'entend personne » → on lit
+ * directement `inbound_dead` / `silent_both` / `dtls_not_connected` sans
+ * corréler ICE + RTP + transport à la main.
+ */
+export function logCallMediaVerdict(meta: Record<string, unknown>): void {
+  console.error('[CALL_MEDIA_VERDICT]', serialize(meta));
+}
+
 /** État senders/transceivers juste avant createOffer (debug mid=0 Android). */
 export function logPreCreateOfferPeerConnection(meta: Record<string, unknown>): void {
   logAfwCall('pre_create_offer', meta);

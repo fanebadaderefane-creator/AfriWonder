@@ -4,6 +4,8 @@ import {
   iceSelectedCandidateFromRtcStatsReport,
   rtpMediaStatsFromRtcStatsReport,
   transportStatsFromRtcStatsReport,
+  classifyConnectedCallMediaVerdict,
+  CONNECTED_MEDIA_VERDICT_GRACE_MS,
 } from './webrtcConnectionQuality';
 
 function mockReport(entries: Record<string, unknown>[]) {
@@ -179,5 +181,89 @@ describe('transportStatsFromRtcStatsReport', () => {
     expect(t.dtlsState).toBeNull();
     expect(t.hasSelectedPair).toBe(false);
     expect(t.bytesReceived).toBe(0);
+  });
+});
+
+describe('classifyConnectedCallMediaVerdict (cause racine Maroc↔Mali)', () => {
+  const connected = CONNECTED_MEDIA_VERDICT_GRACE_MS + 1000;
+
+  it('audio bidirectionnel → ok', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: true,
+      audioBytesReceived: 48000,
+      audioBytesSent: 46000,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('ok');
+    expect(v.oneWay).toBe(false);
+  });
+
+  it('avant le délai de grâce sans octet → pending (pas de faux verdict)', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: true,
+      audioBytesReceived: 0,
+      audioBytesSent: 0,
+      connectedForMs: 1000,
+    });
+    expect(v.verdict).toBe('pending');
+  });
+
+  it('DTLS non connecté → dtls_not_connected (aucun média possible)', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connecting',
+      hasSelectedPair: true,
+      audioBytesReceived: 0,
+      audioBytesSent: 5000,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('dtls_not_connected');
+  });
+
+  it('pas de paire ICE → no_ice_pair', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: false,
+      audioBytesReceived: 0,
+      audioBytesSent: 5000,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('no_ice_pair');
+  });
+
+  it('j’émets mais ne reçois rien → inbound_dead (je n’entends pas)', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: true,
+      audioBytesReceived: 0,
+      audioBytesSent: 46000,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('inbound_dead');
+    expect(v.oneWay).toBe(true);
+  });
+
+  it('je reçois mais n’émets rien → outbound_dead (il ne m’entend pas)', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: true,
+      audioBytesReceived: 48000,
+      audioBytesSent: 0,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('outbound_dead');
+    expect(v.oneWay).toBe(true);
+  });
+
+  it('paire + DTLS OK mais 0 octet des 2 côtés → silent_both', () => {
+    const v = classifyConnectedCallMediaVerdict({
+      dtlsState: 'connected',
+      hasSelectedPair: true,
+      audioBytesReceived: 0,
+      audioBytesSent: 0,
+      connectedForMs: connected,
+    });
+    expect(v.verdict).toBe('silent_both');
   });
 });

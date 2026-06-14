@@ -109,7 +109,9 @@ const nativeChecks = [
   ['Vidéo RTCView + secours audio séparés', /shouldShowNativeRemoteVideoRtc/],
   ['RTC audio caché (vocal)', /hiddenRemoteRtc/],
   ['RTC secours audio (vidéo)', /hiddenRemoteRtcVideoBackup/],
-  ['zOrder Android vidéo', /zOrderMediaOverlay.*android/],
+  ['zOrder PiP onTop (miniature appelant)', /zOrder=\{peerVideoFullscreen \? 0 : 2\}[\s\S]*zOrder=\{peerVideoFullscreen \? 2 : 0\}/],
+  ['Récup média post-connexion (Maroc↔Mali)', /shouldRecoverStalledConnectedCallMedia[\s\S]*triggerIceRestartRef\.current/],
+  ['Livraison ICE fiable (outbox + reflush reconnexion)', /new CallIceOutbox[\s\S]*iceOutbox\.flushNow[\s\S]*iceOutbox\.enqueue/],
   ['Exclure pistes locales du distant', /isTrackFromLocalCapture/],
   ['prepareCallSessionMemory', /prepareCallSessionMemory/],
   ['SDP pickOutboundCallSdp (web + natif)', /pickOutboundCallSdp/],
@@ -148,6 +150,14 @@ if (/rtpMediaStatsFromRtcStatsReport/.test(read('src/call/webrtcConnectionQualit
   ok('Logs RTP média (packets/bytes/framesDecoded)');
 } else {
   fail('Logs RTP média — rtpMediaStatsFromRtcStatsReport / logRtpMediaStats manquants');
+}
+if (
+  /classifyConnectedCallMediaVerdict/.test(read('src/call/webrtcConnectionQuality.ts')) &&
+  /logCallMediaVerdict/.test(callTsx)
+) {
+  ok('Verdict média consolidé (cause racine 1 ligne — Maroc↔Mali)');
+} else {
+  fail('Verdict média — classifyConnectedCallMediaVerdict / logCallMediaVerdict manquants');
 }
 if (/nativeRtcBindRetryAttempts/.test(netCfg)) {
   ok('Retentes RTCView adaptées au réseau (nativeRtcBindRetryAttempts)');
@@ -240,6 +250,8 @@ const testsOk = run('npm', [
   'src/call/openNativeCallScreen.test.ts',
   'src/call/callAcceptLifecycle.test.ts',
   'src/call/callSignalingPayload.test.ts',
+  'src/call/webrtcConnectionQuality.test.ts',
+  'src/call/callIceOutbox.test.ts',
 ]);
 if (testsOk) ok('Tests Vitest call/*');
 else fail('Tests Vitest call/*');

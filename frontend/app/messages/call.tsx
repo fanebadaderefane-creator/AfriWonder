@@ -68,6 +68,7 @@ import {
   iceSelectedCandidateFromRtcStatsReport,
   rtpMediaStatsFromRtcStatsReport,
   transportStatsFromRtcStatsReport,
+  classifyConnectedCallMediaVerdict,
 } from '../../src/call/webrtcConnectionQuality';
 import {
   buildCallIceConfig,
@@ -95,6 +96,7 @@ import {
   shouldClearCallerRingTimeoutOnAccept,
   shouldFinishCallAsMissed,
   shouldDowngradeVideoInviteToAudioAnswer,
+  shouldRecoverStalledConnectedCallMedia,
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
 } from '../../src/call/callAcceptLifecycle';
@@ -127,6 +129,7 @@ import {
   pickOutboundCallSdp,
   type CallSignalSdpPayload,
 } from '../../src/call/callSignalingPayload';
+import { CallIceOutbox } from '../../src/call/callIceOutbox';
 import {
   optimizeCallAudioPipeline,
   pruneRedundantCallTransceivers,
@@ -155,6 +158,7 @@ import {
   logIceSelectedCandidate,
   logRtpMediaStats,
   logCallTransportStats,
+  logCallMediaVerdict,
   logSetLocalDescription,
   logSetRemoteDescription,
   summarizeCallSdp,
@@ -428,6 +432,12 @@ function CallScreenInner() {
     bars: 1 | 2 | 3;
     quality: 'good' | 'fair' | 'poor';
   }>({ labelFr: 'Connexion…', bars: 2, quality: 'fair' });
+  /**
+   * Vidéo distante réellement décodée (preuve getStats `framesDecoded` > 0).
+   * Signal fiable sur react-native-webrtc, contrairement à `track.muted` qui
+   * reste souvent `true` côté Android même quand les frames peignent.
+   */
+  const [remoteVideoDecoding, setRemoteVideoDecoding] = useState(false);
   const [pipEffect, setPipEffect] = useState<'none' | 'warm' | 'cool' | 'soft'>('none');
   const [effectsModalOpen, setEffectsModalOpen] = useState(false);
   /** `remote` = correspondant plein écran ; `local` = selfie plein écran (PiP = l’autre flux). */
@@ -445,6 +455,10 @@ function CallScreenInner() {
   const mediaReadyHintRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectionWatchdogMsRef = useRef(60_000);
   const mediaReadyHintMsRef = useRef(20_000);
+  /** Récupération média post-connexion (Maroc↔Mali) : suivi des octets reçus / stagnation. */
+  const lastInboundCallBytesRef = useRef<number | null>(null);
+  const inboundMediaStallSinceRef = useRef<number | null>(null);
+  const postConnectedMediaRecoveryDoneRef = useRef(false);
   const voiceBitrateRef = useRef(32_000);
   const iceNetSnapshotRef = useRef<NetworkSnapshot>({ type: 'unknown' });
 
@@ -1424,19 +1438,27 @@ function CallScreenInner() {
         ...callerPcNegotiationSnapshot(pc),
       });
 
-    const sendSignal = (signal: SignalPayload) => {
-      const payload = {
-        callId: callIdRef.current,
-        fromUserId: myUserId,
-        toUserId: otherUserId,
-        signal,
-      };
-      void socketService.ensureConnectedEmit('call:signal', payload, signal.kind === 'sdp' ? 12_000 : 8_000).then((ok) => {
-        if (!ok && !cancelled && signal.kind === 'sdp') {
-          setErrorMsg('Connexion instable. Nouvelle tentative…');
-        }
-      });
-    };
+    /**
+     * Livraison FIABLE des candidats ICE (trickle).
+     * Contrairement au SDP (émis avec `await` + ré-essai), l'ICE était jadis
+     * « fire-and-forget » : un candidat perdu sur un blip radio cellulaire
+     * (Maroc↔Mali) → aucune paire ICE → DTLS bloqué `new` → aucun média.
+     * L'outbox ré-essaie les candidats non confirmés à chaque reconnexion socket.
+     */
+    const iceOutbox = new CallIceOutbox({
+      emit: (candidate) =>
+        socketService.ensureConnectedEmit(
+          'call:signal',
+          {
+            callId: callIdRef.current,
+            fromUserId: myUserId,
+            toUserId: otherUserId,
+            signal: { kind: 'ice' as const, candidate },
+          },
+          8_000,
+        ),
+      onLog: (phase, data) => logCallPhase(callIdRef.current, phase, data),
+    });
 
     const sendSdpFromPeerConnection = async (
       pc: RTCPeerConnection | null,
@@ -2492,6 +2514,8 @@ function CallScreenInner() {
     const offDecline = socketService.on('call:decline', handlePeerDeclined);
     const offMissed = socketService.on('call:missed', handleCallMissed);
     const offInviteAck = socketService.on('call:invite:ack', handleInviteAck);
+    /** Reconnexion socket → ré-essayer les candidats ICE non confirmés. */
+    const offIceReflush = socketService.on('authenticated', () => iceOutbox.flushNow());
 
     const start = async () => {
       if (isWebRuntime) {
@@ -2678,9 +2702,10 @@ function CallScreenInner() {
               type: ev.candidate.type,
               protocol: ev.candidate.protocol,
             });
-            sendSignal({ kind: 'ice', candidate: ev.candidate.toJSON() });
+            // Livraison fiable (ré-essai sur reconnexion) au lieu de fire-and-forget.
+            iceOutbox.enqueue(ev.candidate.toJSON());
           } else {
-            sendSignal({ kind: 'ice', candidate: null });
+            iceOutbox.enqueue(null);
           }
         };
 
@@ -2999,6 +3024,12 @@ function CallScreenInner() {
           }
         } else {
           // Receveur : PC prêt avant accept — indispensable si l’app a été ouverte depuis une notification push.
+          logAfwCall('accept_emit', {
+            callId: callIdRef.current,
+            toCaller: otherUserId,
+            type: startedAsVideo ? 'video' : 'audio',
+            role,
+          });
           const accepted = await socketService.ensureConnectedEmit(
             'call:accept',
             buildCallAcceptPayload({
@@ -3008,6 +3039,7 @@ function CallScreenInner() {
               type: startedAsVideo ? 'video' : 'audio',
             }),
           );
+          logAfwCall('accept_emit_result', { callId: callIdRef.current, accepted });
           if (!accepted) {
             setErrorMsg('Connexion indisponible. Réessayez.');
             finishCall('failed');
@@ -3157,6 +3189,8 @@ function CallScreenInner() {
       offDecline();
       offMissed();
       offInviteAck();
+      offIceReflush();
+      iceOutbox.close();
       scheduleStopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
@@ -3389,7 +3423,14 @@ function CallScreenInner() {
   }, [otherUserId, myUserId, pushFloatingReaction]);
 
   useEffect(() => {
-    if (callState !== 'connected') return;
+    if (callState !== 'connected') {
+      setRemoteVideoDecoding(false);
+      lastInboundCallBytesRef.current = null;
+      inboundMediaStallSinceRef.current = null;
+      postConnectedMediaRecoveryDoneRef.current = false;
+      return;
+    }
+    const connectedAt = Date.now();
     const tick = () => {
       const pc = pcRef.current as RTCPeerConnection | null;
       if (!pc?.getStats) return;
@@ -3398,6 +3439,9 @@ function CallScreenInner() {
         const ice = iceSelectedCandidateFromRtcStatsReport(report);
         const rtp = rtpMediaStatsFromRtcStatsReport(report);
         const transport = transportStatsFromRtcStatsReport(report);
+        if ((rtp.video?.framesDecoded ?? 0) > 0) {
+          setRemoteVideoDecoding(true);
+        }
         setConnectionDisplay({
           labelFr: q.labelFr,
           bars: q.bars,
@@ -3429,12 +3473,64 @@ function CallScreenInner() {
           selectedPairBytesReceived: transport.selectedPairBytesReceived,
           hasSelectedPair: transport.hasSelectedPair,
         });
+
+        // Verdict média consolidé : cause racine en UNE ligne (Maroc↔Mali « connecté mais muet »).
+        const verdict = classifyConnectedCallMediaVerdict({
+          dtlsState: transport.dtlsState,
+          hasSelectedPair: transport.hasSelectedPair,
+          audioBytesReceived: rtp.audio?.bytesReceived ?? 0,
+          audioBytesSent: rtp.audio?.bytesSent ?? 0,
+          connectedForMs: Date.now() - connectedAt,
+        });
+        logCallMediaVerdict({
+          callId: callIdRef.current,
+          role,
+          verdict: verdict.verdict,
+          reason: verdict.reason,
+          oneWay: verdict.oneWay,
+          relay: ice.relayUsed,
+          localType: ice.localType,
+          remoteType: ice.remoteType,
+          dtls: transport.dtlsState,
+          audioIn: rtp.audio?.bytesReceived ?? 0,
+          audioOut: rtp.audio?.bytesSent ?? 0,
+          videoIn: rtp.video?.bytesReceived ?? 0,
+          framesDecoded: rtp.video?.framesDecoded ?? 0,
+        });
+
+        // CAS Maroc↔Mali : appel « connected » mais paire ICE morte (0 octet reçu) → 1 ICE restart.
+        const inboundBytes = transport.selectedPairBytesReceived ?? transport.bytesReceived ?? 0;
+        const prevBytes = lastInboundCallBytesRef.current;
+        const inboundBytesIncreased = prevBytes == null ? true : inboundBytes > prevBytes;
+        lastInboundCallBytesRef.current = inboundBytes;
+        const nowTs = Date.now();
+        if (inboundBytesIncreased) {
+          inboundMediaStallSinceRef.current = null;
+        } else if (inboundMediaStallSinceRef.current == null) {
+          inboundMediaStallSinceRef.current = nowTs;
+        }
+        const stalledMs =
+          inboundMediaStallSinceRef.current == null ? 0 : nowTs - inboundMediaStallSinceRef.current;
+        if (
+          shouldRecoverStalledConnectedCallMedia({
+            role,
+            callConnected: callStateRef.current === 'connected',
+            hasSelectedPair: transport.hasSelectedPair,
+            inboundBytesIncreased,
+            stalledMs,
+            alreadyRecovered: postConnectedMediaRecoveryDoneRef.current,
+          })
+        ) {
+          postConnectedMediaRecoveryDoneRef.current = true;
+          logCallPhase(callIdRef.current, 'media_stall_recover', { stalledMs });
+          void triggerIceRestartRef.current?.();
+        }
       });
     };
     tick();
     const id = setInterval(tick, 2500);
     return () => clearInterval(id);
-  }, [callState]);
+  }, [callState, role]);
 
   const replaceLocalVideoTrack = useCallback(
     async (videoConstraints: MediaTrackConstraints) => {
@@ -3632,7 +3728,8 @@ function CallScreenInner() {
   const remoteVideoFramesLive =
     remoteVideoLive &&
     isVideoCall &&
-    streamHasRenderableRemoteVideo(remoteStreamRef.current as MediaStream | null);
+    (remoteVideoDecoding ||
+      streamHasRenderableRemoteVideo(remoteStreamRef.current as MediaStream | null));
   const showRemoteVideoBuffering = remoteVideoLive && isVideoCall && !remoteVideoFramesLive;
 
   const openAddPeople = useCallback(() => {
@@ -3810,8 +3907,10 @@ function CallScreenInner() {
                   streamURL={remoteStreamUrl}
                   style={styles.nativeVideoFill}
                   objectFit="cover"
-                  zOrder={0}
-                  zOrderMediaOverlay={Platform.OS === 'android'}
+                  // Android react-native-webrtc: seul `zOrder` (int) est lu (0=sous-fenêtre, 2=onTop).
+                  // Le flux PiP doit être onTop (2) pour ne JAMAIS dépendre de l'ordre d'attache des
+                  // SurfaceView (sinon la miniature disparaît côté appelant). Plein écran reste 0.
+                  zOrder={peerVideoFullscreen ? 0 : 2}
                 />
                 {showRemoteWaitingOverlay && peerVideoFullscreen ? (
                   <View style={[styles.videoPlaceholder, styles.videoPlaceholderOverlay]}>
@@ -3898,7 +3997,9 @@ function CallScreenInner() {
                     style={styles.nativeVideoFill}
                     objectFit="cover"
                     mirror={nativeLocalVideoMirror(localFacing)}
-                    zOrderMediaOverlay
+                    // PiP (vue locale quand le distant est plein écran) → onTop (2) pour rester
+                    // au-dessus du plein écran quel que soit le rôle. En plein écran local → 0.
+                    zOrder={peerVideoFullscreen ? 2 : 0}
                   />
                 )
               ) : (

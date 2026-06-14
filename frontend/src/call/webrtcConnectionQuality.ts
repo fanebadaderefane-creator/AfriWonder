@@ -301,3 +301,97 @@ export function transportStatsFromRtcStatsReport(report: unknown): CallTransport
     return empty;
   }
 }
+
+/**
+ * Verdict média consolidé d'un appel « connected ».
+ *
+ * Objectif : transformer les 4 lignes de stats (ICE / RTP / transport) en UNE
+ * cause racine lisible dans Logcat, sans corrélation manuelle. Répond
+ * directement à « quelle étape échoue ? » pour le cas Maroc↔Mali « connecté
+ * mais personne n'entend personne ».
+ *
+ * Sémantique des octets cumulés (après un délai de grâce pour laisser DTLS +
+ * 1ers paquets arriver) :
+ * - `dtls_not_connected` : SRTP impossible ⇒ 0 octet audio ET vidéo des 2 côtés.
+ * - `no_ice_pair`        : aucune paire ICE sélectionnée (relais non alloué).
+ * - `inbound_dead`       : j'émets (out>0) mais je ne reçois rien (in=0) ⇒ je
+ *                          n'entends PAS le correspondant (sens distant→moi mort).
+ * - `outbound_dead`      : je reçois mais n'émets rien ⇒ il ne m'entend PAS.
+ * - `silent_both`        : paire OK + DTLS OK mais 0 octet dans les 2 sens
+ *                          (relais alloué, média bloqué — typique CGNAT/pare-feu).
+ * - `ok` / `pending`     : média audio reçu / encore trop tôt.
+ */
+export type ConnectedCallMediaVerdict =
+  | 'ok'
+  | 'pending'
+  | 'dtls_not_connected'
+  | 'no_ice_pair'
+  | 'inbound_dead'
+  | 'outbound_dead'
+  | 'silent_both';
+
+export type ConnectedCallMediaVerdictResult = {
+  verdict: ConnectedCallMediaVerdict;
+  reason: string;
+  oneWay: boolean;
+};
+
+export const CONNECTED_MEDIA_VERDICT_GRACE_MS = 6_000;
+
+export function classifyConnectedCallMediaVerdict(input: {
+  dtlsState: string | null;
+  hasSelectedPair: boolean;
+  audioBytesReceived: number;
+  audioBytesSent: number;
+  /** ms écoulées depuis l'état « connected » — évite un verdict prématuré. */
+  connectedForMs: number;
+  graceMs?: number;
+}): ConnectedCallMediaVerdictResult {
+  const inAudio = input.audioBytesReceived > 0;
+  const outAudio = input.audioBytesSent > 0;
+  const grace = input.graceMs ?? CONNECTED_MEDIA_VERDICT_GRACE_MS;
+  const dtls = String(input.dtlsState || '').toLowerCase();
+
+  if (inAudio && outAudio) {
+    return { verdict: 'ok', reason: 'audio bidirectionnel', oneWay: false };
+  }
+
+  if (input.connectedForMs < grace) {
+    if (inAudio) return { verdict: 'ok', reason: 'audio entrant reçu', oneWay: false };
+    return { verdict: 'pending', reason: 'média en cours d’établissement', oneWay: false };
+  }
+
+  if (dtls && dtls !== 'connected') {
+    return {
+      verdict: 'dtls_not_connected',
+      reason: `DTLS=${dtls} ⇒ SRTP impossible (aucun média)`,
+      oneWay: false,
+    };
+  }
+  if (!input.hasSelectedPair) {
+    return {
+      verdict: 'no_ice_pair',
+      reason: 'aucune paire ICE sélectionnée (relais non alloué)',
+      oneWay: false,
+    };
+  }
+  if (!inAudio && outAudio) {
+    return {
+      verdict: 'inbound_dead',
+      reason: 'je n’entends pas le correspondant (sens distant→moi mort)',
+      oneWay: true,
+    };
+  }
+  if (inAudio && !outAudio) {
+    return {
+      verdict: 'outbound_dead',
+      reason: 'le correspondant ne m’entend pas (sens moi→distant mort)',
+      oneWay: true,
+    };
+  }
+  return {
+    verdict: 'silent_both',
+    reason: 'paire ICE + DTLS OK mais 0 octet audio des 2 côtés (média bloqué)',
+    oneWay: false,
+  };
+}

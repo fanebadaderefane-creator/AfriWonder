@@ -25,6 +25,7 @@ import { featureFlags } from '../../config/featureFlags';
 import { INCOMING_CALL_RING_VOLUME, startIncomingCallVibration } from '../../call/callIncomingAlerts';
 import { startLoopingCallRing, stopAllCallRings } from '../../call/callRingtone';
 import { buildCallDeclinePayload, callUserIdsEqual } from '../../call/callSignalingPayload';
+import { logAfwCall } from '../../call/callDiagnosticLog';
 import { dismissIncomingCall } from '../../services/incomingCallService';
 import { profileAvatarUri } from '../../utils/avatarFallback';
 import apiClient from '../../api/client';
@@ -153,14 +154,19 @@ export function IncomingCallOverlay() {
     const c = incomingRef.current;
     if (!c || !myUserId) return;
     acceptingRef.current = true;
+    logAfwCall('overlay_accept_tap', { callId: c.callId, type: c.type });
     try {
       /**
        * ⛔ VERROUILLÉ — Ne pas émettre `call:accept` ici (régression silence + SDP perdu).
        * L’appelant envoie l’offre dès accept : le receveur doit avoir monté sa PeerConnection avant.
        * `call:accept` est émis uniquement dans `call.tsx` après getUserMedia.
        * Règle : `.cursor/rules/call-signaling-locked.mdc`
+       *
+       * La navigation NE DOIT PAS dépendre de l'arrêt de la sonnerie : sur appareils lents
+       * (Mali, 2-3 Go) `stopIncomingRing()` pouvait traîner/rejeter et bloquer l'accept
+       * (« rien ne se passe »). On navigue d'abord, on coupe la sonnerie en best-effort
+       * (call.tsx libère de toute façon l'audio expo-av via releaseExpoAvForWebRtcCall).
        */
-      await stopIncomingRing();
       dismissIncomingUi();
       void dismissIncomingCall(c.callId);
       navigateToReceiverCallScreen({
@@ -170,6 +176,9 @@ export function IncomingCallOverlay() {
         peerAvatar: c.callerAvatar || '',
         type: c.type,
       });
+      void stopIncomingRing();
+    } catch (e) {
+      logAfwCall('overlay_accept_failed', { callId: c.callId, error: String(e) });
     } finally {
       acceptingRef.current = false;
     }
@@ -255,11 +264,14 @@ export function IncomingCallOverlay() {
       dragY.value = withSpring(0, { damping: 18, stiffness: 220 });
     });
 
-  const tapAccept = Gesture.Tap().maxDuration(280).onEnd(() => {
-    runOnJS(accept)();
-  });
-
-  const acceptGesture = Gesture.Exclusive(tapAccept, panAccept);
+  /**
+   * Le tap d'acceptation passe par un TouchableOpacity fiable (comme « Refuser »),
+   * pas par un Gesture.Tap : sur appareils lents (2-3 Go RAM, marché Mali), un tap
+   * > maxDuration ou avec micro-mouvement était ignoré → « accepter ne faisait rien »
+   * alors que « refuser » (TouchableOpacity) marchait toujours. Le Pan reste pour
+   * le balayage vers le haut. `acceptingRef` empêche une double acceptation.
+   */
+  const acceptGesture = panAccept;
 
   const acceptCircleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: dragY.value }],
@@ -322,7 +334,15 @@ export function IncomingCallOverlay() {
                   />
                   <GestureDetector gesture={acceptGesture}>
                     <AnimatedRe.View style={[styles.circleBtn, styles.btnAccept, acceptCircleStyle]}>
-                      <Ionicons name="call" size={32} color="#FFF" />
+                      <TouchableOpacity
+                        style={styles.acceptHit}
+                        onPress={() => void accept()}
+                        activeOpacity={0.85}
+                        accessibilityRole="button"
+                        accessibilityLabel="Accepter l’appel"
+                      >
+                        <Ionicons name="call" size={32} color="#FFF" />
+                      </TouchableOpacity>
                     </AnimatedRe.View>
                   </GestureDetector>
                   <Text style={styles.swipeHint}>Appuyer ou balayer vers le haut pour accepter</Text>
@@ -446,6 +466,13 @@ const styles = StyleSheet.create({
   btnAccept: {
     backgroundColor: '#25D366',
     marginTop: 10,
+  },
+  acceptHit: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   btnMessage: {
     backgroundColor: '#2A3942',

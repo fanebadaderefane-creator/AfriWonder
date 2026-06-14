@@ -18,6 +18,39 @@ export function shouldArmMediaConnectionWatchdog(input: {
   return input.peerAccepted;
 }
 
+/**
+ * Délai avant de tenter une récupération média sur appel DÉJÀ connecté.
+ * Sur lien intercontinental (Maroc↔Mali) la paire ICE sélectionnée peut mourir
+ * après « connected » : 0 octet reçu pendant ce délai = média mort → 1 ICE restart.
+ */
+export const STALLED_CONNECTED_MEDIA_RECOVERY_MS = 9_000;
+
+/**
+ * Récupération média post-connexion (CAS Maroc↔Mali : « parfois aucun média distant »).
+ *
+ * Déclenche un (et un seul) ICE restart quand un appel **déjà connecté** ne reçoit
+ * plus aucun octet sur la paire ICE sélectionnée depuis assez longtemps. Réservé à
+ * l'**appelant** pour éviter le glare (le receveur répond à l'offre de restart).
+ * Sur un appel sain les octets reçus augmentent à chaque tick → ne se déclenche jamais
+ * (pas de régression Maroc↔Maroc).
+ */
+export function shouldRecoverStalledConnectedCallMedia(input: {
+  role: CallRole;
+  callConnected: boolean;
+  hasSelectedPair: boolean;
+  inboundBytesIncreased: boolean;
+  stalledMs: number;
+  alreadyRecovered: boolean;
+  thresholdMs?: number;
+}): boolean {
+  if (input.role !== 'caller') return false;
+  if (!input.callConnected) return false;
+  if (input.alreadyRecovered) return false;
+  if (!input.hasSelectedPair) return false;
+  if (input.inboundBytesIncreased) return false;
+  return input.stalledMs >= (input.thresholdMs ?? STALLED_CONNECTED_MEDIA_RECOVERY_MS);
+}
+
 /** Timer « Pas de réponse » (30 s) : à annuler dès que le correspondant décroche. */
 export function shouldClearCallerRingTimeoutOnAccept(input: { role: CallRole }): boolean {
   return input.role === 'caller';
