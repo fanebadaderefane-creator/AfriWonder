@@ -79,6 +79,7 @@
       "./plugins/withAndroidDeferFirebaseInit.js",
       "./plugins/withAndroidLargeHeap.js",
       "./plugins/withAndroidNotifeeMaven.js",
+      "./plugins/withAndroidJitsiWebRtcMaven.js",
       "./plugins/withAndroidNotifeeForegroundService.js",
       "./plugins/withAndroidNotificationIconDrawable.js",
       "./plugins/withAndroidTurnCleartext.js",

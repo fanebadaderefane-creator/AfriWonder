@@ -152,6 +152,34 @@ function checkStaticModulesAndFiles() {
     if (exists(f)) pass('files', f);
     else fail('files', `Fichier manquant: ${f}`);
   }
+
+  if (exists('android/build.gradle')) {
+    const androidBuildGradle = read('android/build.gradle');
+    if (
+      androidBuildGradle.includes('afw-notifee-local-maven')
+      && androidBuildGradle.includes('exclusiveContent')
+      && androidBuildGradle.includes('includeGroup "app.notifee"')
+    ) {
+      pass('android', 'Notifee Maven local (exclusiveContent app.notifee — évite timeout JitPack EAS)');
+    } else {
+      fail(
+        'android',
+        'android/build.gradle: exclusiveContent app.notifee manquant (EAS → app.notifee:core:+ timeout JitPack)',
+      );
+    }
+    if (
+      androidBuildGradle.includes('afw-jitsi-maven-central')
+      && androidBuildGradle.includes('includeGroup "org.jitsi"')
+      && androidBuildGradle.includes("force 'org.jitsi:webrtc:124.0.0'")
+    ) {
+      pass('android', 'Jitsi WebRTC Maven Central (exclusiveContent org.jitsi — évite timeout JitPack EAS)');
+    } else {
+      fail(
+        'android',
+        'android/build.gradle: exclusiveContent org.jitsi manquant (EAS → org.jitsi:webrtc:124.+ timeout JitPack)',
+      );
+    }
+  }
 }
 
 function checkStaticInvariants() {

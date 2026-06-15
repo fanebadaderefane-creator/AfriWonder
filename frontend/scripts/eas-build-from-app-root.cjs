@@ -40,13 +40,22 @@ function profileUsesLocalAndroidCredentials(profileName) {
 const platform = readArgValue(passthrough, '--platform');
 const profile = readArgValue(passthrough, '--profile');
 
-function runNodeScript(scriptName) {
-  return spawnSync('node', [path.join(__dirname, scriptName)], {
+function runNodeScript(scriptName, extraArgs = []) {
+  return spawnSync('node', [path.join(__dirname, scriptName), ...extraArgs], {
     cwd: appRoot,
     stdio: 'inherit',
     env: process.env,
     shell: process.platform === 'win32',
   });
+}
+
+if (platform === 'android') {
+  const preflightArgs = ['--gradle'];
+  console.log('[eas] Preflight Android (Notifee/Gradle/keystore)…');
+  const preflight = runNodeScript('verify-eas-android-preflight.cjs', preflightArgs);
+  if (preflight.status !== 0) {
+    process.exit(preflight.status === null ? 1 : preflight.status);
+  }
 }
 
 if (platform === 'android' && profileUsesLocalAndroidCredentials(profile)) {
