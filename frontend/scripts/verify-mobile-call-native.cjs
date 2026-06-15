@@ -112,6 +112,9 @@ const nativeChecks = [
   ['zOrder PiP onTop (miniature appelant)', /zOrder=\{peerVideoFullscreen \? 0 : 2\}[\s\S]*zOrder=\{peerVideoFullscreen \? 2 : 0\}/],
   ['Récup média post-connexion (Maroc↔Mali)', /shouldRecoverStalledConnectedCallMedia[\s\S]*triggerIceRestartRef\.current/],
   ['Livraison ICE fiable (outbox + reflush reconnexion)', /new CallIceOutbox[\s\S]*iceOutbox\.flushNow[\s\S]*iceOutbox\.enqueue/],
+  ['Half-trickle ICE buffer (onicecandidate)', /localGatheredIceRef\.current\.push/],
+  ['Half-trickle embed SDP (Android/iOS)', /buildOutboundSdpWithEmbeddedIce/],
+  ['Half-trickle wait relay in buffer', /decideIceGatheringWaitWithBuffer/],
   ['Exclure pistes locales du distant', /isTrackFromLocalCapture/],
   ['prepareCallSessionMemory', /prepareCallSessionMemory/],
   ['SDP pickOutboundCallSdp (web + natif)', /pickOutboundCallSdp/],
@@ -252,6 +255,9 @@ const testsOk = run('npm', [
   'src/call/callSignalingPayload.test.ts',
   'src/call/webrtcConnectionQuality.test.ts',
   'src/call/callIceOutbox.test.ts',
+  'src/call/callDiagnosticLog.test.ts',
+  'src/call/callIceGathering.test.ts',
+  'src/call/callSdpIceEmbed.test.ts',
 ]);
 if (testsOk) ok('Tests Vitest call/*');
 else fail('Tests Vitest call/*');

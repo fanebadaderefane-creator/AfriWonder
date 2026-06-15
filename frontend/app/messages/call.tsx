@@ -130,6 +130,8 @@ import {
   type CallSignalSdpPayload,
 } from '../../src/call/callSignalingPayload';
 import { CallIceOutbox } from '../../src/call/callIceOutbox';
+import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce } from '../../src/call/callSdpIceEmbed';
+import { sdpCandidateCounts } from '../../src/call/callIceGathering';
 import {
   optimizeCallAudioPipeline,
   pruneRedundantCallTransceivers,
@@ -149,6 +151,12 @@ import {
   logPatchAudioFixActive,
   logIceLocal,
   logIceRemote,
+  logIceRemoteApplied,
+  logIceQueued,
+  logIceFlushPending,
+  logPeerConnectionStates,
+  readPeerConnectionStates,
+  parseIceCandidateMeta,
   logSdpReceived,
   logSdpSend,
   logRemoteStreamReceived,
@@ -320,6 +328,11 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 const CALL_RING_MS = 30_000;
+/** Half-trickle ICE : attente max d'un candidat relay avant émission SDP. */
+const HALF_TRICKLE_MAX_WAIT_MS = 2_500;
+/** TURN lent (3G Mali / Maroc) — laisser le temps au candidat relay d'arriver via onicecandidate. */
+const HALF_TRICKLE_MAX_WAIT_MS_TURN = 5_500;
+const HALF_TRICKLE_POLL_MS = 150;
 const isWebRuntime = Platform.OS === 'web';
 
 /** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
@@ -474,6 +487,9 @@ function CallScreenInner() {
   const remoteWebAudioPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const remoteWebAudioPlaybackKeyRef = useRef('');
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  /** Candidats locaux `onicecandidate` — Android/iOS ne les met pas toujours dans localDescription.sdp. */
+  const localGatheredIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const turnConfiguredRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const callStateRef = useRef(callState);
   const finishingRef = useRef(false);
@@ -883,14 +899,16 @@ function CallScreenInner() {
     const applyLocalDescription = async (
       pc: RTCPeerConnection,
       desc: RTCSessionDescriptionInit,
-    ): Promise<void> =>
-      setTunedLocalDescription(
+    ): Promise<void> => {
+      localGatheredIceRef.current = [];
+      return setTunedLocalDescription(
         pc,
         desc,
         voiceBitrateRef.current,
         isWebRuntime,
         isWebRuntime ? undefined : RTCSessionDescriptionImpl,
       );
+    };
 
     const applyRemoteTrack = (track: MediaStreamTrack | undefined, trackKind?: string) => {
       if (!track || track.readyState === 'ended') return;
@@ -1460,12 +1478,62 @@ function CallScreenInner() {
       onLog: (phase, data) => logCallPhase(callIdRef.current, phase, data),
     });
 
+    /**
+     * Half-trickle : attendre (borné) que le `localDescription` embarque au moins
+     * un candidat `relay` (TURN) avant d'émettre le SDP. Le SDP étant livré de
+     * façon fiable (`ensureConnectedEmit`), la connexion peut s'établir MÊME si
+     * 100 % du trickle ICE est perdu (Maroc↔Mali). Le trickle continue en
+     * parallèle. Ne bloque jamais au-delà de HALF_TRICKLE_MAX_WAIT_MS ; sur les
+     * ré-émissions, le gathering est déjà fini → retour immédiat.
+     */
+    const awaitIceCandidatesInLocalSdp = async (pc: RTCPeerConnection | null): Promise<void> => {
+      if (!pc || !pc.localDescription?.sdp) return;
+      const startedAt = Date.now();
+      const maxWaitMs = turnConfiguredRef.current ? HALF_TRICKLE_MAX_WAIT_MS_TURN : HALF_TRICKLE_MAX_WAIT_MS;
+      const requireRelay = turnConfiguredRef.current && !isWebRuntime;
+      for (;;) {
+        const decision = decideIceGatheringWaitWithBuffer({
+          iceGatheringState: pc.iceGatheringState,
+          sdp: pc.localDescription?.sdp,
+          gatheredCandidates: localGatheredIceRef.current,
+          elapsedMs: Date.now() - startedAt,
+          maxWaitMs,
+          requireRelay,
+        });
+        if (decision.done) {
+          const sdpCounts = sdpCandidateCounts(pc.localDescription?.sdp);
+          const bufferCounts = sdpCandidateCounts(
+            buildOutboundSdpWithEmbeddedIce({
+              sdp: pc.localDescription?.sdp ?? '',
+              type: pc.localDescription?.type ?? 'offer',
+              gatheredCandidates: localGatheredIceRef.current,
+            }).sdp,
+          );
+          logCallPhase(callIdRef.current, 'ice_in_sdp', {
+            reason: decision.reason,
+            waitedMs: Date.now() - startedAt,
+            requireRelay,
+            bufferLen: localGatheredIceRef.current.length,
+            relay: bufferCounts.relay,
+            srflx: bufferCounts.srflx,
+            host: bufferCounts.host,
+            total: bufferCounts.total,
+            sdpOnlyRelay: sdpCounts.relay,
+          });
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, HALF_TRICKLE_POLL_MS));
+      }
+    };
+
     const sendSdpFromPeerConnection = async (
       pc: RTCPeerConnection | null,
       fallback?: RTCSessionDescriptionInit | null,
     ): Promise<boolean> => {
-      const outbound = pickOutboundCallSdp(pc, fallback ?? undefined);
-      if (!outbound) {
+      // Half-trickle : attendre relay (buffer onicecandidate) puis embarquer dans le SDP.
+      await awaitIceCandidatesInLocalSdp(pc);
+      const picked = pickOutboundCallSdp(pc, fallback ?? undefined);
+      if (!picked) {
         logCallPhase(callIdRef.current, 'sdp_send_skipped', {
           reason: 'invalid_outbound',
           pcLocalType: pc?.localDescription?.type ?? null,
@@ -1474,10 +1542,22 @@ function CallScreenInner() {
         devWarn('[Call] SDP non envoyé — type ou sdp manquant après setLocalDescription');
         return false;
       }
+      const built = buildOutboundSdpWithEmbeddedIce({
+        sdp: picked.sdp,
+        type: picked.type,
+        gatheredCandidates: localGatheredIceRef.current,
+      });
+      const outbound = {
+        type: built.type as CallSignalSdpPayload['type'],
+        sdp: built.sdp,
+      };
       logCallPhase(callIdRef.current, 'sdp_send', {
         type: outbound.type,
         hasAudio: sdpContainsMedia(outbound.sdp, 'audio'),
         hasVideo: sdpContainsMedia(outbound.sdp, 'video'),
+        embeddedIce: built.embeddedCount,
+        iceRelay: built.counts.relay,
+        iceTotal: built.counts.total,
       });
       logSdpSend({
         callId: callIdRef.current,
@@ -1662,19 +1742,41 @@ function CallScreenInner() {
       }, connectionWatchdogMsRef.current);
     };
 
+    const logPcStatesSnapshot = (reason: string, extra?: Record<string, unknown>) => {
+      logPeerConnectionStates({
+        callId: callIdRef.current,
+        role,
+        reason,
+        ...readPeerConnectionStates(pcRef.current as RTCPeerConnection | null),
+        ...extra,
+      });
+    };
+
     const flushPendingIce = async () => {
       const pc = pcRef.current as RTCPeerConnection | null;
       if (!pc || !pc.remoteDescription) return;
+      const queued = pendingIceRef.current.length;
+      if (queued === 0) return;
+      logIceFlushPending({ callId, role, queued });
       while (pendingIceRef.current.length > 0) {
         const c = pendingIceRef.current.shift();
         if (!c) continue;
+        const meta = parseIceCandidateMeta(c.candidate ?? null);
         try {
           const ice = isWebRuntime ? c : new RTCIceCandidateImpl(c);
           await pc.addIceCandidate(ice);
+          logIceRemoteApplied({
+            callId: callIdRef.current,
+            role,
+            source: 'flush_pending',
+            ...meta,
+            sdpMid: c.sdpMid ?? null,
+          });
         } catch (e) {
-          logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
+          logCallPhase(callId, 'ice_remote_failed', { error: String(e), source: 'flush_pending', ...meta });
         }
       }
+      logPcStatesSnapshot('after_flush_pending_ice', { flushed: queued });
     };
 
     /** Active la caméra locale et l’attache à la PeerConnection (passage vocal → vidéo). */
@@ -1867,6 +1969,7 @@ function CallScreenInner() {
               type: remoteSdp.type,
               signalingState: pc.signalingState,
             });
+            logPcStatesSnapshot('after_set_remote_description', { sdpType: remoteSdp.type });
           } catch (firstErr) {
             if (
               remoteSdp.type === 'offer' &&
@@ -1922,6 +2025,7 @@ function CallScreenInner() {
               signalingState: pc.signalingState,
               sdpTuned: isWebRuntime,
             });
+            logPcStatesSnapshot('after_set_local_description', { sdpType: localAns?.type ?? ans.type });
             void optimizeCallAudioPipeline(pc, voiceBitrateRef.current);
             logCallPhase(callId, 'sdp_local', {
               type: localAns?.type ?? ans.type,
@@ -1935,6 +2039,13 @@ function CallScreenInner() {
             if (pc.remoteDescription) {
               try {
                 await pc.addIceCandidate(null as unknown as RTCIceCandidateInit);
+                logIceRemoteApplied({
+                  callId: callIdRef.current,
+                  role,
+                  source: 'end_of_candidates',
+                  type: null,
+                  protocol: null,
+                });
               } catch {
                 /* fin de candidats — optionnel selon impl */
               }
@@ -1945,20 +2056,39 @@ function CallScreenInner() {
             const ice = isWebRuntime
               ? normalized.candidate
               : new RTCIceCandidateImpl(normalized.candidate);
+            const iceMeta = parseIceCandidateMeta(normalized.candidate.candidate ?? null);
             logIceRemote({
               callId: callIdRef.current,
               role,
               fromUserId: payload.fromUserId,
+              ...iceMeta,
               candidate: normalized.candidate.candidate?.slice(0, 48) ?? null,
               sdpMid: normalized.candidate.sdpMid ?? null,
             });
             try {
               await pc.addIceCandidate(ice);
+              logIceRemoteApplied({
+                callId: callIdRef.current,
+                role,
+                fromUserId: payload.fromUserId,
+                source: 'trickle',
+                ...iceMeta,
+                sdpMid: normalized.candidate.sdpMid ?? null,
+              });
+              logPcStatesSnapshot('after_add_ice_candidate');
             } catch (e) {
-              logCallPhase(callId, 'ice_remote_failed', { error: String(e) });
+              logCallPhase(callId, 'ice_remote_failed', { error: String(e), ...iceMeta });
             }
           } else {
             pendingIceRef.current.push(normalized.candidate);
+            logIceQueued({
+              callId: callIdRef.current,
+              role,
+              fromUserId: payload.fromUserId,
+              ...parseIceCandidateMeta(normalized.candidate.candidate ?? null),
+              pendingCount: pendingIceRef.current.length,
+              sdpMid: normalized.candidate.sdpMid ?? null,
+            });
           }
         }
       } catch (e) {
@@ -2532,6 +2662,7 @@ function CallScreenInner() {
       lastCallerOfferSdpRef = null;
       callerOfferMediaPrepared = false;
       callerOfferRecoveryAttempted = false;
+      localGatheredIceRef.current = [];
       setNativeRtcUnmounting(false);
       try {
         /**
@@ -2585,6 +2716,7 @@ function CallScreenInner() {
           iceNetSnapshot = { type: 'unknown' };
         }
         iceNetSnapshotRef.current = iceNetSnapshot;
+        turnConfiguredRef.current = turnConfigured;
         if (
           shouldBlockCellularWithoutTurn({
             turnConfigured,
@@ -2692,27 +2824,31 @@ function CallScreenInner() {
 
         pc.onicecandidate = (ev: RTCPeerConnectionIceEvent) => {
           if (ev.candidate) {
-            logCallPhase(callId, 'ice_local', {
-              type: ev.candidate.type,
-              protocol: ev.candidate.protocol,
-            });
-            logIceLocal({
-              callId,
-              role,
-              type: ev.candidate.type,
-              protocol: ev.candidate.protocol,
-            });
+            const candidateJson = ev.candidate.toJSON();
+            localGatheredIceRef.current.push(candidateJson);
+            const { type: iceType, protocol: iceProtocol } = parseIceCandidateMeta(
+              candidateJson?.candidate ?? null,
+            );
+            logCallPhase(callId, 'ice_local', { type: iceType, protocol: iceProtocol });
+            logIceLocal({ callId, role, type: iceType, protocol: iceProtocol });
             // Livraison fiable (ré-essai sur reconnexion) au lieu de fire-and-forget.
-            iceOutbox.enqueue(ev.candidate.toJSON());
+            iceOutbox.enqueue(candidateJson);
           } else {
+            logIceLocal({ callId, role, type: null, protocol: null, end: true });
             iceOutbox.enqueue(null);
           }
+        };
+
+        pc.onicegatheringstatechange = () => {
+          if (pcTearingDownRef.current) return;
+          logPcStatesSnapshot('ice_gathering_state_change');
         };
 
         pc.onconnectionstatechange = () => {
           if (pcTearingDownRef.current) return;
           const s = pc.connectionState;
           logCallPhase(callId, 'pc_state', { connectionState: s });
+          logPcStatesSnapshot('connection_state_change');
           if (s === 'connected') {
             syncRemoteTracksFromPeerConnection(pc);
             const remote = remoteStreamRef.current as MediaStream;
@@ -2756,6 +2892,7 @@ function CallScreenInner() {
           if (pcTearingDownRef.current) return;
           const ice = String(pc.iceConnectionState || '');
           logCallPhase(callId, 'ice_state', { iceConnectionState: ice });
+          logPcStatesSnapshot('ice_connection_state_change');
           if (ice === 'connected' || ice === 'completed') {
             syncRemoteTracksFromPeerConnection(pc);
             const remote = remoteStreamRef.current as MediaStream;

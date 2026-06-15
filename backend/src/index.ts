@@ -826,9 +826,27 @@ io.on('connection', (socket) => {
   });
 
   socket.on('call:signal', (payload: { toUserId: string; fromUserId: string; callId: string; signal: any }) => {
-    if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || !payload?.signal) return;
+    const signalKind = String(payload?.signal?.kind || 'unknown');
+    if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || !payload?.signal) {
+      logger.warn('call:signal dropped — payload incomplet', {
+        callId: payload?.callId,
+        toUserId: payload?.toUserId,
+        fromUserId: payload?.fromUserId,
+        kind: signalKind,
+      });
+      return;
+    }
     const actorId = (socket.data as { userId?: string }).userId;
-    if (!actorId || !canRelayDirectCallEvent(payload, actorId)) return;
+    if (!actorId || !canRelayDirectCallEvent(payload, actorId)) {
+      logger.warn('call:signal dropped — relay denied', {
+        callId: payload.callId,
+        actorId,
+        fromUserId: payload.fromUserId,
+        toUserId: payload.toUserId,
+        kind: signalKind,
+      });
+      return;
+    }
     io.to(`user:${payload.toUserId}`).emit('call:signal', payload);
   });
 

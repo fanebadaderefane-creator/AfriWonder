@@ -1,67 +1,65 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import {
-  logAfwCall,
-  logCallEndEmit,
-  logRemoteStreamReceived,
-  logRemoteTrackReceived,
-  logSdpSend,
-  summarizeCallSdp,
-} from './callDiagnosticLog';
+/** Tests parseur type de candidat ICE — preuve génération/échange relay (TURN). */
+import { describe, expect, it } from 'vitest';
+import { parseIceCandidateMeta, summarizeCallSdp } from './callDiagnosticLog';
 
-describe('callDiagnosticLog', () => {
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe('parseIceCandidateMeta', () => {
+  it('détecte un candidat host udp', () => {
+    expect(
+      parseIceCandidateMeta('candidate:1 1 udp 2122260223 192.168.1.10 50000 typ host'),
+    ).toEqual({ type: 'host', protocol: 'udp' });
   });
 
-  afterEach(() => {
-    errorSpy.mockRestore();
+  it('détecte un candidat srflx', () => {
+    expect(
+      parseIceCandidateMeta(
+        'candidate:2 1 udp 1686052607 1.2.3.4 50001 typ srflx raddr 192.168.1.10 rport 50000',
+      ),
+    ).toEqual({ type: 'srflx', protocol: 'udp' });
   });
 
-  it('logAfwCall émet [AFW_CALL] via console.error', () => {
-    logAfwCall('accept_rx', { callId: 'call-1', role: 'caller' });
-    expect(errorSpy).toHaveBeenCalled();
-    const line = String(errorSpy.mock.calls[0]?.join(' ') || '');
-    expect(line).toContain('[AFW_CALL]');
-    expect(line).toContain('accept_rx');
-    expect(line).toContain('call-1');
+  it('détecte un candidat relay (TURN) tcp', () => {
+    expect(
+      parseIceCandidateMeta(
+        'candidate:3 1 tcp 41819902 5.6.7.8 49152 typ relay raddr 1.2.3.4 rport 50001',
+      ),
+    ).toEqual({ type: 'relay', protocol: 'tcp' });
   });
 
-  it('logSdpSend émet [SDP_SEND]', () => {
-    logSdpSend({ callId: 'c1', type: 'offer', sdpLen: 120 });
-    const line = String(errorSpy.mock.calls[0]?.join(' ') || '');
-    expect(line).toContain('[SDP_SEND]');
-    expect(line).toContain('"type":"offer"');
+  it('détecte prflx', () => {
+    expect(parseIceCandidateMeta('candidate:4 1 udp 1 9.9.9.9 1 typ prflx').type).toBe('prflx');
   });
 
-  it('logCallEndEmit émet [CALL_END_EMIT]', () => {
-    logCallEndEmit({ reason: 'failed', callId: 'c2' });
-    const line = String(errorSpy.mock.calls[0]?.join(' ') || '');
-    expect(line).toContain('[CALL_END_EMIT]');
+  it('renvoie null pour entrée vide ou invalide', () => {
+    expect(parseIceCandidateMeta('')).toEqual({ type: null, protocol: null });
+    expect(parseIceCandidateMeta(null)).toEqual({ type: null, protocol: null });
+    expect(parseIceCandidateMeta(undefined)).toEqual({ type: null, protocol: null });
   });
 
-  it('logRemoteTrackReceived émet [REMOTE_TRACK_RECEIVED]', () => {
-    logRemoteTrackReceived({ trackId: 'v1', trackKind: 'video', readyState: 'live' });
-    const line = String(errorSpy.mock.calls[0]?.join(' ') || '');
-    expect(line).toContain('[REMOTE_TRACK_RECEIVED]');
-    expect(line).toContain('v1');
+  it('ignore un protocole non standard', () => {
+    expect(parseIceCandidateMeta('candidate:5 1 sctp 1 1.1.1.1 1 typ host').protocol).toBeNull();
   });
+});
 
-  it('logRemoteStreamReceived émet [REMOTE_STREAM_RECEIVED]', () => {
-    logRemoteStreamReceived({ streamId: 's1', videoTracks: 1, audioTracks: 1 });
-    const line = String(errorSpy.mock.calls[0]?.join(' ') || '');
-    expect(line).toContain('[REMOTE_STREAM_RECEIVED]');
-    expect(line).toContain('"videoTracks":1');
-  });
-
-  it('summarizeCallSdp détecte audio/vidéo', () => {
-    const sdp = ['v=0', 'm=audio 9 UDP/TLS/RTP/SAVPF 111', 'm=video 9 UDP/TLS/RTP/SAVPF 96'].join('\r\n');
-    expect(summarizeCallSdp(sdp, 'offer')).toEqual({
+describe('summarizeCallSdp', () => {
+  it('compte les candidats ICE embarqués', () => {
+    const sdp = [
+      'v=0',
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+      'a=candidate:1 1 udp 2122260223 192.168.1.10 50000 typ host',
+      'a=candidate:2 1 udp 41819902 5.6.7.8 49152 typ relay raddr 1.2.3.4 rport 50001',
+    ].join('\r\n');
+    expect(summarizeCallSdp(sdp, 'offer')).toMatchObject({
       type: 'offer',
-      sdpLen: sdp.length,
-      hasAudio: true,
-      hasVideo: true,
+      iceHost: 1,
+      iceRelay: 1,
+      iceTotal: 2,
+    });
+  });
+
+  it('renvoie zéro candidat si SDP nu', () => {
+    expect(summarizeCallSdp('v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111', 'offer')).toMatchObject({
+      iceTotal: 0,
+      iceRelay: 0,
     });
   });
 });

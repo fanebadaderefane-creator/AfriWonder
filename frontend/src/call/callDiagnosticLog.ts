@@ -2,15 +2,23 @@
  * Logs permanents appels WebRTC — toujours visibles Logcat / Metro (console.error).
  * Indépendants de EXPO_PUBLIC_CALL_DEBUG et de __DEV__.
  *
- * Tags : [AFW_CALL] [SDP_SEND] [SDP_RECEIVED] [ICE_LOCAL] [ICE_REMOTE]
- *        [CALL_END_EMIT] [CALL_END_RECEIVED]  (+ [AFW_CALL_EXIT] dans callCallExit.ts)
+ * Tags : [AFW_CALL] [SDP_SEND] [SDP_RECEIVED] [ICE_LOCAL] [ICE_REMOTE] [ICE_REMOTE_APPLIED]
+ *        [ICE_QUEUED] [ICE_FLUSH_PENDING] [PC_STATES] [CALL_END_EMIT] [CALL_END_RECEIVED]
+ *        (+ [AFW_CALL_EXIT] dans callCallExit.ts)
  */
+
+import { sdpCandidateCounts } from './callIceGathering';
 
 export type CallDiagnosticSdpSummary = {
   type: string | null;
   sdpLen: number;
   hasAudio: boolean;
   hasVideo: boolean;
+  /** Candidats ICE embarqués dans le SDP (lignes a=candidate:). */
+  iceHost: number;
+  iceSrflx: number;
+  iceRelay: number;
+  iceTotal: number;
 };
 
 export function summarizeCallSdp(
@@ -18,16 +26,44 @@ export function summarizeCallSdp(
   type?: string | null,
 ): CallDiagnosticSdpSummary {
   const body = String(sdp || '');
+  const ice = sdpCandidateCounts(body);
   return {
     type: type ? String(type) : null,
     sdpLen: body.length,
     hasAudio: body.includes('m=audio'),
     hasVideo: body.includes('m=video'),
+    iceHost: ice.host,
+    iceSrflx: ice.srflx,
+    iceRelay: ice.relay,
+    iceTotal: ice.total,
   };
 }
 
 function serialize(meta?: Record<string, unknown>): string {
   return JSON.stringify({ ts: Date.now(), ...meta });
+}
+
+/**
+ * Extrait le type (`host`/`srflx`/`relay`/`prflx`) et le protocole (`udp`/`tcp`)
+ * d'une chaîne de candidat ICE. `react-native-webrtc` n'expose PAS `candidate.type`
+ * comme propriété ; l'info est uniquement dans la chaîne SDP brute :
+ *   `candidate:<foundation> <component> <proto> <prio> <ip> <port> typ <type> …`
+ * Indispensable pour prouver que des candidats `relay` (TURN) sont bien générés /
+ * échangés (cause racine probable « checking → jamais connected » Maroc↔Mali).
+ */
+export function parseIceCandidateMeta(candidate?: string | null): {
+  type: string | null;
+  protocol: string | null;
+} {
+  const raw = String(candidate || '');
+  if (!raw) return { type: null, protocol: null };
+  const typeMatch = raw.match(/\btyp\s+(host|srflx|prflx|relay)\b/i);
+  const parts = raw.replace(/^candidate:/, '').trim().split(/\s+/);
+  const protocol = parts.length >= 3 ? String(parts[2]).toLowerCase() : null;
+  return {
+    type: typeMatch ? typeMatch[1].toLowerCase() : null,
+    protocol: protocol === 'udp' || protocol === 'tcp' ? protocol : null,
+  };
 }
 
 /** Événements cycle d'appel (invite, accept, createOffer, bootstrap, abort…). */
@@ -49,6 +85,43 @@ export function logIceLocal(meta: Record<string, unknown>): void {
 
 export function logIceRemote(meta: Record<string, unknown>): void {
   console.error('[ICE_REMOTE]', serialize(meta));
+}
+
+/** Preuve : addIceCandidate() a réussi côté receveur/appelant. */
+export function logIceRemoteApplied(meta: Record<string, unknown>): void {
+  console.error('[ICE_REMOTE_APPLIED]', serialize(meta));
+}
+
+/** Candidat ICE reçu avant setRemoteDescription — mis en file pendingIceRef. */
+export function logIceQueued(meta: Record<string, unknown>): void {
+  console.error('[ICE_QUEUED]', serialize(meta));
+}
+
+/** Vidage de pendingIceRef après setRemoteDescription(offer|answer). */
+export function logIceFlushPending(meta: Record<string, unknown>): void {
+  console.error('[ICE_FLUSH_PENDING]', serialize(meta));
+}
+
+/** États PeerConnection — corrélation ICE/DTLS (Maroc↔Mali). */
+export function logPeerConnectionStates(meta: Record<string, unknown>): void {
+  console.error('[PC_STATES]', serialize(meta));
+}
+
+export function readPeerConnectionStates(pc: RTCPeerConnection | null | undefined): Record<string, string | null> {
+  if (!pc) {
+    return {
+      iceConnectionState: null,
+      connectionState: null,
+      signalingState: null,
+      iceGatheringState: null,
+    };
+  }
+  return {
+    iceConnectionState: String(pc.iceConnectionState || '') || null,
+    connectionState: String(pc.connectionState || '') || null,
+    signalingState: String(pc.signalingState || '') || null,
+    iceGatheringState: String(pc.iceGatheringState || '') || null,
+  };
 }
 
 export function logCallEndEmit(meta: Record<string, unknown>): void {
