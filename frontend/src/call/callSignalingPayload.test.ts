@@ -150,6 +150,29 @@ describe('callSignalingPayload', () => {
     }
   });
 
+  it("normalizeInboundCallSignal nettoie cname RN et audio dupliqué (mid='1')", () => {
+    const answerSdp = [
+      'v=0',
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+      'a=mid:0',
+      'a=sendrecv',
+      'a=ssrc:653906106 cname:{02f4fcf5-c70c-4e40-8911-308e3774b5f2}',
+      'm=audio 0 UDP/TLS/RTP/SAVPF 111',
+      'a=mid:1',
+      'a=recvonly',
+    ].join('\r\n');
+    const normalized = normalizeInboundCallSignal(
+      { kind: 'sdp', sdp: { type: 'answer', sdp: answerSdp } },
+      'have-local-offer',
+    );
+    expect(normalized?.kind).toBe('sdp');
+    if (normalized?.kind === 'sdp') {
+      expect(normalized.sdp.sdp).toContain('cname:02f4fcf5-c70c-4e40-8911-308e3774b5f2');
+      expect(normalized.sdp.sdp).not.toContain('a=mid:1');
+      expect(normalized.sdp.sdp.match(/^m=audio/gm)?.length).toBe(1);
+    }
+  });
+
   it('callSdpNegotiationOptions ne passe AUCUNE contrainte héritée offerToReceive* (régression mid=1)', () => {
     // Réintroduire { offerToReceiveAudio, offerToReceiveVideo } recrée une 2e
     // section audio en Unified Plan → setRemoteDescription échoue côté appelant.

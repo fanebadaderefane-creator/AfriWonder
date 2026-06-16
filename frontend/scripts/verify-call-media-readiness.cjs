@@ -80,6 +80,7 @@ const checks = [
   ['Upgrade vocal→vidéo (attachVideoToActiveCall)', /attachVideoToActiveCall/],
   ['RTCView secours audio vidéo natif', /hiddenRemoteRtcVideoBackup/],
   ['ICE restart changement réseau', /triggerIceRestartRef|ice_restart_network_change/],
+  ['ICE restart web — createOffer pas restartIce seul', /!isWebRuntime && typeof pc\.restartIce === 'function'/],
   ['Foreground service appel actif', /startActiveCallForeground/],
   ['showNativeRemoteRtc (RTC distant après connected)', /showNativeRemoteRtc|shouldShowNativeRemoteVideoRtc/],
   ['isValidNativeRtcStreamUrl', /isValidNativeRtcStreamUrl/],
@@ -96,6 +97,14 @@ const checks = [
   ['Anti double createOffer (chainCallerOfferTask)', /chainCallerOfferTask/],
   ['Réémission offre locale existante', /sdp_resend_existing_offer|resendExistingCallerOffer/],
   ['Filtrage call:end stale (shouldIgnoreInboundCallEnd)', /shouldIgnoreInboundCallEnd/],
+  ['Anti-crash stream null — bind RTCView garde', /bindNativeRemoteStreamToRtcView[\s\S]*if \(!stream\) return/],
+  ['Anti-crash stream null — media_nudge différé', /startMediaNudgeTimer/],
+  ['Anti-crash stream null — PATCH_STREAM_NULL_GUARD', /PATCH_STREAM_NULL_GUARD|logNativeStreamNullGuardActive/],
+  ['Anti-crash prepareNativeRtcViewUnmount (cleanup écran)', /prepareNativeRtcViewUnmount/],
+  ['Anti-crash media_nudge bloqué en teardown', /shouldRunDeferredCallMediaNudge[\s\S]*tearingDown/],
+  ['Maroc↔Mali — streamHasAudibleRemoteAudio', /streamHasAudibleRemoteAudio/],
+  ['Maroc↔Mali — shouldForceTurnRelay dans promotion', /shouldForceTurnRelay/],
+  ['Helpers safeGetAudioTracks (callStreamTracks)', /callStreamTracks/],
   ['Audio bidirectionnel — bind URL distante précoce', /shouldBindNativeRemoteStreamUrl/],
   ['Audio bidirectionnel — RTCView vocal en connecting', /shouldShowNativeRemoteAudioRtc/],
   ['Micro local actif avant SDP', /ensureLocalAudioTracksEnabled/],
@@ -170,7 +179,7 @@ if (run('npm', ['run', 'test', '--', 'src/call/callAcceptLifecycle.test.ts'])) {
 }
 
 console.log('\n━━ callRemoteMedia (audio distant requis) ━━');
-if (run('npm', ['run', 'test', '--', 'src/call/callRemoteMedia.test.ts', 'src/call/callNetworkConfig.test.ts', 'src/call/parseTurnCredentialsResponse.test.ts', 'src/call/callSignalingPayload.test.ts'])) {
+if (run('npm', ['run', 'test', '--', 'src/call/callStreamTracks.test.ts', 'src/call/callRemoteMedia.test.ts', 'src/call/callNetworkConfig.test.ts', 'src/call/parseTurnCredentialsResponse.test.ts', 'src/call/callSignalingPayload.test.ts'])) {
   ok('Tests unitaires média / TURN / signalisation');
 } else {
   fail('Tests unitaires média / TURN / signalisation');

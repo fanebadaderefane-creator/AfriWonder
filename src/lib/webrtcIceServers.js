@@ -88,7 +88,12 @@ export function getWebRtcConfiguration() {
     typeof import.meta !== 'undefined' && import.meta.env?.VITE_ICE_TRANSPORT_POLICY
       ? String(import.meta.env.VITE_ICE_TRANSPORT_POLICY).trim().toLowerCase()
       : '';
-  const iceTransportPolicy = policyRaw === 'relay' ? 'relay' : undefined;
+  const turnConfigured = Boolean(
+    cachedTurn?.urls ||
+      (turnUrlRaw && turnUsername && turnCredential),
+  );
+  const iceTransportPolicy =
+    policyRaw === 'relay' || turnConfigured ? 'relay' : undefined;
 
   return {
     iceServers,

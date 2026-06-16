@@ -84,7 +84,23 @@ export function normalizeOutboundSessionDescription(desc, signalingState) {
   if (!desc) return null;
   const raw =
     typeof desc === 'object' && typeof desc.toJSON === 'function' ? desc.toJSON() : desc;
-  return coerceSessionDescriptionInit(raw, signalingState);
+  return coerceOutboundSessionDescriptionInit(raw, signalingState);
+}
+
+/**
+ * SDP local sortant — en `have-local-offer` le type DOIT être `offer` (pas `answer`).
+ */
+export function coerceOutboundSessionDescriptionInit(raw, signalingState) {
+  const parsed = coerceSessionDescriptionInit(raw, signalingState);
+  if (!parsed) return null;
+  const state = String(signalingState || '');
+  if (state === 'have-local-offer' && parsed.type !== 'offer') {
+    return { type: 'offer', sdp: parsed.sdp };
+  }
+  if (state === 'have-local-pranswer' && parsed.type !== 'pranswer') {
+    return { type: 'pranswer', sdp: parsed.sdp };
+  }
+  return parsed;
 }
 
 export function pickOutboundCallSdp(pc, fallback) {
@@ -101,6 +117,17 @@ export function pickOutboundCallSdp(pc, fallback) {
   const fromFallback = normalizeOutboundSessionDescription(fallback ?? null, state);
   if (fromFallback) return fromFallback;
   return normalizeOutboundSessionDescription(local, state);
+}
+
+/** Unified Plan : ne pas passer offerToReceive* (duplicat audio mid='1'). */
+export function callSdpNegotiationOptions() {
+  return undefined;
+}
+
+export function countSdpMediaSections(sdp, kind) {
+  if (!sdp) return 0;
+  const matches = sdp.match(new RegExp(`^m=${kind}\\b`, 'gm'));
+  return matches ? matches.length : 0;
 }
 
 export function callIdsEqual(a, b) {

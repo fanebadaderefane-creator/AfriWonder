@@ -19,6 +19,7 @@ import {
   shouldForceTurnRelay,
   optimizeIceServersForNativeRelay,
   prepareIceServersForPlatform,
+  prepareIceServersForWeb,
   resolveIceNetworkSnapshot,
   shouldBlockNativeCellularWithoutTlsTurn,
   sortTurnUrlsPreferTls,
@@ -126,10 +127,10 @@ describe('shouldForceTurnRelay — CGNAT Afrique / Maroc↔Mali', () => {
       shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
     ).toBe(true);
   });
-  it('web + Wi‑Fi + TURN → pas de relais forcé (P2P local OK)', () => {
+  it('web + Wi‑Fi + TURN → relais forcé (parité Maroc↔Mali cross-border)', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'wifi' } }),
-    ).toBe(false);
+    ).toBe(true);
   });
   it('sans TURN → pas de relais forcé', () => {
     expect(
@@ -210,7 +211,7 @@ describe('réseaux lents 2G/3G — vocal et délais', () => {
 });
 
 describe('buildCallIceConfig', () => {
-  it('TURN configuré → relay sur natif, ICE léger sur web', () => {
+  it('TURN configuré → relay sur natif et web (Maroc↔Mali)', () => {
     const mobile = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
@@ -225,7 +226,7 @@ describe('buildCallIceConfig', () => {
       isWeb: true,
       net: { type: 'wifi' },
     });
-    expect(web.iceTransportPolicy).toBeUndefined();
+    expect(web.iceTransportPolicy).toBe('relay');
     expect(web.iceCandidatePoolSize).toBe(10);
     expect(web.bundlePolicy).toBe('max-bundle');
     expect(web.rtcpMuxPolicy).toBe('require');
@@ -261,14 +262,40 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBe('relay');
   });
 
-  it('web + TURN + Wi‑Fi → pas de relay forcé', () => {
+  it('web + TURN + Wi‑Fi → relay forcé (cross-border)', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: true,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBeUndefined();
+    expect(cfg.iceTransportPolicy).toBe('relay');
+  });
+});
+
+describe('prepareIceServersForWeb', () => {
+  it('conserve TURN même si entrée au-delà de slice(0,6) (static fallback)', () => {
+    const staticLike: RTCIceServer[] = [
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun5.l.google.com:19302' },
+      { urls: 'stun:stun6.l.google.com:19302' },
+      { urls: 'stun:stun7.l.google.com:19302' },
+      {
+        urls: ['turn:fr.relay.metered.ca:80', 'turns:fr.relay.metered.ca:443'],
+        username: 'u',
+        credential: 'c',
+      },
+    ];
+    const out = prepareIceServersForWeb(staticLike);
+    const hasTurn = out.some((entry) => {
+      const urls = Array.isArray(entry.urls) ? entry.urls : [entry.urls];
+      return urls.some((u) => String(u).startsWith('turn'));
+    });
+    expect(hasTurn).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(4);
   });
 });
 

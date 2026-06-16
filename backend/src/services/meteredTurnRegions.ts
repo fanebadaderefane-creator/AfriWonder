@@ -90,11 +90,19 @@ export function applyMeteredRegionalTurn(
   return [...stunEntries, regionalTurn];
 }
 
-/** Réécrit TURN_URL statiques (global → fr/eu-west). */
+/** Réécrit TURN_URL statiques (global → tous les hôtes régionaux afriwonder). */
 export function rewriteMeteredTurnUrlList(urls: string[], hosts: readonly string[]): string[] {
   if (!urls.length || !hosts.length) return urls;
-  const primary = hosts[0];
-  return urls.map((u) =>
-    String(u).replace(METERED_RELAY_HOST_PATTERN, primary),
-  );
+  const expanded: string[] = [];
+  for (const u of urls) {
+    const str = String(u);
+    if (METERED_RELAY_HOST_PATTERN.test(str)) {
+      for (const host of hosts) {
+        expanded.push(str.replace(METERED_RELAY_HOST_PATTERN, host));
+      }
+    } else {
+      expanded.push(str);
+    }
+  }
+  return [...new Set(expanded)];
 }

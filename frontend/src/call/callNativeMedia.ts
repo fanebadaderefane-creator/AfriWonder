@@ -1,6 +1,7 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { PermissionsAndroid, Platform } from 'react-native';
+import { safeGetAudioTracks } from './callStreamTracks';
 import { type VideoQualityProfile } from './callNetworkConfig';
 import { tryLoadReactNativeWebRtc } from './tryLoadReactNativeWebRtc';
 
@@ -378,8 +379,7 @@ export function resolveWebRtcMediaDevices(): MediaDevices | undefined {
 
 /** Micro local actif avant createOffer/createAnswer (émission bidirectionnelle). */
 export function ensureLocalAudioTracksEnabled(stream: MediaStream | null | undefined): void {
-  if (!stream?.getAudioTracks) return;
-  for (const track of stream.getAudioTracks()) {
+  for (const track of safeGetAudioTracks(stream)) {
     if (track.readyState === 'ended') continue;
     try {
       track.enabled = true;
@@ -461,10 +461,10 @@ export async function recoverNativeAudioOfferMedia(
       /* ignore */
     }
   }
-  const audio = local.getAudioTracks()[0];
+  const audio = safeGetAudioTracks(local)[0];
   if (audio) {
     try {
-      pc.addTrack(audio, local);
+      pc.addTrack(audio as MediaStreamTrack, local);
     } catch {
       /* ignore */
     }
@@ -614,8 +614,7 @@ export const NATIVE_REMOTE_AUDIO_TRACK_VOLUME = 10;
 
 /** Active les pistes audio distantes et monte le volume natif si disponible. */
 export function enableRemoteAudioTracks(stream: MediaStream | null | undefined): void {
-  if (!stream?.getAudioTracks) return;
-  for (const track of stream.getAudioTracks()) {
+  for (const track of safeGetAudioTracks(stream)) {
     try {
       track.enabled = true;
       const vol = (track as { _setVolume?: (v: number) => void })._setVolume;

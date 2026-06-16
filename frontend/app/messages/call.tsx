@@ -81,6 +81,7 @@ import {
   resolveIceNetworkSnapshot,
   shouldBlockCellularWithoutTurn,
   shouldBlockNativeCellularWithoutTlsTurn,
+  shouldForceTurnRelay,
   type NetworkSnapshot,
   type VideoQualityProfile as NetVideoQualityProfile,
 } from '../../src/call/callNetworkConfig';
@@ -133,6 +134,12 @@ import {
 import { CallIceOutbox } from '../../src/call/callIceOutbox';
 import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce, shouldAwaitIceBeforeOutboundSdp, shouldAwaitMinimalIceBeforeAnswerEmbed, minimalIceGatherReady, MINIMAL_ANSWER_ICE_WAIT_MS, MINIMAL_ANSWER_ICE_POLL_MS } from '../../src/call/callSdpIceEmbed';
 import { shouldRefreshNativeRemoteAudioPlayback } from '../../src/call/callNativeRemotePlayback';
+import {
+  CALL_NATIVE_STREAM_GUARD_TAG,
+  safeAudioTrackCount,
+  safeVideoTrackCount,
+  shouldRunDeferredCallMediaNudge,
+} from '../../src/call/callStreamTracks';
 import { sdpCandidateCounts } from '../../src/call/callIceGathering';
 import {
   optimizeCallAudioPipeline,
@@ -151,6 +158,7 @@ import {
   logPreCreateOfferPeerConnection,
   logDebugTransceiversBeforeSetLocal,
   logPatchAudioFixActive,
+  logNativeStreamNullGuardActive,
   logIceLocal,
   logIceRemote,
   logIceRemoteApplied,
@@ -205,6 +213,7 @@ import {
   shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
+  streamHasAudibleRemoteAudio,
   streamHasLiveVideo,
   streamHasRemoteVideoTrack,
   streamHasRenderableRemoteVideo,
@@ -623,6 +632,21 @@ function CallScreenInner() {
     }, []),
   );
 
+  /** Démonte RTCView + annule timers avant `pc.close()` — crash Android/iOS sinon. */
+  const prepareNativeRtcViewUnmount = useCallback(() => {
+    pcTearingDownRef.current = true;
+    if (nativeRemoteRtcRebindTimerRef.current) {
+      clearTimeout(nativeRemoteRtcRebindTimerRef.current);
+      nativeRemoteRtcRebindTimerRef.current = null;
+    }
+    if (!isWebRuntime) {
+      setNativeRtcUnmounting(true);
+      setLocalStreamUrl('');
+      setRemoteStreamUrl('');
+      setRemoteStreamKey((k) => k + 1);
+    }
+  }, []);
+
   const stopAllMedia = useCallback(() => {
     if (mediaStoppedRef.current) return;
     mediaStoppedRef.current = true;
@@ -733,14 +757,8 @@ function CallScreenInner() {
       setMyRaisedHand(false);
       setPeerScreenSharing(false);
       setLocalScreenSharing(false);
-      pcTearingDownRef.current = true;
-      setNativeRtcUnmounting(true);
+      prepareNativeRtcViewUnmount();
       setCallState('ended');
-      if (!isWebRuntime) {
-        setLocalStreamUrl('');
-        setRemoteStreamUrl('');
-        setRemoteStreamKey((k) => k + 1);
-      }
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
@@ -792,7 +810,7 @@ function CallScreenInner() {
         }
       }, 600);
     },
-    [otherUserId, myUserId, scheduleStopAllMedia, role, user?.full_name, user?.username],
+    [otherUserId, myUserId, scheduleStopAllMedia, role, user?.full_name, user?.username, prepareNativeRtcViewUnmount],
   );
 
   /** Animation de pulse pendant le ringing. */
@@ -888,6 +906,13 @@ function CallScreenInner() {
         role,
         startedAsVideo,
       });
+      logNativeStreamNullGuardActive({
+        phase: 'call_bootstrap',
+        callId,
+        tag: CALL_NATIVE_STREAM_GUARD_TAG,
+        role,
+        startedAsVideo,
+      });
     }
 
     prepareCallSessionMemory();
@@ -904,6 +929,14 @@ function CallScreenInner() {
       if (!sdp) return undefined;
       return sdpContainsMedia(sdp, 'video');
     };
+
+    /** Relais TURN strict (Maroc↔Mali) — natif toujours ; web sur cellulaire/CGNAT. */
+    const callForceTurnRelay = (): boolean =>
+      shouldForceTurnRelay({
+        turnConfigured: turnConfiguredRef.current,
+        isWeb: isWebRuntime,
+        net: iceNetSnapshotRef.current,
+      });
 
     const applyLocalDescription = async (
       pc: RTCPeerConnection,
@@ -1005,14 +1038,23 @@ function CallScreenInner() {
         phase,
         streamId: stream.id,
         streamURL: url,
-        audioTracks: stream.getAudioTracks?.().length ?? 0,
+        audioTracks: safeAudioTrackCount(stream),
         videoTracks: videoTrackCount,
         bindingKey,
         callState: callStateRef.current,
       });
     };
 
-    const bindNativeRemoteStreamToRtcView = (stream: MediaStream) => {
+    const bindNativeRemoteStreamToRtcView = (stream: MediaStream | null | undefined) => {
+      if (!stream) return;
+      if (
+        shouldBlockNativeRtcUrlUpdate({
+          tearingDown: pcTearingDownRef.current,
+          callEnded: callStateRef.current === 'ended',
+        })
+      ) {
+        return;
+      }
       const pcNow = pcRef.current as RTCPeerConnection | null;
       if (
         !shouldBindNativeRemoteStreamUrl({
@@ -1021,6 +1063,7 @@ function CallScreenInner() {
           hasRemoteDescription: Boolean(pcNow?.remoteDescription),
           iceConnectionState: peerIceState(),
           peerConnectionState: peerPcState(),
+          forceTurnRelay: callForceTurnRelay(),
         })
       ) {
         logRemoteRtcBindSkipped({
@@ -1028,14 +1071,14 @@ function CallScreenInner() {
           role,
           reason: 'should_bind_false',
           isVideo: isVideoCallRef.current,
-          audioTracks: stream.getAudioTracks?.().length ?? 0,
-          videoTracks: stream.getVideoTracks?.().length ?? 0,
+          audioTracks: safeAudioTrackCount(stream),
+          videoTracks: safeVideoTrackCount(stream),
         });
         return;
       }
       const localUrl = (localStreamRef.current as { toURL?: () => string } | null)?.toURL?.() || '';
       const url = (stream as { toURL?: () => string })?.toURL?.() || '';
-      const videoTrackCount = stream.getVideoTracks?.().length ?? 0;
+      const videoTrackCount = safeVideoTrackCount(stream);
       const bindingKey = mediaStreamBindingKey(stream);
       const prev = remoteRtcBindRef.current;
       const mustRefresh = shouldRefreshNativeRemoteRtcView({
@@ -1097,6 +1140,7 @@ function CallScreenInner() {
       source: string,
       pc: RTCPeerConnection | null,
     ) => {
+      if (!pc) return;
       if (
         !shouldRefreshNativeRemoteAudioPlayback({
           isWebRuntime,
@@ -1106,7 +1150,7 @@ function CallScreenInner() {
         return;
       }
       syncRemoteTracksFromPeerConnection(pc);
-      const remote = remoteStreamRef.current as MediaStream;
+      const remote = remoteStreamRef.current as MediaStream | null;
       enableRemoteAudioTracks(remote);
       if (remotePlaybackStreamRef.current) {
         enableRemoteAudioTracks(remotePlaybackStreamRef.current);
@@ -1116,7 +1160,7 @@ function CallScreenInner() {
       void stopNativeOutgoingRingback();
       logCallPhase(callIdRef.current, 'native_remote_audio_refresh', {
         source,
-        audioTracks: remote?.getAudioTracks?.().length ?? 0,
+        audioTracks: safeAudioTrackCount(remote),
       });
       logAfwCall('native_remote_audio_refresh', {
         callId: callIdRef.current,
@@ -1125,7 +1169,8 @@ function CallScreenInner() {
       });
     };
 
-    const setupRemoteEl = (stream: MediaStream, trackKind?: string) => {
+    const setupRemoteEl = (stream: MediaStream | null | undefined, trackKind?: string) => {
+      if (!stream) return;
       if (!shouldApplyNativeRtcUrl()) return;
       const pcNow = pcRef.current as RTCPeerConnection | null;
       if (!isWebRuntime && !pcNow?.remoteDescription) return;
@@ -1150,8 +1195,8 @@ function CallScreenInner() {
       if (isWebRuntime || Boolean(pcLog?.remoteDescription)) {
         logCallPhase(callId, 'remote_stream_updated', {
           trackKind,
-          audioTracks: stream.getAudioTracks?.().length ?? 0,
-          videoTracks: stream.getVideoTracks?.().length ?? 0,
+          audioTracks: safeAudioTrackCount(stream),
+          videoTracks: safeVideoTrackCount(stream),
           bindingKey: mediaStreamBindingKey(stream),
         });
       }
@@ -1169,13 +1214,13 @@ function CallScreenInner() {
             iceConnectionState: peerIceState(),
             hasRemoteDescription: Boolean(pc?.remoteDescription),
             peerConnectionState: peerPcState(),
-            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+            forceTurnRelay: callForceTurnRelay(),
           })
         ) {
           return;
         }
         logCallPhase(callId, 'media_connected', {
-          remoteAudio: streamHasLiveAudio(remote),
+          remoteAudio: streamHasAudibleRemoteAudio(remote) || streamHasLiveAudio(remote),
           remoteVideo: streamHasLiveVideo(remote),
         });
         /** Natif : resync + RTCView distant (vocal ET vidéo) — décodeur audio sans bind = silence. */
@@ -1242,7 +1287,7 @@ function CallScreenInner() {
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: true,
           remoteSdpHasVideo: remoteSdpHasVideo(),
-          forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+          forceTurnRelay: callForceTurnRelay(),
         })
       ) {
         return;
@@ -1351,6 +1396,7 @@ function CallScreenInner() {
           next.addTrack(track);
           track.onunmute = () => {
             syncRemoteTracksFromPeerConnection(pc);
+            maybeMarkCallConnected(remoteStreamRef.current as MediaStream, track.kind);
           };
         }
         remoteStreamRef.current = next;
@@ -1359,8 +1405,8 @@ function CallScreenInner() {
           role,
           streamId: next.id,
           streamURL: (next as { toURL?: () => string }).toURL?.() || '',
-          audioTracks: next.getAudioTracks?.().length ?? 0,
-          videoTracks: next.getVideoTracks?.().length ?? 0,
+          audioTracks: safeAudioTrackCount(next),
+          videoTracks: safeVideoTrackCount(next),
           bindingKey: receiverTracksBindingKey(tracks),
         });
         const leadKind = tracks.find((t) => t.kind === 'video')?.kind ?? tracks[0]?.kind;
@@ -1392,7 +1438,7 @@ function CallScreenInner() {
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: Boolean(pc?.remoteDescription),
             remoteSdpHasVideo: remoteSdpHasVideo(),
-            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+            forceTurnRelay: callForceTurnRelay(),
           })
         ) {
           maybeMarkCallConnected(remote);
@@ -1539,7 +1585,7 @@ function CallScreenInner() {
       if (!pc || !pc.localDescription?.sdp) return;
       const startedAt = Date.now();
       const maxWaitMs = turnConfiguredRef.current ? HALF_TRICKLE_MAX_WAIT_MS_TURN : HALF_TRICKLE_MAX_WAIT_MS;
-      const requireRelay = turnConfiguredRef.current && !isWebRuntime;
+      const requireRelay = callForceTurnRelay();
       for (;;) {
         const decision = decideIceGatheringWaitWithBuffer({
           iceGatheringState: pc.iceGatheringState,
@@ -1745,6 +1791,8 @@ function CallScreenInner() {
         return;
       }
       try {
+        const prunedRestart = pruneRedundantCallTransceivers(pc);
+        if (prunedRestart) logCallPhase(callIdRef.current, 'transceivers_pruned', { stopped: prunedRestart, source: 'ice_restart' });
         const restartOffer = await pc.createOffer({ iceRestart: true });
         await applyLocalDescription(pc, restartOffer);
         await sendSdpFromPeerConnection(pc, restartOffer);
@@ -1752,6 +1800,7 @@ function CallScreenInner() {
         enableRemoteAudioTracks(remote);
         if (!isWebRuntime) {
           void applyNativeCallSpeakerRoute(speakerOnRef.current);
+          refreshNativeRemoteAudioPlayback('ice_restart_network_change', pc);
         }
         logCallPhase(callIdRef.current, 'ice_restart_network_change', {});
       } catch (e) {
@@ -1810,7 +1859,7 @@ function CallScreenInner() {
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: Boolean(pc.remoteDescription),
           remoteSdpHasVideo: remoteSdpHasVideo(),
-          forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+          forceTurnRelay: callForceTurnRelay(),
         })) {
           maybeMarkCallConnected(remote, 'audio');
           clearConnectionWatchdog();
@@ -1868,9 +1917,19 @@ function CallScreenInner() {
         if (!restartAttempted) {
           restartAttempted = true;
           try {
+            const prunedWatchdog = pruneRedundantCallTransceivers(pc);
+            if (prunedWatchdog) {
+              logCallPhase(callIdRef.current, 'transceivers_pruned', {
+                stopped: prunedWatchdog,
+                source: 'watchdog_ice_restart',
+              });
+            }
             const restartOffer = await pc.createOffer({ iceRestart: true });
             await applyLocalDescription(pc, restartOffer);
             await sendSdpFromPeerConnection(pc, restartOffer);
+            if (!isWebRuntime) {
+              refreshNativeRemoteAudioPlayback('connection_watchdog_ice_restart', pc);
+            }
             armConnectionWatchdog();
             return;
           } catch {
@@ -2206,18 +2265,26 @@ function CallScreenInner() {
             if (prunedAns) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedAns });
             ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
             if (!peerConnectionHasActiveAudioSender(pc) && !callerLocalMediaReady()) {
+              const localRecovery = localStreamRef.current as MediaStream | null;
+              if (localRecovery && !isWebRuntime) {
+                await recoverNativeAudioOfferMedia(pc, localRecovery);
+              }
+            }
+            if (!peerConnectionHasActiveAudioSender(pc) && !callerLocalMediaReady()) {
               logAnswerSendError({
                 callId: callIdRef.current,
                 role,
-                reason: 'no_audio_sender_warn',
+                reason: 'no_audio_sender_abort',
                 hasLocalStream: Boolean((localStreamRef.current as MediaStream | null)?.getTracks?.().length),
                 senderCount: pc.getSenders?.().length ?? 0,
               });
-              logAfwCall('answer_no_audio_sender_warn', {
+              logAfwCall('answer_no_audio_sender_abort', {
                 callId: callIdRef.current,
                 role,
-                note: 'createAnswer proceeds — signalisation prioritaire',
               });
+              setErrorMsg('Micro indisponible — impossible de répondre à l’appel.');
+              finishCall('failed');
+              return;
             }
             const ans = await pc.createAnswer(callSdpNegotiationOptions());
             logCreateAnswer({
@@ -2517,10 +2584,7 @@ function CallScreenInner() {
             }
           }
         }
-        const prunedOffer =
-          skipMediaSetup || negotiationLocked || pcSnap.hasLocalOffer
-            ? 0
-            : pruneRedundantCallTransceivers(pc);
+        const prunedOffer = pruneRedundantCallTransceivers(pc);
         if (prunedOffer) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedOffer });
         if (await resendExistingCallerOffer(pc, `${source}_pre_create`)) return true;
         if (
@@ -2558,7 +2622,31 @@ function CallScreenInner() {
           tag: CALL_NATIVE_AUDIO_FIX_TAG,
           source,
         });
-        const offer = await pc.createOffer(callSdpNegotiationOptions());
+        let offer = await pc.createOffer(callSdpNegotiationOptions());
+        let offerSdpBody = String(offer.sdp || '');
+        if (countSdpMediaSections(offerSdpBody, 'audio') > 1) {
+          const prunedDup = pruneRedundantCallTransceivers(pc);
+          logCallPhase(callId, 'offer_duplicate_audio_retry', {
+            source,
+            stopped: prunedDup,
+            audioSections: countSdpMediaSections(offerSdpBody, 'audio'),
+          });
+          offer = await pc.createOffer(callSdpNegotiationOptions());
+          offerSdpBody = String(offer.sdp || '');
+        }
+        if (countSdpMediaSections(offerSdpBody, 'audio') > 1) {
+          lastCallerOfferAbortRef.current = 'duplicate_audio_sections';
+          logAfwCall('caller_offer_abort', {
+            reason: 'duplicate_audio_sections',
+            source,
+            callId: callIdRef.current,
+            role,
+            audioSections: countSdpMediaSections(offerSdpBody, 'audio'),
+          });
+          setErrorMsg('Erreur média — relancez l’appel.');
+          finishCall('failed');
+          return false;
+        }
         logCreateOffer({
           callId: callIdRef.current,
           role,
@@ -3013,8 +3101,18 @@ function CallScreenInner() {
           pc = new RTCPeerConnectionImpl(pcConfig);
         } catch (pcErr) {
           if (!isWebRuntime) throw pcErr;
-          devWarn('[Call] RTCPeerConnection config primaire échouée, repli STUN', pcErr);
-          pc = new RTCPeerConnection({ iceServers: iceServers.slice(0, 3) });
+          devWarn('[Call] RTCPeerConnection config primaire échouée, repli ICE allégé', pcErr);
+          const fallbackConfig = buildCallIceConfig({
+            iceServers: prepareIceServersForPlatform({
+              isWeb: true,
+              turnConfigured,
+              iceServers,
+            }),
+            turnConfigured,
+            isWeb: true,
+            net: iceNetSnapshot,
+          });
+          pc = new RTCPeerConnection(fallbackConfig);
         }
         pcRef.current = pc;
         logCallPhase(callId, 'pc_created', { isWeb: isWebRuntime });
@@ -3029,6 +3127,7 @@ function CallScreenInner() {
 
         const remoteStream = isWebRuntime ? new MediaStream() : new nativeWebRTC.MediaStream();
         remoteStreamRef.current = remoteStream;
+        startMediaNudgeTimer();
 
         pc.ontrack = (ev: RTCTrackEvent) => {
           if (!ev.track) return;
@@ -3093,7 +3192,7 @@ function CallScreenInner() {
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
                 remoteSdpHasVideo: remoteSdpHasVideo(),
-                forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+                forceTurnRelay: callForceTurnRelay(),
               })
             ) {
               clearConnectionWatchdog();
@@ -3138,7 +3237,7 @@ function CallScreenInner() {
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
                 remoteSdpHasVideo: remoteSdpHasVideo(),
-                forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+                forceTurnRelay: callForceTurnRelay(),
               })
             ) {
               clearConnectionWatchdog();
@@ -3169,15 +3268,26 @@ function CallScreenInner() {
               if (!restartAttempted) {
                 restartAttempted = true;
                 try {
-                  if (typeof pc.restartIce === 'function') {
+                  // Web : createOffer({ iceRestart }) + SDP — restartIce() seul perd iceTransportPolicy relay.
+                  if (!isWebRuntime && typeof pc.restartIce === 'function') {
                     pc.restartIce();
                     logCallPhase(callId, 'ice_restart_native', { method: 'restartIce' });
                     armConnectionWatchdog();
                     return;
                   }
+                  const prunedMediaRestart = pruneRedundantCallTransceivers(pc);
+                  if (prunedMediaRestart) {
+                    logCallPhase(callId, 'transceivers_pruned', {
+                      stopped: prunedMediaRestart,
+                      source: 'media_watchdog_ice_restart',
+                    });
+                  }
                   const restartOffer = await pc.createOffer({ iceRestart: true });
                   await applyLocalDescription(pc, restartOffer);
                   await sendSdpFromPeerConnection(pc, restartOffer);
+                  if (!isWebRuntime) {
+                    refreshNativeRemoteAudioPlayback('media_watchdog_ice_restart', pc);
+                  }
                   armConnectionWatchdog();
                   return;
                 } catch {
@@ -3214,7 +3324,7 @@ function CallScreenInner() {
             try {
               preAcquiredWebStream = await prefetch;
               logCallPhase(callId, 'web_media_prefetch_ok', {
-                audioTracks: preAcquiredWebStream.getAudioTracks?.().length ?? 0,
+                audioTracks: preAcquiredWebStream?.getAudioTracks?.().length ?? 0,
               });
             } catch (prefetchErr) {
               devWarn('[Call] web media prefetch failed', prefetchErr);
@@ -3256,8 +3366,8 @@ function CallScreenInner() {
           listenOnly: isWebRuntime && webListenOnlyRef.current,
         });
         logCallPhase(callId, 'local_media_acquired', {
-          audioTracks: local.getAudioTracks?.().length ?? 0,
-          videoTracks: local.getVideoTracks?.().length ?? 0,
+          audioTracks: local?.getAudioTracks?.().length ?? 0,
+          videoTracks: local?.getVideoTracks?.().length ?? 0,
           listenOnly: Boolean(isWebRuntime && webListenOnlyRef.current),
         });
         if (setupStale()) {
@@ -3284,7 +3394,7 @@ function CallScreenInner() {
           isVideo: startedAsVideo,
           videoAcquired,
         });
-        if (isWebRuntime && webListenOnlyRef.current && !local.getAudioTracks?.().length) {
+        if (isWebRuntime && webListenOnlyRef.current && !local?.getAudioTracks?.().length) {
           try {
             const tx = pc.addTransceiver('audio', { direction: 'recvonly' });
             localSenders.audio = tx.sender;
@@ -3300,7 +3410,7 @@ function CallScreenInner() {
             phase: 'local_tracks_attached',
             callId,
             tag: CALL_NATIVE_AUDIO_FIX_TAG,
-            audioTracks: local.getAudioTracks?.().length ?? 0,
+            audioTracks: local?.getAudioTracks?.().length ?? 0,
             txCount: pc.getTransceivers?.().length ?? -1,
             senderCount: pc.getSenders?.().length ?? -1,
             bootstrapAttached: callerLocalTracksAttachedRef.current,
@@ -3313,13 +3423,13 @@ function CallScreenInner() {
         callerBootstrapReadyRef.current = true;
         logCallPhase(callId, 'caller_bootstrap_ready', {
           role,
-          audioTracks: local.getAudioTracks?.().length ?? 0,
+          audioTracks: local?.getAudioTracks?.().length ?? 0,
         });
         logAfwCall('caller_bootstrap_ready', {
           callId,
           role,
-          audioTracks: local.getAudioTracks?.().length ?? 0,
-          videoTracks: local.getVideoTracks?.().length ?? 0,
+          audioTracks: local?.getAudioTracks?.().length ?? 0,
+          videoTracks: local?.getVideoTracks?.().length ?? 0,
         });
         setupLocalEl(local);
 
@@ -3453,6 +3563,13 @@ function CallScreenInner() {
           const activePc = pcRef.current as RTCPeerConnection | null;
           if (!activePc) return;
           try {
+            const prunedUpgrade = pruneRedundantCallTransceivers(activePc);
+            if (prunedUpgrade) {
+              logCallPhase(callIdRef.current, 'transceivers_pruned', {
+                stopped: prunedUpgrade,
+                source: 'upgrade_video',
+              });
+            }
             const offer = await activePc.createOffer(callSdpNegotiationOptions());
             await applyLocalDescription(activePc, offer);
             const localUpgradeOffer = activePc.localDescription;
@@ -3505,11 +3622,26 @@ function CallScreenInner() {
       }
     };
 
-    const mediaNudgeTimer = setInterval(() => {
-      if (cancelled) return;
-      const pc = pcRef.current as RTCPeerConnection | null;
+    let mediaNudgeTimer: ReturnType<typeof setInterval> | null = null;
+    const clearMediaNudgeTimer = () => {
+      if (mediaNudgeTimer) {
+        clearInterval(mediaNudgeTimer);
+        mediaNudgeTimer = null;
+      }
+    };
+    const runMediaNudgeTick = () => {
+      if (
+        !shouldRunDeferredCallMediaNudge({
+          cancelled,
+          pc: pcRef.current,
+          tearingDown: pcTearingDownRef.current,
+        })
+      ) {
+        return;
+      }
+      const pc = pcRef.current as RTCPeerConnection;
       syncRemoteTracksFromPeerConnection(pc);
-      const remote = remoteStreamRef.current as MediaStream;
+      const remote = remoteStreamRef.current as MediaStream | null;
       enableRemoteAudioTracks(remote);
       if (remotePlaybackStreamRef.current) {
         enableRemoteAudioTracks(remotePlaybackStreamRef.current);
@@ -3529,7 +3661,7 @@ function CallScreenInner() {
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: true,
             remoteSdpHasVideo: remoteSdpHasVideo(),
-            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
+            forceTurnRelay: callForceTurnRelay(),
           })
         ) {
           maybeMarkCallConnected(remote, 'audio');
@@ -3551,7 +3683,11 @@ function CallScreenInner() {
           }
         }
       }
-    }, 1000);
+    };
+    const startMediaNudgeTimer = () => {
+      if (mediaNudgeTimer || cancelled) return;
+      mediaNudgeTimer = setInterval(runMediaNudgeTick, 1000);
+    };
 
     void start();
 
@@ -3560,7 +3696,7 @@ function CallScreenInner() {
       callerBootstrapReadyRef.current = false;
       callerLocalTracksAttachedRef.current = false;
       cancelWebMediaConsent();
-      clearInterval(mediaNudgeTimer);
+      clearMediaNudgeTimer();
       offSignal();
       offAccept();
       offEnd();
@@ -3570,6 +3706,7 @@ function CallScreenInner() {
       offIceReflush();
       iceOutbox.close();
       clearOfferResendTimers();
+      prepareNativeRtcViewUnmount();
       scheduleStopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
@@ -3673,7 +3810,7 @@ function CallScreenInner() {
       const next = !m;
       if (isWebRuntime) {
         const local = localStreamRef.current as MediaStream | null;
-        local?.getAudioTracks().forEach((t) => (t.enabled = !next));
+        local?.getAudioTracks?.().forEach((t) => (t.enabled = !next));
       } else {
         const local = localStreamRef.current as any;
         local?.getAudioTracks?.().forEach((t: any) => (t.enabled = !next));
@@ -3703,7 +3840,7 @@ function CallScreenInner() {
       const next = !v;
       if (isWebRuntime) {
         const local = localStreamRef.current as MediaStream | null;
-        local?.getVideoTracks().forEach((t) => (t.enabled = !next));
+        local?.getVideoTracks?.().forEach((t) => (t.enabled = !next));
       } else {
         const local = localStreamRef.current as any;
         local?.getVideoTracks?.().forEach((t: any) => (t.enabled = !next));

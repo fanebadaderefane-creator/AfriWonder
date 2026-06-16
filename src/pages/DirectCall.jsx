@@ -29,9 +29,11 @@ import { loadPreferences } from '@/lib/preferences';
 import {
   callIdsEqual,
   callUserIdsEqual,
+  callSdpNegotiationOptions,
   normalizeInboundCallSignal,
   pickOutboundCallSdp,
 } from '@/lib/callSignalingPayload';
+import { pruneRedundantCallTransceivers } from '@/lib/callAudioQuality';
 
 export default function DirectCallPage() {
   const navigate = useNavigate();
@@ -111,6 +113,8 @@ export default function DirectCallPage() {
   const technicalQualitySentRef = useRef(false);
   const qosSnapshotRef = useRef({ level: 'unknown', rttMs: null, jitterMs: null, packetLossPct: null });
   const poorQualityStreakRef = useRef(0);
+  const signalEmitRef = useRef(null);
+  const signalContextRef = useRef({ myUserId: null, remoteId: null, callId });
   const goodQualityStreakRef = useRef(0);
 
   const persistSessionState = useCallback(async (nextStatus, durationSec) => {
@@ -160,11 +164,26 @@ export default function DirectCallPage() {
     }
   }, []);
 
-  const restartIceIfPossible = useCallback(() => {
+  const restartIceIfPossible = useCallback(async () => {
+    const pc = peerRef.current;
+    const emitFn = signalEmitRef.current;
+    const ctx = signalContextRef.current;
+    if (!pc || pc.connectionState === 'closed') return;
+    if (!emitFn || !ctx.myUserId || !ctx.remoteId) return;
     try {
-      peerRef.current?.restartIce?.();
+      pruneRedundantCallTransceivers(pc);
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      const outbound = pickOutboundCallSdp(pc, offer);
+      if (!outbound) return;
+      emitFn('call:signal', {
+        toUserId: ctx.remoteId,
+        fromUserId: ctx.myUserId,
+        callId: ctx.callId,
+        signal: { kind: 'sdp', sdp: outbound },
+      });
     } catch {
-      /* ignore */
+      /* pas de restartIce() — perd iceTransportPolicy relay sur PWA */
     }
   }, []);
 
@@ -309,7 +328,8 @@ export default function DirectCallPage() {
       if (mode !== 'outgoing') return;
       if (!callUserIdsEqual(payload?.fromUserId, targetUserId) || !callIdsEqual(payload?.callId, callId)) return;
       const pc = await ensurePeerConnection(emit, user.id, targetUserId);
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callType === 'video' });
+      pruneRedundantCallTransceivers(pc);
+      const offer = await pc.createOffer(callSdpNegotiationOptions());
       await pc.setLocalDescription(offer);
       const outbound = pickOutboundCallSdp(pc, offer);
       if (!outbound) return;
@@ -378,10 +398,8 @@ export default function DirectCallPage() {
         }
         await applyPendingCandidates(pc);
         if (remoteSdp.type === 'offer') {
-          const answer = await pc.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: callType === 'video',
-          });
+          pruneRedundantCallTransceivers(pc);
+          const answer = await pc.createAnswer(callSdpNegotiationOptions());
           await pc.setLocalDescription(answer);
           const outbound = pickOutboundCallSdp(pc, answer);
           if (outbound) {
@@ -404,6 +422,15 @@ export default function DirectCallPage() {
       }
     },
   });
+
+  useEffect(() => {
+    signalEmitRef.current = emit;
+    signalContextRef.current = {
+      myUserId: user?.id ?? null,
+      remoteId: targetUserId ?? null,
+      callId,
+    };
+  }, [emit, user?.id, targetUserId, callId]);
 
   useEffect(() => {
     if (!user?.id || !targetUserId || sessionEnsuredRef.current) return;

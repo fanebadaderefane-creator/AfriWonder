@@ -76,14 +76,26 @@ export function decideIceGatheringWaitFromCounts(
   counts: SdpCandidateCounts,
 ): IceGatheringWaitDecision {
   const state = String(input.iceGatheringState || '');
-  if (state === 'complete') return { done: true, reason: 'gathering_complete' };
-
   const hasRelay = counts.relay > 0;
   const hasAny = counts.total > 0;
-  const ready = input.requireRelay === false ? hasAny : hasRelay;
-  if (ready) return { done: true, reason: 'relay_ready' };
+  const requireRelay = input.requireRelay !== false;
 
-  if (input.elapsedMs >= input.maxWaitMs) return { done: true, reason: 'timeout' };
+  if (hasRelay) {
+    return { done: true, reason: 'relay_ready' };
+  }
+
+  if (input.elapsedMs >= input.maxWaitMs) {
+    return { done: true, reason: 'timeout' };
+  }
+
+  /** LAN / host-only : gathering terminé — émettre même sans relay. */
+  if (state === 'complete' && !requireRelay) {
+    return { done: true, reason: 'gathering_complete' };
+  }
+
+  if (!requireRelay && hasAny) {
+    return { done: true, reason: 'relay_ready' };
+  }
 
   return { done: false, reason: 'waiting' };
 }

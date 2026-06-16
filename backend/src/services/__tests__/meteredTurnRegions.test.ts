@@ -43,12 +43,13 @@ describe('meteredTurnRegions', () => {
     expect(urls.some((u) => u.includes('global.relay.metered.ca:80'))).toBe(true);
   });
 
-  it('rewriteMeteredTurnUrlList', () => {
+  it('rewriteMeteredTurnUrlList — expand to all regional hosts', () => {
     const out = rewriteMeteredTurnUrlList(
       ['turn:global.relay.metered.ca:443'],
-      ['fr.relay.metered.ca'],
+      ['fr.relay.metered.ca', 'eu-west.relay.metered.ca'],
     );
-    expect(out[0]).toBe('turn:fr.relay.metered.ca:443');
+    expect(out).toContain('turn:fr.relay.metered.ca:443');
+    expect(out).toContain('turn:eu-west.relay.metered.ca:443');
   });
 
   it('meteredTurnUrlsForHost inclut UDP + TLS', () => {

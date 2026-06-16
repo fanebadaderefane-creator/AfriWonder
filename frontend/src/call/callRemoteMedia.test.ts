@@ -17,6 +17,7 @@ import {
   shouldReplaceNativeRemoteMediaStream,
   shouldSyncRemoteReceiverTracks,
   streamHasLiveAudio,
+  streamHasAudibleRemoteAudio,
   streamHasLiveVideo,
   streamHasRemoteVideoTrack,
   streamHasRenderableRemoteVideo,
@@ -31,7 +32,7 @@ describe('callRemoteMedia', () => {
     expect(isIceStillNegotiating('connected')).toBe(false);
   });
 
-  it('shouldMarkCallConnected — vocal natif : ICE connected sans piste live', () => {
+  it('shouldMarkCallConnected — vocal : ICE connected exige piste audio live (pas ICE seul)', () => {
     expect(
       shouldMarkCallConnected({
         isVideo: false,
@@ -39,6 +40,15 @@ describe('callRemoteMedia', () => {
         hasRemoteDescription: true,
         iceConnectionState: 'connected',
         stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        role: 'receiver',
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }] },
       }),
     ).toBe(true);
   });
@@ -82,16 +92,72 @@ describe('callRemoteMedia', () => {
         iceConnectionState: 'connected',
         stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
       }),
+    ).toBe(false);
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }] },
+      }),
     ).toBe(true);
   });
 
-  it('remoteStreamReadyForConnectedUi — ICE connected vocal sans piste live', () => {
+  it('remoteStreamReadyForConnectedUi — ICE connected vocal exige piste audio', () => {
     expect(
       remoteStreamReadyForConnectedUi({
         isVideo: false,
         hasRemoteDescription: true,
         iceConnectionState: 'connected',
         stream: { getAudioTracks: () => [] },
+      }),
+    ).toBe(false);
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }] },
+      }),
+    ).toBe(true);
+  });
+
+  it('streamHasAudibleRemoteAudio exige piste démutée (RTP reçu)', () => {
+    expect(
+      streamHasAudibleRemoteAudio({
+        getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: true }],
+      }),
+    ).toBe(false);
+    expect(
+      streamHasAudibleRemoteAudio({
+        getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }],
+      }),
+    ).toBe(true);
+  });
+
+  it('forceTurnRelay — pas de connecté sur ICE seul si audio encore muet', () => {
+    const mutedLive = {
+      getAudioTracks: () => [{ enabled: true, readyState: 'live' as const, muted: true }],
+    };
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: mutedLive,
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: {
+          getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }],
+        },
       }),
     ).toBe(true);
   });
@@ -188,7 +254,7 @@ describe('callRemoteMedia', () => {
         peerConnectionState: 'connected',
         hasRemoteDescription: true,
         stream: {
-          getAudioTracks: () => [{ enabled: true, readyState: 'new' }],
+          getAudioTracks: () => [{ enabled: true, readyState: 'live', muted: false }],
         },
       }),
     ).toBe(true);

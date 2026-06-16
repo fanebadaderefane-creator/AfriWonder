@@ -13,6 +13,17 @@ export function streamHasLiveAudio(stream: MediaStreamLike | null | undefined): 
   return tracks.some((t) => t.readyState === 'live' && t.enabled !== false);
 }
 
+/**
+ * Audio distant avec RTP réel — `muted: true` tant qu’aucun paquet reçu (WebRTC).
+ * Maroc↔Mali : ICE `connected` + piste `live` mais `muted` → faux « connecté » muet.
+ */
+export function streamHasAudibleRemoteAudio(stream: MediaStreamLike | null | undefined): boolean {
+  const tracks = stream?.getAudioTracks?.() ?? [];
+  return tracks.some(
+    (t) => t.readyState === 'live' && t.enabled !== false && t.muted !== true,
+  );
+}
+
 export function streamHasLiveVideo(stream: MediaStreamLike | null | undefined): boolean {
   const tracks = stream?.getVideoTracks?.() ?? [];
   return tracks.some((t) => t.readyState === 'live' && t.enabled !== false);
@@ -69,8 +80,8 @@ export function mergeRemoteTrackIntoStream(
 ): boolean {
   if (!track?.id || typeof unified.addTrack !== 'function') return false;
   const existing = [
-    ...(unified.getAudioTracks?.() ?? []),
-    ...(unified.getVideoTracks?.() ?? []),
+    ...(unified?.getAudioTracks?.() ?? []),
+    ...(unified?.getVideoTracks?.() ?? []),
   ];
   if (existing.some((t) => t.id === track.id)) return false;
   try {
@@ -126,12 +137,10 @@ export function shouldMarkCallConnected(input: {
   if (iceReady || pcConnected) {
     if (!input.isVideo) {
       if (input.forceTurnRelay) {
-        if (streamHasLiveAudio(stream)) return true;
-        const audioTracks = stream?.getAudioTracks?.() ?? [];
-        if (audioTracks.length > 0 && streamHasLiveRemoteTrack(audioTracks)) return true;
-        return false;
+        return streamHasAudibleRemoteAudio(stream);
       }
-      return true;
+      /** ICE seul sans aucune piste audio = faux « connecté » (inbound_dead). */
+      return streamHasAudibleRemoteAudio(stream) || streamHasLiveAudio(stream);
     }
     if (streamHasLiveVideo(stream)) return true;
     /** Appel vidéo : ne pas marquer connecté sur ICE seul + audio (RTCView lié sans vidéo → écran noir). */
@@ -145,10 +154,13 @@ export function shouldMarkCallConnected(input: {
 
   const hasAudio = streamHasLiveAudio(stream);
   const hasVideo = streamHasLiveVideo(stream);
-  const remoteVideoTracks = stream.getVideoTracks?.() ?? [];
-  const remoteAudioTracks = stream.getAudioTracks?.() ?? [];
+  const remoteVideoTracks = stream?.getVideoTracks?.() ?? [];
+  const remoteAudioTracks = stream?.getAudioTracks?.() ?? [];
 
   if (!input.isVideo) {
+    if (input.forceTurnRelay) {
+      return streamHasAudibleRemoteAudio(stream);
+    }
     if (hasAudio) return true;
     if (pcConnected && streamHasLiveRemoteTrack(remoteAudioTracks)) return true;
     return false;
@@ -220,10 +232,9 @@ export function remoteStreamReadyForConnectedUi(input: {
   if (input.hasRemoteDescription && (iceReady || pcConnected)) {
     if (!input.isVideo) {
       if (input.forceTurnRelay) {
-        const audioTracks = stream?.getAudioTracks?.() ?? [];
-        return streamHasLiveAudio(stream) || audioTracks.length > 0;
+        return streamHasAudibleRemoteAudio(stream);
       }
-      return true;
+      return streamHasAudibleRemoteAudio(stream) || streamHasLiveAudio(stream);
     }
     if (streamHasLiveVideo(stream)) return true;
     if (streamHasRemoteVideoTrack(stream) && streamHasLiveAudio(stream)) return true;
@@ -237,6 +248,9 @@ export function remoteStreamReadyForConnectedUi(input: {
   }
   if (input.isVideo) {
     return streamHasLiveVideo(stream) || streamHasLiveAudio(stream);
+  }
+  if (input.forceTurnRelay) {
+    return streamHasAudibleRemoteAudio(stream);
   }
   return streamHasLiveAudio(stream);
 }
@@ -316,6 +330,7 @@ export function shouldBindNativeRemoteStreamUrl(input: {
   hasRemoteDescription?: boolean;
   iceConnectionState?: string | null;
   peerConnectionState?: string;
+  forceTurnRelay?: boolean;
 }): boolean {
   if (input.isVideo && !streamHasRemoteVideoTrack(input.stream)) {
     return false;
@@ -327,11 +342,16 @@ export function shouldBindNativeRemoteStreamUrl(input: {
       iceConnectionState: input.iceConnectionState,
       hasRemoteDescription: input.hasRemoteDescription,
       peerConnectionState: input.peerConnectionState,
+      forceTurnRelay: input.forceTurnRelay,
     })
   ) {
     return true;
   }
   if (input.isVideo || !input.hasRemoteDescription) return false;
+  /** RTCView vocal : monter le décodeur dès piste `new` (Xiaomi) — distinct du chronomètre « connecté ». */
+  if (input.forceTurnRelay) {
+    return (input.stream?.getAudioTracks?.()?.length ?? 0) > 0;
+  }
   return (input.stream?.getAudioTracks?.()?.length ?? 0) > 0;
 }
 

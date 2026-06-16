@@ -207,6 +207,17 @@ type DebugTransceiverRow = {
   receiverTrack: string | null;
 };
 
+/** Marqueur livraison anti-crash stream null — appelant + receveur, natif. */
+export function logNativeStreamNullGuardActive(meta: Record<string, unknown>): void {
+  const payload = JSON.stringify({
+    tag: 'PATCH_STREAM_NULL_GUARD',
+    ts: Date.now(),
+    ...meta,
+  });
+  console.error('[PATCH_STREAM_NULL_GUARD]', payload);
+  console.warn('[Call]', payload);
+}
+
 /** Marqueur livraison — si absent Logcat, l’APK n’exécute pas le JS Metro courant. */
 export function logPatchAudioFixActive(meta: Record<string, unknown>): void {
   const payload = JSON.stringify({

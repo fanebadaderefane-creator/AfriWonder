@@ -1,5 +1,5 @@
 /** Délai avant fermeture WebRTC natif — laisse React démonter RTCView (crash Android/iOS sinon). */
-export const NATIVE_RTC_UNMOUNT_DELAY_MS = 150;
+export const NATIVE_RTC_UNMOUNT_DELAY_MS = 200;
 
 export function nativeRtcTeardownDelayMs(platformOs: string): number {
   return platformOs === 'web' ? 0 : NATIVE_RTC_UNMOUNT_DELAY_MS;

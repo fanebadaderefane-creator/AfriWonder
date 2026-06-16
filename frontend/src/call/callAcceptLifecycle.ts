@@ -24,6 +24,7 @@ export function shouldArmMediaConnectionWatchdog(input: {
  * après « connected » : 0 octet reçu pendant ce délai = média mort → 1 ICE restart.
  */
 export const STALLED_CONNECTED_MEDIA_RECOVERY_MS = 9_000;
+export const RECEIVER_STALLED_CONNECTED_MEDIA_RECOVERY_MS = 14_000;
 
 /**
  * Récupération média post-connexion (CAS Maroc↔Mali : « parfois aucun média distant »).
@@ -43,29 +44,34 @@ export function shouldRecoverStalledConnectedCallMedia(input: {
   alreadyRecovered: boolean;
   thresholdMs?: number;
 }): boolean {
-  if (input.role !== 'caller') return false;
   if (!input.callConnected) return false;
   if (input.alreadyRecovered) return false;
   if (!input.hasSelectedPair) return false;
   if (input.inboundBytesIncreased) return false;
-  return input.stalledMs >= (input.thresholdMs ?? STALLED_CONNECTED_MEDIA_RECOVERY_MS);
+  const defaultThreshold =
+    input.role === 'caller'
+      ? STALLED_CONNECTED_MEDIA_RECOVERY_MS
+      : RECEIVER_STALLED_CONNECTED_MEDIA_RECOVERY_MS;
+  return input.stalledMs >= (input.thresholdMs ?? defaultThreshold);
 }
 
-/** Verdict stats : relance ICE côté appelant si média mort après « connecté » (Maroc↔Mali). */
+/** Verdict stats : relance ICE si média mort après « connecté » (Maroc↔Mali). */
 export function shouldIceRestartFromConnectedMediaVerdict(input: {
   role: CallRole;
   verdict: string;
   alreadyRecovered: boolean;
 }): boolean {
-  if (input.role !== 'caller') return false;
   if (input.alreadyRecovered) return false;
-  return (
-    input.verdict === 'silent_both' ||
-    input.verdict === 'inbound_dead' ||
-    input.verdict === 'outbound_dead' ||
-    input.verdict === 'no_ice_pair' ||
-    input.verdict === 'dtls_not_connected'
-  );
+  if (input.role === 'caller') {
+    return (
+      input.verdict === 'silent_both' ||
+      input.verdict === 'inbound_dead' ||
+      input.verdict === 'outbound_dead' ||
+      input.verdict === 'no_ice_pair' ||
+      input.verdict === 'dtls_not_connected'
+    );
+  }
+  return input.verdict === 'silent_both' || input.verdict === 'inbound_dead';
 }
 
 /** Timer « Pas de réponse » (30 s) : à annuler dès que le correspondant décroche. */

@@ -157,9 +157,8 @@ export function pickVideoProfileForNetwork(net: NetworkSnapshot | null | undefin
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
- * **Natif (APK/iOS)** : relais obligatoire si TURN configuré — le P2P cross-border
- * (Maroc↔Mali) échoue même en Wi‑Fi ; le relais Metered est requis des deux côtés.
- * **Web** : relais sur cellulaire / unknown (CGNAT navigateur mobile).
+ * TURN configuré → relais obligatoire **natif et web** : le P2P cross-border
+ * (Maroc↔Mali) échoue même en Wi‑Fi ; les deux extrémités doivent utiliser Metered.
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
@@ -167,8 +166,7 @@ export function shouldForceTurnRelay(input: {
   net?: NetworkSnapshot | null | undefined;
 }): boolean {
   if (!input.turnConfigured) return false;
-  if (!input.isWeb) return true;
-  return shouldTreatAsMobileCgnatNetwork(input.net, input.isWeb);
+  return true;
 }
 
 function iceServerUrlList(entry: RTCIceServer): string[] {
@@ -287,6 +285,39 @@ export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RT
   return out;
 }
 
+/**
+ * Web : ne pas tronquer les entrées TURN (static fallback ~9 entrées, TURN en dernier).
+ * Garde toutes les entrées TURN + max `maxStun` STUN — évite `relay` policy sans relais utilisable.
+ */
+export function prepareIceServersForWeb(
+  iceServers: RTCIceServer[],
+  maxStun = 3,
+): RTCIceServer[] {
+  if (iceServers.length === 0) return iceServers;
+
+  const stunEntries: RTCIceServer[] = [];
+  const turnEntries: RTCIceServer[] = [];
+
+  for (const entry of iceServers) {
+    const urls = iceServerUrlList(entry);
+    if (urls.length > 0 && urls.every((u) => u.toLowerCase().startsWith('stun:'))) {
+      stunEntries.push(entry);
+      continue;
+    }
+    const hasTurn = urls.some((u) => {
+      const lower = u.toLowerCase();
+      return lower.startsWith('turn:') || lower.startsWith('turns:');
+    });
+    if (hasTurn) {
+      turnEntries.push(entry);
+    } else {
+      stunEntries.push(entry);
+    }
+  }
+
+  return [...stunEntries.slice(0, maxStun), ...turnEntries];
+}
+
 /** Prépare les serveurs ICE selon la plateforme (TLS natif, STUN web). */
 export function prepareIceServersForPlatform(input: {
   isWeb: boolean;
@@ -294,7 +325,7 @@ export function prepareIceServersForPlatform(input: {
   iceServers: RTCIceServer[];
 }): RTCIceServer[] {
   if (input.isWeb) {
-    return input.iceServers.slice(0, 6);
+    return prepareIceServersForWeb(input.iceServers);
   }
   if (!input.turnConfigured) {
     return input.iceServers;
@@ -325,7 +356,7 @@ export function buildCallIceConfig(input: {
 }): RTCConfiguration {
   if (input.isWeb) {
     const webConfig: RTCConfiguration = {
-      iceServers: input.iceServers.slice(0, 6),
+      iceServers: prepareIceServersForWeb(input.iceServers),
       iceCandidatePoolSize: CALL_ICE_CANDIDATE_POOL_SIZE,
       bundlePolicy: 'max-bundle' as RTCBundlePolicy,
       rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,

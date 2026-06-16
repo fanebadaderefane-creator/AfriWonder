@@ -44,13 +44,25 @@ describe('sdpCandidateCounts', () => {
 });
 
 describe('decideIceGatheringWait', () => {
-  it("s'arrête quand le gathering est complete (même sans candidat dans le SDP)", () => {
+  it("avec requireRelay, complete sans relay continue d'attendre", () => {
+    expect(
+      decideIceGatheringWait({
+        iceGatheringState: 'complete',
+        sdp: SDP_HOST_ONLY,
+        elapsedMs: 100,
+        maxWaitMs: 2500,
+      }),
+    ).toEqual({ done: false, reason: 'waiting' });
+  });
+
+  it("s'arrête quand le gathering est complete sans requireRelay", () => {
     expect(
       decideIceGatheringWait({
         iceGatheringState: 'complete',
         sdp: SDP_HOST_ONLY,
         elapsedMs: 0,
         maxWaitMs: 2500,
+        requireRelay: false,
       }),
     ).toEqual({ done: true, reason: 'gathering_complete' });
   });

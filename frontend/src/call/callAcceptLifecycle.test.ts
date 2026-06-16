@@ -10,6 +10,7 @@ import {
   shouldIceRestartFromConnectedMediaVerdict,
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
+  RECEIVER_STALLED_CONNECTED_MEDIA_RECOVERY_MS,
   STALLED_CONNECTED_MEDIA_RECOVERY_MS,
 } from './callAcceptLifecycle';
 
@@ -52,9 +53,20 @@ describe('callAcceptLifecycle', () => {
       ).toBe(false);
     });
 
-    it('le receveur ne pilote pas le restart (anti-glare)', () => {
+    it('receveur — restart après seuil plus long (anti-glare vs appelant)', () => {
       expect(
-        shouldRecoverStalledConnectedCallMedia({ ...base, role: 'receiver' }),
+        shouldRecoverStalledConnectedCallMedia({
+          ...base,
+          role: 'receiver',
+          stalledMs: RECEIVER_STALLED_CONNECTED_MEDIA_RECOVERY_MS,
+        }),
+      ).toBe(true);
+      expect(
+        shouldRecoverStalledConnectedCallMedia({
+          ...base,
+          role: 'receiver',
+          stalledMs: STALLED_CONNECTED_MEDIA_RECOVERY_MS,
+        }),
       ).toBe(false);
     });
 
@@ -63,7 +75,7 @@ describe('callAcceptLifecycle', () => {
       expect(shouldRecoverStalledConnectedCallMedia({ ...base, callConnected: false })).toBe(false);
     });
 
-    it('verdict silent_both → ICE restart appelant (une fois)', () => {
+    it('verdict silent_both → ICE restart appelant et receveur (une fois chacun)', () => {
       expect(
         shouldIceRestartFromConnectedMediaVerdict({
           role: 'caller',
@@ -75,6 +87,13 @@ describe('callAcceptLifecycle', () => {
         shouldIceRestartFromConnectedMediaVerdict({
           role: 'receiver',
           verdict: 'silent_both',
+          alreadyRecovered: false,
+        }),
+      ).toBe(true);
+      expect(
+        shouldIceRestartFromConnectedMediaVerdict({
+          role: 'receiver',
+          verdict: 'outbound_dead',
           alreadyRecovered: false,
         }),
       ).toBe(false);
