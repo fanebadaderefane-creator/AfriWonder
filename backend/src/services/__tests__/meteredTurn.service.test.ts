@@ -1,9 +1,11 @@
 import {
   applyConfiguredMeteredRegion,
+  buildMeteredCreateCredentialUrl,
   buildMeteredCredentialsApiUrl,
   buildStaticIceServers,
   clearMeteredTurnCache,
   normalizeMeteredIceServers,
+  parseMeteredCreateCredentialResponse,
   resolveMeteredStaticTurnUrls,
   turnPayloadFromIceServers,
 } from '../meteredTurn.service.js';
@@ -16,6 +18,22 @@ describe('meteredTurn.service', () => {
   it('buildMeteredCredentialsApiUrl encode domain and apiKey', () => {
     const url = buildMeteredCredentialsApiUrl('afriwonder.metered.live', 'abc+key');
     expect(url).toBe('https://afriwonder.metered.live/api/v1/turn/credentials?apiKey=abc%2Bkey');
+  });
+
+  it('buildMeteredCreateCredentialUrl encode secretKey (Developers tab)', () => {
+    const url = buildMeteredCreateCredentialUrl('afriwonder.metered.live', 'sec+ret');
+    expect(url).toBe('https://afriwonder.metered.live/api/v1/turn/credential?secretKey=sec%2Bret');
+  });
+
+  it('parseMeteredCreateCredentialResponse extrait apiKey credential-scoped', () => {
+    const parsed = parseMeteredCreateCredentialResponse({
+      username: 'dd21513ad2b6ebb507ca919b',
+      password: 'uwRntKiifzfK/gCX',
+      expiryInSeconds: 3600,
+      apiKey: '28b293e441225e876584521b0add31f8b4b0',
+    });
+    expect(parsed?.apiKey).toBe('28b293e441225e876584521b0add31f8b4b0');
+    expect(parsed?.expiryInSeconds).toBe(3600);
   });
 
   it('normalizeMeteredIceServers accepte le format dashboard Metered', () => {

@@ -12,6 +12,7 @@ import {
   fetchMeteredTurnCredentials,
   PUBLIC_STUN_FALLBACKS,
 } from '../services/meteredTurn.service.js';
+import { resolveMeteredTurnRelayHosts } from '../services/meteredTurnRegions.js';
 import { recordCallLogMessage } from '../services/callLogMessage.service.js';
 import type { CallLogOutcome } from '../utils/callLogPayload.js';
 import { parseCallHistoryLimit } from '../utils/callHistoryLimit.js';
@@ -39,8 +40,14 @@ function createStaticTurnCredentials() {
   const urls = parseTurnUrls();
   if (!username || !credential || urls.length === 0) return null;
   const iceServers = buildStaticIceServers(urls, username, credential);
+  const region = resolveMeteredTurnRelayHosts();
+  const turnUrls = iceServers.flatMap((s) => {
+    const raw = s.urls;
+    const list = Array.isArray(raw) ? raw.map(String) : [String(raw ?? '')];
+    return list.filter((u) => u.startsWith('turn:') || u.startsWith('turns:'));
+  });
   return {
-    urls,
+    urls: turnUrls.length > 0 ? turnUrls : urls,
     username,
     credential,
     iceServers,
@@ -49,6 +56,8 @@ function createStaticTurnCredentials() {
     realm: String(process.env.TURN_REALM || 'metered.ca').trim(),
     publicStun: PUBLIC_STUN_FALLBACKS,
     turnConfigured: true,
+    turnRegion: region.preset,
+    turnRelayHosts: [...region.hosts],
   };
 }
 

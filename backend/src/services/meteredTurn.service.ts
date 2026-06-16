@@ -44,13 +44,40 @@ export type TurnCredentialsData = {
 type MeteredCache = {
   expiresAt: number;
   iceServers: IceServerEntry[];
+  turnRegion?: string;
+  turnRelayHosts?: string[];
+};
+
+export type MeteredCreateCredentialResult = {
+  apiKey: string;
+  expiryInSeconds: number;
 };
 
 let meteredCache: MeteredCache | null = null;
 
+function meteredHostFromDomain(domain: string): string {
+  return domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
+/** GET iceServers — `apiKey` = clé credential (réponse POST), pas la Secret Key. */
 export function buildMeteredCredentialsApiUrl(domain: string, apiKey: string): string {
-  const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const host = meteredHostFromDomain(domain);
   return `https://${host}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`;
+}
+
+/** POST credential éphémère — `secretKey` = Developers → Secret Key. */
+export function buildMeteredCreateCredentialUrl(domain: string, secretKey: string): string {
+  const host = meteredHostFromDomain(domain);
+  return `https://${host}/api/v1/turn/credential?secretKey=${encodeURIComponent(secretKey)}`;
+}
+
+export function parseMeteredCreateCredentialResponse(raw: unknown): MeteredCreateCredentialResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const apiKey = String(row.apiKey || '').trim();
+  const expiryInSeconds = Math.max(60, Number(row.expiryInSeconds || 3600));
+  if (!apiKey) return null;
+  return { apiKey, expiryInSeconds };
 }
 
 /** Normalise la réponse JSON Metered (tableau RTCIceServer). */
@@ -158,40 +185,69 @@ export function clearMeteredTurnCache(): void {
   meteredCache = null;
 }
 
-/** Récupère les credentials via l'API REST Metered (clé serveur — jamais côté client). */
+function meteredFetchTimeoutMs(): number {
+  return Math.min(15_000, Math.max(3_000, Number(process.env.METERED_TURN_FETCH_TIMEOUT_MS || 8_000)));
+}
+
+/** Récupère les credentials via l'API REST Metered (Secret Key serveur — jamais côté client). */
 export async function fetchMeteredTurnCredentials(): Promise<TurnCredentialsData | null> {
-  const apiKey = String(process.env.METERED_TURN_API_KEY || '').trim();
+  const secretKey = String(process.env.METERED_TURN_API_KEY || '').trim();
   const domain = String(process.env.METERED_TURN_DOMAIN || 'afriwonder.metered.live').trim();
-  if (!apiKey) return null;
+  if (!secretKey) return null;
 
   const cacheTtlMs = Math.max(60_000, Number(process.env.METERED_TURN_CACHE_MS || 300_000));
   if (meteredCache && meteredCache.expiresAt > Date.now()) {
     return turnPayloadFromIceServers(meteredCache.iceServers, {
       ttlSec: Math.floor((meteredCache.expiresAt - Date.now()) / 1000),
+      turnRegion: meteredCache.turnRegion,
+      turnRelayHosts: meteredCache.turnRelayHosts,
     });
   }
 
-  const url = buildMeteredCredentialsApiUrl(domain, apiKey);
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(Math.min(15_000, Math.max(3_000, Number(process.env.METERED_TURN_FETCH_TIMEOUT_MS || 8_000)))),
-  });
-  if (!res.ok) return null;
+  const timeoutMs = meteredFetchTimeoutMs();
+  const expiryInSeconds = Math.max(
+    3600,
+    Number(process.env.METERED_TURN_CREDENTIAL_TTL_SEC || 14_400),
+  );
 
-  const raw = (await res.json()) as unknown;
+  const createRes = await fetch(buildMeteredCreateCredentialUrl(domain, secretKey), {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      expiryInSeconds,
+      label: `afw-${Date.now()}`,
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!createRes.ok) return null;
+
+  const created = parseMeteredCreateCredentialResponse((await createRes.json()) as unknown);
+  if (!created) return null;
+
+  const credRes = await fetch(buildMeteredCredentialsApiUrl(domain, created.apiKey), {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!credRes.ok) return null;
+
+  const raw = (await credRes.json()) as unknown;
   const iceServersRaw = normalizeMeteredIceServers(raw);
   if (!iceServersRaw) return null;
 
   const { iceServers, region } = applyConfiguredMeteredRegion(iceServersRaw);
   const payload = turnPayloadFromIceServers(iceServers, {
+    ttlSec: created.expiryInSeconds,
     turnRegion: region.preset,
     turnRelayHosts: [...region.hosts],
   });
   if (!payload.turnConfigured) return null;
 
+  const cacheMs = Math.min(cacheTtlMs, created.expiryInSeconds * 1000);
   meteredCache = {
-    expiresAt: Date.now() + cacheTtlMs,
+    expiresAt: Date.now() + cacheMs,
     iceServers,
+    turnRegion: region.preset,
+    turnRelayHosts: [...region.hosts],
   };
   return payload;
 }
