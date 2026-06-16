@@ -5,6 +5,9 @@ import {
   decideIceGatheringWaitWithBuffer,
   embedIceCandidatesInSdp,
   iceCandidateInitCounts,
+  shouldAwaitIceBeforeOutboundSdp,
+  shouldAwaitMinimalIceBeforeAnswerEmbed,
+  minimalIceGatherReady,
 } from './callSdpIceEmbed';
 
 const BARE_SDP = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n';
@@ -72,5 +75,37 @@ describe('buildOutboundSdpWithEmbeddedIce', () => {
     expect(r.type).toBe('offer');
     expect(r.counts.relay).toBe(1);
     expect(r.embeddedCount).toBe(1);
+  });
+});
+
+describe('shouldAwaitIceBeforeOutboundSdp', () => {
+  it('attend ICE pour offer/pranswer/rollback', () => {
+    expect(shouldAwaitIceBeforeOutboundSdp('offer')).toBe(true);
+    expect(shouldAwaitIceBeforeOutboundSdp('pranswer')).toBe(true);
+    expect(shouldAwaitIceBeforeOutboundSdp(null)).toBe(false);
+  });
+  it('answer natif + TURN → attente relay complète (Maroc↔Mali)', () => {
+    expect(shouldAwaitIceBeforeOutboundSdp('answer', { turnConfigured: true, isNative: true })).toBe(
+      true,
+    );
+    expect(shouldAwaitIceBeforeOutboundSdp('answer', { turnConfigured: true, isNative: false })).toBe(
+      false,
+    );
+  });
+});
+
+describe('minimal answer ICE embed', () => {
+  it('shouldAwaitMinimalIceBeforeAnswerEmbed — answer web seulement', () => {
+    expect(shouldAwaitMinimalIceBeforeAnswerEmbed('answer')).toBe(true);
+    expect(shouldAwaitMinimalIceBeforeAnswerEmbed('offer')).toBe(false);
+    expect(
+      shouldAwaitMinimalIceBeforeAnswerEmbed('answer', { turnConfigured: true, isNative: true }),
+    ).toBe(false);
+  });
+
+  it('minimalIceGatherReady — candidat ou gathering complete', () => {
+    expect(minimalIceGatherReady(0, 'gathering')).toBe(false);
+    expect(minimalIceGatherReady(1, 'gathering')).toBe(true);
+    expect(minimalIceGatherReady(0, 'complete')).toBe(true);
   });
 });

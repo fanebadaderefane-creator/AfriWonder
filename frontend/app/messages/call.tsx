@@ -97,6 +97,7 @@ import {
   shouldFinishCallAsMissed,
   shouldDowngradeVideoInviteToAudioAnswer,
   shouldRecoverStalledConnectedCallMedia,
+  shouldIceRestartFromConnectedMediaVerdict,
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
 } from '../../src/call/callAcceptLifecycle';
@@ -130,7 +131,8 @@ import {
   type CallSignalSdpPayload,
 } from '../../src/call/callSignalingPayload';
 import { CallIceOutbox } from '../../src/call/callIceOutbox';
-import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce } from '../../src/call/callSdpIceEmbed';
+import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce, shouldAwaitIceBeforeOutboundSdp, shouldAwaitMinimalIceBeforeAnswerEmbed, minimalIceGatherReady, MINIMAL_ANSWER_ICE_WAIT_MS, MINIMAL_ANSWER_ICE_POLL_MS } from '../../src/call/callSdpIceEmbed';
+import { shouldRefreshNativeRemoteAudioPlayback } from '../../src/call/callNativeRemotePlayback';
 import { sdpCandidateCounts } from '../../src/call/callIceGathering';
 import {
   optimizeCallAudioPipeline,
@@ -169,6 +171,13 @@ import {
   logCallMediaVerdict,
   logSetLocalDescription,
   logSetRemoteDescription,
+  logAnswerSendStart,
+  logAnswerSendSuccess,
+  logAnswerSendError,
+  logAnswerRx,
+  logSetRemoteAnswerStart,
+  logSetRemoteAnswerSuccess,
+  logSetRemoteAnswerError,
   summarizeCallSdp,
 } from '../../src/call/callDiagnosticLog';
 import {
@@ -329,9 +338,9 @@ type SignalPayload =
 
 const CALL_RING_MS = 30_000;
 /** Half-trickle ICE : attente max d'un candidat relay avant émission SDP. */
-const HALF_TRICKLE_MAX_WAIT_MS = 2_500;
-/** TURN lent (3G Mali / Maroc) — laisser le temps au candidat relay d'arriver via onicecandidate. */
-const HALF_TRICKLE_MAX_WAIT_MS_TURN = 5_500;
+const HALF_TRICKLE_MAX_WAIT_MS = 3_000;
+/** TURN + latence Maroc↔Mali — laisser le temps au candidat relay (audit juin 2026). */
+const HALF_TRICKLE_MAX_WAIT_MS_TURN = 12_000;
 const HALF_TRICKLE_POLL_MS = 150;
 const isWebRuntime = Platform.OS === 'web';
 
@@ -900,7 +909,12 @@ function CallScreenInner() {
       pc: RTCPeerConnection,
       desc: RTCSessionDescriptionInit,
     ): Promise<void> => {
-      localGatheredIceRef.current = [];
+      const localType = String(desc?.type || '').trim().toLowerCase();
+      // Ne pas vider le buffer ICE avant answer — candidats déjà reçus via onicecandidate
+      // après setRemoteDescription(offer). Régression : answer sans ICE → blocage des deux côtés.
+      if (localType === 'offer' || localType === 'rollback') {
+        localGatheredIceRef.current = [];
+      }
       return setTunedLocalDescription(
         pc,
         desc,
@@ -1078,6 +1092,39 @@ function CallScreenInner() {
       commitNativeRemoteRtcBind(stream, url, bindingKey, videoTrackCount, 'rtcview_bind');
     };
 
+    /** Vocal natif : RTCView caché + volume + HP — sans ça, connexion OK mais silence. */
+    const refreshNativeRemoteAudioPlayback = (
+      source: string,
+      pc: RTCPeerConnection | null,
+    ) => {
+      if (
+        !shouldRefreshNativeRemoteAudioPlayback({
+          isWebRuntime,
+          pcTearingDown: pcTearingDownRef.current,
+        })
+      ) {
+        return;
+      }
+      syncRemoteTracksFromPeerConnection(pc);
+      const remote = remoteStreamRef.current as MediaStream;
+      enableRemoteAudioTracks(remote);
+      if (remotePlaybackStreamRef.current) {
+        enableRemoteAudioTracks(remotePlaybackStreamRef.current);
+      }
+      bindNativeRemoteStreamToRtcView(remote);
+      void applyNativeCallSpeakerRoute(speakerOnRef.current);
+      void stopNativeOutgoingRingback();
+      logCallPhase(callIdRef.current, 'native_remote_audio_refresh', {
+        source,
+        audioTracks: remote?.getAudioTracks?.().length ?? 0,
+      });
+      logAfwCall('native_remote_audio_refresh', {
+        callId: callIdRef.current,
+        role,
+        source,
+      });
+    };
+
     const setupRemoteEl = (stream: MediaStream, trackKind?: string) => {
       if (!shouldApplyNativeRtcUrl()) return;
       const pcNow = pcRef.current as RTCPeerConnection | null;
@@ -1122,6 +1169,7 @@ function CallScreenInner() {
             iceConnectionState: peerIceState(),
             hasRemoteDescription: Boolean(pc?.remoteDescription),
             peerConnectionState: peerPcState(),
+            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
           })
         ) {
           return;
@@ -1130,10 +1178,9 @@ function CallScreenInner() {
           remoteAudio: streamHasLiveAudio(remote),
           remoteVideo: streamHasLiveVideo(remote),
         });
-        /** Natif vidéo : resync receivers avant le 1er rendu RTCView (vidéo souvent après audio chez l’appelant). */
-        if (!isWebRuntime && isVideoCallRef.current && pc) {
-          syncRemoteTracksFromPeerConnection(pc);
-          bindNativeRemoteStreamToRtcView(remote);
+        /** Natif : resync + RTCView distant (vocal ET vidéo) — décodeur audio sans bind = silence. */
+        if (!isWebRuntime && pc) {
+          refreshNativeRemoteAudioPlayback('mark_call_connected', pc);
         }
         setErrorMsg(null);
         setCallState('connected');
@@ -1195,6 +1242,7 @@ function CallScreenInner() {
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: true,
           remoteSdpHasVideo: remoteSdpHasVideo(),
+          forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
         })
       ) {
         return;
@@ -1344,6 +1392,7 @@ function CallScreenInner() {
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: Boolean(pc?.remoteDescription),
             remoteSdpHasVideo: remoteSdpHasVideo(),
+            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
           })
         ) {
           maybeMarkCallConnected(remote);
@@ -1530,8 +1579,42 @@ function CallScreenInner() {
       pc: RTCPeerConnection | null,
       fallback?: RTCSessionDescriptionInit | null,
     ): Promise<boolean> => {
-      // Half-trickle : attendre relay (buffer onicecandidate) puis embarquer dans le SDP.
-      await awaitIceCandidatesInLocalSdp(pc);
+      const previewType =
+        pc?.localDescription?.type ??
+        fallback?.type ??
+        pickOutboundCallSdp(pc, fallback ?? undefined)?.type ??
+        null;
+      const isAnswerOutbound = String(previewType || '').toLowerCase() === 'answer';
+      if (isAnswerOutbound) {
+        logAnswerSendStart({
+          callId: callIdRef.current,
+          role,
+          toUserId: otherUserId,
+          signalingState: pc?.signalingState ?? null,
+          ...summarizeCallSdp(pc?.localDescription?.sdp ?? fallback?.sdp, previewType),
+        });
+      }
+      const iceWaitOpts = {
+        turnConfigured: turnConfiguredRef.current,
+        isNative: !isWebRuntime,
+      };
+      // Half-trickle : offer (+ answer natif TURN) — candidats relay embarqués dans le SDP.
+      if (shouldAwaitIceBeforeOutboundSdp(previewType, iceWaitOpts)) {
+        await awaitIceCandidatesInLocalSdp(pc);
+      } else if (shouldAwaitMinimalIceBeforeAnswerEmbed(previewType, iceWaitOpts)) {
+        const answerIceStarted = Date.now();
+        while (Date.now() - answerIceStarted < MINIMAL_ANSWER_ICE_WAIT_MS) {
+          if (
+            minimalIceGatherReady(
+              localGatheredIceRef.current.length,
+              pc?.iceGatheringState ?? null,
+            )
+          ) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, MINIMAL_ANSWER_ICE_POLL_MS));
+        }
+      }
       const picked = pickOutboundCallSdp(pc, fallback ?? undefined);
       if (!picked) {
         logCallPhase(callIdRef.current, 'sdp_send_skipped', {
@@ -1539,6 +1622,15 @@ function CallScreenInner() {
           pcLocalType: pc?.localDescription?.type ?? null,
           fallbackType: fallback?.type ?? null,
         });
+        if (isAnswerOutbound) {
+          logAnswerSendError({
+            callId: callIdRef.current,
+            role,
+            reason: 'invalid_outbound',
+            pcLocalType: pc?.localDescription?.type ?? null,
+            fallbackType: fallback?.type ?? null,
+          });
+        }
         devWarn('[Call] SDP non envoyé — type ou sdp manquant après setLocalDescription');
         return false;
       }
@@ -1574,6 +1666,15 @@ function CallScreenInner() {
       const ok = await socketService.ensureConnectedEmit('call:signal', payload, 12_000);
       if (!ok) {
         logCallPhase(callIdRef.current, 'sdp_send_socket_failed', { type: outbound.type });
+        if (String(outbound.type).toLowerCase() === 'answer') {
+          logAnswerSendError({
+            callId: callIdRef.current,
+            role,
+            reason: 'socket_emit_failed',
+            toUserId: otherUserId,
+            ...summarizeCallSdp(outbound.sdp, outbound.type),
+          });
+        }
         lastCallerOfferAbortRef.current = 'sdp_send_socket_failed';
         logAfwCall('sdp_send_socket_failed', {
           callId: callIdRef.current,
@@ -1583,7 +1684,50 @@ function CallScreenInner() {
         setErrorMsg('Connexion instable. Nouvelle tentative…');
         return false;
       }
+      if (String(outbound.type).toLowerCase() === 'answer') {
+        logAnswerSendSuccess({
+          callId: callIdRef.current,
+          role,
+          toUserId: otherUserId,
+          ...summarizeCallSdp(outbound.sdp, outbound.type),
+        });
+        void iceOutbox.flushNow();
+      }
+      if (String(outbound.type).toLowerCase() === 'offer') {
+        void iceOutbox.flushNow();
+      }
       return true;
+    };
+
+    /** Réémet l'offre si l'answer n'arrive pas (filet avant watchdog 60 s). */
+    const OFFER_RESEND_UNTIL_ANSWER_MS = [4_000, 10_000, 20_000] as const;
+    let offerResendTimers: ReturnType<typeof setTimeout>[] = [];
+    const clearOfferResendTimers = () => {
+      for (const timer of offerResendTimers) clearTimeout(timer);
+      offerResendTimers = [];
+    };
+    const scheduleOfferResendUntilAnswer = () => {
+      if (role !== 'caller') return;
+      clearOfferResendTimers();
+      for (const delayMs of OFFER_RESEND_UNTIL_ANSWER_MS) {
+        const timer = setTimeout(() => {
+          if (cancelled || pcTearingDownRef.current) return;
+          const pc = pcRef.current as RTCPeerConnection | null;
+          if (!pc || pc.remoteDescription || !callerOfferSentRef.current) return;
+          callerOfferResendCountRef.current += 1;
+          logAfwCall('sdp_resend_offer_scheduled', {
+            callId: callIdRef.current,
+            role,
+            delayMs,
+            attempt: callerOfferResendCountRef.current,
+          });
+          void sendSdpFromPeerConnection(
+            pc,
+            lastCallerOfferSdpRef ?? pc.localDescription ?? undefined,
+          );
+        }, delayMs);
+        offerResendTimers.push(timer);
+      }
     };
 
     triggerIceRestartRef.current = async () => {
@@ -1666,6 +1810,7 @@ function CallScreenInner() {
           peerAccepted: peerAnsweredRef.current,
           hasRemoteDescription: Boolean(pc.remoteDescription),
           remoteSdpHasVideo: remoteSdpHasVideo(),
+          forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
         })) {
           maybeMarkCallConnected(remote, 'audio');
           clearConnectionWatchdog();
@@ -1902,6 +2047,14 @@ function CallScreenInner() {
     const handleSignal = async (payload: { callId: string; fromUserId: string; signal: SignalPayload }) => {
       const rxKind = String((payload?.signal as { kind?: string })?.kind || '');
       if (!callIdsEqual(payload?.callId, callIdRef.current)) {
+        logAfwCall('signal_drop', {
+          callId: callIdRef.current,
+          role,
+          reason: 'call_id_mismatch',
+          rxCallId: payload?.callId ?? null,
+          expectedCallId: callIdRef.current,
+          kind: rxKind,
+        });
         logCallPhase(callIdRef.current, 'signal_drop', {
           reason: 'call_id_mismatch',
           rxCallId: payload?.callId ?? null,
@@ -1943,6 +2096,12 @@ function CallScreenInner() {
       });
       const normalized = normalizeInboundCallSignal(payload.signal, pc.signalingState);
       if (!normalized) {
+        logAfwCall('signal_ignored', {
+          callId: callIdRef.current,
+          role,
+          kind: rxKind,
+          signalingState: pc.signalingState,
+        });
         logCallPhase(callIdRef.current, 'signal_ignored', {
           kind: rxKind,
           signalingState: pc.signalingState,
@@ -1952,6 +2111,7 @@ function CallScreenInner() {
       try {
         if (normalized.kind === 'sdp') {
           const remoteSdp = normalized.sdp;
+          const isInboundAnswer = remoteSdp.type === 'answer';
           const remoteDescription = isWebRuntime
             ? remoteSdp
             : new RTCSessionDescriptionImpl(remoteSdp);
@@ -1961,6 +2121,22 @@ function CallScreenInner() {
             fromUserId: payload.fromUserId,
             ...summarizeCallSdp(remoteSdp.sdp, remoteSdp.type),
           });
+          if (isInboundAnswer) {
+            logAnswerRx({
+              callId: callIdRef.current,
+              role,
+              fromUserId: payload.fromUserId,
+              signalingState: pc.signalingState,
+              ...summarizeCallSdp(remoteSdp.sdp, remoteSdp.type),
+            });
+            logSetRemoteAnswerStart({
+              callId: callIdRef.current,
+              role,
+              fromUserId: payload.fromUserId,
+              signalingState: pc.signalingState,
+              ...summarizeCallSdp(remoteSdp.sdp, remoteSdp.type),
+            });
+          }
           try {
             await pc.setRemoteDescription(remoteDescription);
             logSetRemoteDescription({
@@ -1969,8 +2145,28 @@ function CallScreenInner() {
               type: remoteSdp.type,
               signalingState: pc.signalingState,
             });
+            if (isInboundAnswer) {
+              logSetRemoteAnswerSuccess({
+                callId: callIdRef.current,
+                role,
+                fromUserId: payload.fromUserId,
+                signalingState: pc.signalingState,
+                ...summarizeCallSdp(remoteSdp.sdp, remoteSdp.type),
+              });
+              clearOfferResendTimers();
+            }
             logPcStatesSnapshot('after_set_remote_description', { sdpType: remoteSdp.type });
           } catch (firstErr) {
+            if (isInboundAnswer) {
+              logSetRemoteAnswerError({
+                callId: callIdRef.current,
+                role,
+                fromUserId: payload.fromUserId,
+                signalingState: pc.signalingState,
+                name: String((firstErr as Error)?.name || ''),
+                message: String((firstErr as Error)?.message || firstErr || ''),
+              });
+            }
             if (
               remoteSdp.type === 'offer' &&
               String(pc.signalingState || '') === 'have-local-offer'
@@ -1994,6 +2190,9 @@ function CallScreenInner() {
           ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
           syncRemoteTracksFromPeerConnection(pc);
           enableRemoteAudioTracks(remoteStreamRef.current as MediaStream);
+          if (isInboundAnswer) {
+            refreshNativeRemoteAudioPlayback('sdp_remote_answer', pc);
+          }
           maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
           if (remoteSdp.type === 'offer') {
             const offerHasVideo = sdpContainsMedia(remoteSdp.sdp, 'video');
@@ -2007,8 +2206,18 @@ function CallScreenInner() {
             if (prunedAns) logCallPhase(callId, 'transceivers_pruned', { stopped: prunedAns });
             ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
             if (!peerConnectionHasActiveAudioSender(pc) && !callerLocalMediaReady()) {
-              logCallPhase(callIdRef.current, 'answer_abort', { reason: 'no_audio_sender' });
-              return;
+              logAnswerSendError({
+                callId: callIdRef.current,
+                role,
+                reason: 'no_audio_sender_warn',
+                hasLocalStream: Boolean((localStreamRef.current as MediaStream | null)?.getTracks?.().length),
+                senderCount: pc.getSenders?.().length ?? 0,
+              });
+              logAfwCall('answer_no_audio_sender_warn', {
+                callId: callIdRef.current,
+                role,
+                note: 'createAnswer proceeds — signalisation prioritaire',
+              });
             }
             const ans = await pc.createAnswer(callSdpNegotiationOptions());
             logCreateAnswer({
@@ -2032,7 +2241,21 @@ function CallScreenInner() {
               hasAudio: sdpContainsMedia(localAns?.sdp ?? ans.sdp, 'audio'),
               hasVideo: sdpContainsMedia(localAns?.sdp ?? ans.sdp, 'video'),
             });
-            await sendSdpFromPeerConnection(pc, ans);
+            let answerSent = await sendSdpFromPeerConnection(pc, ans);
+            if (!answerSent) {
+              await new Promise((resolve) => setTimeout(resolve, 350));
+              answerSent = await sendSdpFromPeerConnection(pc, pc.localDescription ?? ans);
+            }
+            if (!answerSent) {
+              logAnswerSendError({
+                callId: callIdRef.current,
+                role,
+                reason: 'answer_send_exhausted',
+                toUserId: otherUserId,
+              });
+            } else {
+              refreshNativeRemoteAudioPlayback('sdp_local_answer', pc);
+            }
           }
         } else if (normalized.kind === 'ice') {
           if (normalized.candidate === null) {
@@ -2092,6 +2315,13 @@ function CallScreenInner() {
           }
         }
       } catch (e) {
+        logAfwCall('signal_failed', {
+          callId: callIdRef.current,
+          role,
+          kind: rxKind,
+          name: String((e as Error)?.name || ''),
+          message: String((e as Error)?.message || e || ''),
+        });
         logCallPhase(callIdRef.current, 'signal_failed', {
           kind: rxKind,
           name: String((e as Error)?.name || ''),
@@ -2376,6 +2606,7 @@ function CallScreenInner() {
         callerOfferSentRef.current = true;
         callerOfferResendCountRef.current = 0;
         armMediaWatchdogIfReady();
+        scheduleOfferResendUntilAnswer();
         return true;
       } catch (e) {
         devWarn('[Call] offer failed', e);
@@ -2862,13 +3093,14 @@ function CallScreenInner() {
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
                 remoteSdpHasVideo: remoteSdpHasVideo(),
+                forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
               })
             ) {
               clearConnectionWatchdog();
             }
             enableRemoteAudioTracks(remote);
             if (!isWebRuntime) {
-              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+              refreshNativeRemoteAudioPlayback('pc_connected', pc);
             }
             maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
           }
@@ -2906,13 +3138,14 @@ function CallScreenInner() {
                 peerAccepted: peerAnsweredRef.current,
                 hasRemoteDescription: Boolean(pc.remoteDescription),
                 remoteSdpHasVideo: remoteSdpHasVideo(),
+                forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
               })
             ) {
               clearConnectionWatchdog();
             }
             enableRemoteAudioTracks(remote);
             if (!isWebRuntime) {
-              void applyNativeCallSpeakerRoute(speakerOnRef.current);
+              refreshNativeRemoteAudioPlayback('ice_connected', pc);
             }
             maybeMarkCallConnected(remote, 'audio');
           }
@@ -2936,6 +3169,12 @@ function CallScreenInner() {
               if (!restartAttempted) {
                 restartAttempted = true;
                 try {
+                  if (typeof pc.restartIce === 'function') {
+                    pc.restartIce();
+                    logCallPhase(callId, 'ice_restart_native', { method: 'restartIce' });
+                    armConnectionWatchdog();
+                    return;
+                  }
                   const restartOffer = await pc.createOffer({ iceRestart: true });
                   await applyLocalDescription(pc, restartOffer);
                   await sendSdpFromPeerConnection(pc, restartOffer);
@@ -3190,6 +3429,7 @@ function CallScreenInner() {
           }
           armMediaReadyHint();
           armMediaWatchdogIfReady();
+          await flushPendingSignals();
         }
 
         upgradeToVideoRef.current = async () => {
@@ -3275,7 +3515,7 @@ function CallScreenInner() {
         enableRemoteAudioTracks(remotePlaybackStreamRef.current);
       }
       if (!isWebRuntime) {
-        void applyNativeCallSpeakerRoute(speakerOnRef.current);
+        refreshNativeRemoteAudioPlayback('media_nudge', pc);
       }
       if (callStateRef.current !== 'connected' && pc?.remoteDescription) {
         if (
@@ -3289,6 +3529,7 @@ function CallScreenInner() {
             peerAccepted: peerAnsweredRef.current,
             hasRemoteDescription: true,
             remoteSdpHasVideo: remoteSdpHasVideo(),
+            forceTurnRelay: turnConfiguredRef.current && !isWebRuntime,
           })
         ) {
           maybeMarkCallConnected(remote, 'audio');
@@ -3328,6 +3569,7 @@ function CallScreenInner() {
       offInviteAck();
       offIceReflush();
       iceOutbox.close();
+      clearOfferResendTimers();
       scheduleStopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
@@ -3655,6 +3897,11 @@ function CallScreenInner() {
             hasSelectedPair: transport.hasSelectedPair,
             inboundBytesIncreased,
             stalledMs,
+            alreadyRecovered: postConnectedMediaRecoveryDoneRef.current,
+          }) ||
+          shouldIceRestartFromConnectedMediaVerdict({
+            role,
+            verdict: verdict.verdict,
             alreadyRecovered: postConnectedMediaRecoveryDoneRef.current,
           })
         ) {

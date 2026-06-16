@@ -7,6 +7,7 @@ import {
   shouldFinishCallAsMissed,
   shouldDowngradeVideoInviteToAudioAnswer,
   shouldRecoverStalledConnectedCallMedia,
+  shouldIceRestartFromConnectedMediaVerdict,
   shouldResendCallerOffer,
   shouldSendCallerOfferAfterInvite,
   STALLED_CONNECTED_MEDIA_RECOVERY_MS,
@@ -60,6 +61,30 @@ describe('callAcceptLifecycle', () => {
     it('pas de restart sans paire ICE mesurable, ni avant connexion', () => {
       expect(shouldRecoverStalledConnectedCallMedia({ ...base, hasSelectedPair: false })).toBe(false);
       expect(shouldRecoverStalledConnectedCallMedia({ ...base, callConnected: false })).toBe(false);
+    });
+
+    it('verdict silent_both → ICE restart appelant (une fois)', () => {
+      expect(
+        shouldIceRestartFromConnectedMediaVerdict({
+          role: 'caller',
+          verdict: 'silent_both',
+          alreadyRecovered: false,
+        }),
+      ).toBe(true);
+      expect(
+        shouldIceRestartFromConnectedMediaVerdict({
+          role: 'receiver',
+          verdict: 'silent_both',
+          alreadyRecovered: false,
+        }),
+      ).toBe(false);
+      expect(
+        shouldIceRestartFromConnectedMediaVerdict({
+          role: 'caller',
+          verdict: 'ok',
+          alreadyRecovered: false,
+        }),
+      ).toBe(false);
     });
   });
 

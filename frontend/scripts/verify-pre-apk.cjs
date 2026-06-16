@@ -222,7 +222,9 @@ function checkStaticInvariants() {
   if (
     callTsx.includes('SafeNativeRtcView')
     && callTsx.includes('remote-video-${remoteStreamKey}')
-    && callTsx.includes('showNativeRemoteRtc')
+    && (callTsx.includes('showNativeRemoteRtc')
+      || callTsx.includes('showNativeRemoteVideoMain')
+      || callTsx.includes('shouldShowNativeRemoteVideoRtc'))
   ) {
     pass('invariants', 'Vidéo native : SafeNativeRtcView distant + remoteStreamKey');
   } else {

@@ -135,6 +135,21 @@ describe('callSignalingPayload', () => {
     });
   });
 
+  it('normalizeInboundCallSignal retire les lignes a=ssrc msid legacy (Chrome web)', () => {
+    const legacyLine =
+      'a=ssrc:4200685331 msid:bc0ac7c1-b180-46e1-9fde-d2de55bf31e0 410c4195-dd6d-41dc-b3aa-619e20fcea8e';
+    const offerSdp = ['v=0', 'm=audio 9 UDP/TLS/RTP/SAVPF 111', legacyLine].join('\r\n');
+    const normalized = normalizeInboundCallSignal(
+      { kind: 'sdp', sdp: { type: 'offer', sdp: offerSdp } },
+      'have-remote-offer',
+    );
+    expect(normalized?.kind).toBe('sdp');
+    if (normalized?.kind === 'sdp') {
+      expect(normalized.sdp.sdp).not.toContain(legacyLine);
+      expect(normalized.sdp.sdp).toContain('m=audio');
+    }
+  });
+
   it('callSdpNegotiationOptions ne passe AUCUNE contrainte héritée offerToReceive* (régression mid=1)', () => {
     // Réintroduire { offerToReceiveAudio, offerToReceiveVideo } recrée une 2e
     // section audio en Unified Plan → setRemoteDescription échoue côté appelant.

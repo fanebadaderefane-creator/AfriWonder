@@ -54,9 +54,39 @@ Pour les navigateurs modernes, preferer TURN TLS:
 
 Tu peux ajouter certificats LetsEncrypt dans coturn pour production.
 
-## 5. Variables a configurer dans Afriwonder (frontend)
+## 5. Variables d'environnement
 
-Dans `.env.local` (dev) et dans variables d'environnement production:
+### Backend (Render / VPS) — **obligatoire pour mobile + PWA**
+
+Les clés TURN **ne vont pas dans l'APK Expo**. L'app mobile appelle `GET /api/proxy/calls/turn-credentials` (JWT) ; le backend renvoie STUN + TURN temporaires.
+
+Dans `backend/.env` (production Render) :
+
+```env
+# Option A — Metered.ca (recommandé, déjà utilisé si METERED_TURN_API_KEY est défini)
+METERED_TURN_DOMAIN=afriwonder.metered.live
+METERED_TURN_API_KEY=<clé dashboard Metered>
+
+# Région TURN — OBLIGATOIRE pour Maroc ↔ Mali (pas de rebuild APK)
+# Défaut backend si absent : afriwonder (France + EU-Ouest + repli global)
+METERED_TURN_REGION=afriwonder
+# Override fin : METERED_TURN_RELAY_HOSTS=fr.relay.metered.ca,eu-west.relay.metered.ca
+
+# Option B — coturn self-hosted (VPS EU/FR — OVH, Scaleway…)
+TURN_URL=turn:turn.afriwonder.com:3478?transport=udp,turn:turn.afriwonder.com:3478?transport=tcp,turns:turn.afriwonder.com:5349?transport=tcp
+TURN_USERNAME=afriwonder
+TURN_CREDENTIAL=CHANGE_ME_STRONG_PASSWORD
+TURN_REALM=turn.afriwonder.com
+
+# CORS + Socket.io (Maroc ↔ Mali — domaines prod)
+CORS_ORIGIN=https://afri-wonder.vercel.app,https://afriwonder.app,https://afriwonder.com
+# Multi-instances Render (optionnel mais recommandé si scale)
+REDIS_URL=redis://...
+```
+
+### PWA Vite uniquement (racine `src/`) — optionnel
+
+Si la PWA n'utilise pas encore l'API turn-credentials :
 
 ```env
 VITE_TURN_URL=turns:turn.afriwonder.com:5349?transport=tcp
@@ -64,7 +94,15 @@ VITE_TURN_USERNAME=afriwonder
 VITE_TURN_CREDENTIAL=CHANGE_ME_STRONG_PASSWORD
 ```
 
-Puis redemarrer le frontend.
+### Expo mobile (`frontend/`)
+
+**Ne pas** définir `EXPO_PUBLIC_TURN_*`. Seule variable critique :
+
+```env
+EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com
+```
+
+Puis redéployer le backend (TURN) et reconstruire l'APK si l'URL backend change.
 
 ## 6. Tests rapides
 
@@ -87,5 +125,15 @@ Puis redemarrer le frontend.
 Pour un usage intensif, prevoir:
 - monitoring bande passante TURN
 - rotation des credentials
-- plusieurs serveurs TURN (HA / regional)
+- **Région TURN** : `METERED_TURN_REGION=afriwonder` sur Render (France + EU-Ouest) — voir `backend/src/services/meteredTurnRegions.ts`
+
+### Maroc ↔ Mali sans rebuild APK
+
+Les credentials TURN sont récupérés **à chaque appel** via l'API backend. Il suffit de :
+
+1. Ajouter sur **Render** : `METERED_TURN_REGION=afriwonder`
+2. Redéployer le **backend** (pas l'APK)
+3. Vérifier : `node scripts/test-turn-credentials-decisive.mjs` → URLs contenant `fr.relay.metered.ca`
+
+Metered n'a pas de PoP Afrique de l'Ouest ; `fr` + `eu-west` minimisent la latence vs `global` (Canada).
 

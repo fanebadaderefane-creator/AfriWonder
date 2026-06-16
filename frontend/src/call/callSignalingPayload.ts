@@ -13,6 +13,8 @@
  * Payloads socket `call:*` — champs alignés sur le relais backend (`index.ts`).
  */
 
+import { sanitizeInboundSdpForWebRtc } from './callSdpWebCompat';
+
 export type CallMediaType = 'audio' | 'video';
 
 export type CallSdpType = 'offer' | 'answer' | 'rollback' | 'pranswer';
@@ -45,7 +47,7 @@ export function coerceSessionDescriptionInit(
     if (!sdp.startsWith('v=')) return null;
     const type = inferSdpTypeForPeerConnection(signalingState);
     if (!type) return null;
-    return { type, sdp };
+    return { type, sdp: sanitizeInboundSdpForWebRtc(sdp) };
   }
 
   if (typeof raw !== 'object') return null;
@@ -69,7 +71,7 @@ export function coerceSessionDescriptionInit(
     return null;
   }
 
-  return { type: type as CallSdpType, sdp: sdpBody };
+  return { type: type as CallSdpType, sdp: sanitizeInboundSdpForWebRtc(String(sdpBody)) };
 }
 
 /**
@@ -95,7 +97,7 @@ export function normalizeInboundCallSignal(
       coerceSessionDescriptionInit({ type: kind, sdp: sig.sdp }, signalingState);
     if (sdp) return { kind: 'sdp', sdp };
     if (typeof sig.sdp === 'string' && sig.sdp.trim().startsWith('v=')) {
-      return { kind: 'sdp', sdp: { type: kind as CallSdpType, sdp: sig.sdp.trim() } };
+      return { kind: 'sdp', sdp: { type: kind as CallSdpType, sdp: sanitizeInboundSdpForWebRtc(sig.sdp.trim()) } };
     }
     return null;
   }

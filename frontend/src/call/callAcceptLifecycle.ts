@@ -51,6 +51,23 @@ export function shouldRecoverStalledConnectedCallMedia(input: {
   return input.stalledMs >= (input.thresholdMs ?? STALLED_CONNECTED_MEDIA_RECOVERY_MS);
 }
 
+/** Verdict stats : relance ICE côté appelant si média mort après « connecté » (Maroc↔Mali). */
+export function shouldIceRestartFromConnectedMediaVerdict(input: {
+  role: CallRole;
+  verdict: string;
+  alreadyRecovered: boolean;
+}): boolean {
+  if (input.role !== 'caller') return false;
+  if (input.alreadyRecovered) return false;
+  return (
+    input.verdict === 'silent_both' ||
+    input.verdict === 'inbound_dead' ||
+    input.verdict === 'outbound_dead' ||
+    input.verdict === 'no_ice_pair' ||
+    input.verdict === 'dtls_not_connected'
+  );
+}
+
 /** Timer « Pas de réponse » (30 s) : à annuler dès que le correspondant décroche. */
 export function shouldClearCallerRingTimeoutOnAccept(input: { role: CallRole }): boolean {
   return input.role === 'caller';

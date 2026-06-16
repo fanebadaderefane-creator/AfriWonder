@@ -43,6 +43,48 @@ describe('callRemoteMedia', () => {
     ).toBe(true);
   });
 
+  it('shouldMarkCallConnected — relais TURN : ICE connected sans piste audio = pas connecté', () => {
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [] },
+      }),
+    ).toBe(false);
+    expect(
+      shouldMarkCallConnected({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'live' }] },
+      }),
+    ).toBe(true);
+  });
+
+  it('remoteStreamReadyForConnectedUi — relais TURN exige une piste audio distante', () => {
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [] },
+      }),
+    ).toBe(false);
+    expect(
+      remoteStreamReadyForConnectedUi({
+        isVideo: false,
+        forceTurnRelay: true,
+        hasRemoteDescription: true,
+        iceConnectionState: 'connected',
+        stream: { getAudioTracks: () => [{ enabled: true, readyState: 'new' }] },
+      }),
+    ).toBe(true);
+  });
+
   it('remoteStreamReadyForConnectedUi — ICE connected vocal sans piste live', () => {
     expect(
       remoteStreamReadyForConnectedUi({

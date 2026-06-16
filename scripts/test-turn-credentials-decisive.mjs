@@ -95,10 +95,18 @@ async function main() {
   }
 
   const hasGlobalRelay = urls.some((u) => String(u).includes('global.relay.metered.ca'));
+  const hasFrRelay = urls.some((u) => String(u).includes('fr.relay.metered.ca'));
+  const hasEuWestRelay = urls.some((u) => String(u).includes('eu-west.relay.metered.ca'));
   const hasAfriwonderLive = urls.some((u) => String(u).includes('afriwonder.metered.live'));
   console.log('\n--- Analyse ---');
-  console.log('Contient global.relay.metered.ca:', hasGlobalRelay ? 'OUI' : 'NON');
-  console.log('Contient afriwonder.metered.live (turn:):', hasAfriwonderLive ? 'OUI (inattendu)' : 'NON');
+  console.log('turnRegion:', data?.turnRegion || '(non exposé — backend ancien)');
+  console.log('turnRelayHosts:', data?.turnRelayHosts || []);
+  console.log('Contient fr.relay.metered.ca (Maroc/EU):', hasFrRelay ? 'OUI ✓' : 'NON ✗');
+  console.log('Contient eu-west.relay.metered.ca:', hasEuWestRelay ? 'OUI ✓' : 'NON');
+  console.log('Contient global.relay.metered.ca (repli):', hasGlobalRelay ? 'OUI' : 'NON');
+  if (!hasFrRelay && !hasEuWestRelay && hasGlobalRelay) {
+    console.warn('\n⚠️  TURN encore sur global (Canada) — ajoutez METERED_TURN_REGION=afriwonder sur Render et redéployez le backend.');
+  }
   console.log(
     'Branche probable:',
     username.startsWith(STATIC_USERNAME_PREFIX) && data?.expiresAt === 0

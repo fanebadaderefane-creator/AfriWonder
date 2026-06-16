@@ -4,6 +4,8 @@
  *
  * Tags : [AFW_CALL] [SDP_SEND] [SDP_RECEIVED] [ICE_LOCAL] [ICE_REMOTE] [ICE_REMOTE_APPLIED]
  *        [ICE_QUEUED] [ICE_FLUSH_PENDING] [PC_STATES] [CALL_END_EMIT] [CALL_END_RECEIVED]
+ *        [ANSWER_SEND_START] [ANSWER_SEND_SUCCESS] [ANSWER_SEND_ERROR]
+ *        [ANSWER_RX] [SET_REMOTE_ANSWER_START] [SET_REMOTE_ANSWER_SUCCESS] [SET_REMOTE_ANSWER_ERROR]
  *        (+ [AFW_CALL_EXIT] dans callCallExit.ts)
  */
 
@@ -242,4 +244,36 @@ export function logDebugTransceiversBeforeSetLocal(
 
 export function logCreateAnswer(meta: Record<string, unknown>): void {
   logAfwCall('createAnswer', meta);
+}
+
+/** Receveur — début envoi answer SDP (avant half-trickle / socket). */
+export function logAnswerSendStart(meta: Record<string, unknown>): void {
+  console.error('[ANSWER_SEND_START]', serialize(meta));
+}
+
+/** Receveur — answer SDP émise via socket avec succès. */
+export function logAnswerSendSuccess(meta: Record<string, unknown>): void {
+  console.error('[ANSWER_SEND_SUCCESS]', serialize(meta));
+}
+
+/** Receveur — échec création ou envoi answer SDP. */
+export function logAnswerSendError(meta: Record<string, unknown>): void {
+  console.error('[ANSWER_SEND_ERROR]', serialize(meta));
+}
+
+/** Appelant — signal answer reçu (avant setRemoteDescription). */
+export function logAnswerRx(meta: Record<string, unknown>): void {
+  console.error('[ANSWER_RX]', serialize(meta));
+}
+
+export function logSetRemoteAnswerStart(meta: Record<string, unknown>): void {
+  console.error('[SET_REMOTE_ANSWER_START]', serialize(meta));
+}
+
+export function logSetRemoteAnswerSuccess(meta: Record<string, unknown>): void {
+  console.error('[SET_REMOTE_ANSWER_SUCCESS]', serialize(meta));
+}
+
+export function logSetRemoteAnswerError(meta: Record<string, unknown>): void {
+  console.error('[SET_REMOTE_ANSWER_ERROR]', serialize(meta));
 }

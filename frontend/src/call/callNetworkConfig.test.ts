@@ -91,8 +91,8 @@ describe('shouldTreatAsMobileCgnatNetwork — parité Web/Android', () => {
     expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, false)).toBe(false);
     expect(shouldTreatAsMobileCgnatNetwork({ type: 'wifi' }, true)).toBe(false);
   });
-  it('unknown → pas de supposition cellulaire (Web et Android)', () => {
-    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, false)).toBe(false);
+  it('unknown → CGNAT natif seulement (Mali), pas sur web', () => {
+    expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, false)).toBe(true);
     expect(shouldTreatAsMobileCgnatNetwork({ type: 'unknown' }, true)).toBe(false);
   });
 });
@@ -105,8 +105,8 @@ describe('nativeRtcBindRetryAttempts', () => {
   });
 });
 
-describe('shouldForceTurnRelay — CGNAT Afrique', () => {
-  it('TURN configuré → relais forcé sur cellulaire (natif + web), pas sur Wi‑Fi', () => {
+describe('shouldForceTurnRelay — CGNAT Afrique / Maroc↔Mali', () => {
+  it('TURN configuré → relais forcé sur cellulaire (natif + web)', () => {
     expect(
       shouldForceTurnRelay({
         turnConfigured: true,
@@ -115,11 +115,18 @@ describe('shouldForceTurnRelay — CGNAT Afrique', () => {
       }),
     ).toBe(true);
     expect(
-      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
-    ).toBe(false);
-    expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
     ).toBe(true);
+  });
+  it('natif + TURN → relais forcé même en Wi‑Fi (cross-border Maroc↔Mali)', () => {
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
+    ).toBe(true);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
+    ).toBe(true);
+  });
+  it('web + Wi‑Fi + TURN → pas de relais forcé (P2P local OK)', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'wifi' } }),
     ).toBe(false);
@@ -128,16 +135,6 @@ describe('shouldForceTurnRelay — CGNAT Afrique', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: false, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(false);
-  });
-  it('natif + NetInfo unknown + TURN → pas de relais forcé (parité Web)', () => {
-    expect(
-      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
-    ).toBe(false);
-  });
-  it('cellular + TURN → relais forcé natif et web', () => {
-    expect(
-      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'cellular' } }),
-    ).toBe(true);
   });
 });
 
@@ -197,7 +194,7 @@ describe('réseaux lents 2G/3G — vocal et délais', () => {
         net: { type: 'unknown' },
         isWeb: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldBlockCellularWithoutTurn({
         turnConfigured: false,
@@ -229,7 +226,7 @@ describe('buildCallIceConfig', () => {
       net: { type: 'wifi' },
     });
     expect(web.iceTransportPolicy).toBeUndefined();
-    expect(web.iceCandidatePoolSize).toBe(4);
+    expect(web.iceCandidatePoolSize).toBe(10);
     expect(web.bundlePolicy).toBe('max-bundle');
     expect(web.rtcpMuxPolicy).toBe('require');
   });
@@ -244,14 +241,14 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
-  it('Wi‑Fi + TURN natif → pas de relay forcé (parité web Wi‑Fi)', () => {
+  it('Wi‑Fi + TURN natif → relay forcé (Maroc↔Mali cross-border)', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: false,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBeUndefined();
+    expect(cfg.iceTransportPolicy).toBe('relay');
   });
 
   it('web + TURN + cellulaire → relay forcé', () => {
@@ -340,7 +337,7 @@ describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
         net: { type: 'wifi' },
         iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldBlockNativeCellularWithoutTlsTurn({
         isWeb: false,
@@ -348,7 +345,7 @@ describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
         net: { type: 'unknown' },
         iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

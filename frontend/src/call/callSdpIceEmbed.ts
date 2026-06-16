@@ -39,9 +39,10 @@ export function iceCandidateInitCounts(
   const counts: SdpCandidateCounts = { ...EMPTY_COUNTS };
   for (const c of candidates ?? []) {
     const { type } = parseIceCandidateMeta(c.candidate ?? null);
-    if (!type) continue;
-    counts[type] += 1;
-    counts.total += 1;
+    if (type === 'host' || type === 'srflx' || type === 'relay' || type === 'prflx') {
+      counts[type] += 1;
+      counts.total += 1;
+    }
   }
   return counts;
 }
@@ -108,6 +109,40 @@ export function decideIceGatheringWaitWithBuffer(
 }
 
 /** SDP sortant = description locale + candidats buffer (half-trickle Maroc↔Mali). */
+/**
+ * Half-trickle avant émission : offer (+ pranswer / rollback) ; answer natif+TURN aussi.
+ */
+export function shouldAwaitIceBeforeOutboundSdp(
+  sdpType: string | null | undefined,
+  options?: { turnConfigured?: boolean; isNative?: boolean },
+): boolean {
+  const t = String(sdpType || '').trim().toLowerCase();
+  if (t === 'offer' || t === 'pranswer' || t === 'rollback') return true;
+  if (t === 'answer' && options?.turnConfigured && options?.isNative) return true;
+  return false;
+}
+
+/** Answer web / sans TURN : micro-attente ICE (≤450 ms). */
+export function shouldAwaitMinimalIceBeforeAnswerEmbed(
+  sdpType: string | null | undefined,
+  options?: { turnConfigured?: boolean; isNative?: boolean },
+): boolean {
+  if (String(sdpType || '').trim().toLowerCase() !== 'answer') return false;
+  if (options?.turnConfigured && options?.isNative) return false;
+  return true;
+}
+
+export function minimalIceGatherReady(
+  gatheredCount: number,
+  iceGatheringState?: string | null,
+): boolean {
+  if (gatheredCount > 0) return true;
+  return String(iceGatheringState || '').toLowerCase() === 'complete';
+}
+
+export const MINIMAL_ANSWER_ICE_WAIT_MS = 450;
+export const MINIMAL_ANSWER_ICE_POLL_MS = 50;
+
 export function buildOutboundSdpWithEmbeddedIce(input: {
   sdp: string;
   type: string;

@@ -3,6 +3,8 @@
  * Ne pas diverger : toute modif doit être reflétée dans les deux fichiers + tests.
  */
 
+import { sanitizeInboundSdpForWebRtc } from './callSdpWebCompat.js';
+
 const SDP_TYPES = new Set(['offer', 'answer', 'rollback', 'pranswer']);
 
 export function inferSdpTypeForPeerConnection(signalingState) {
@@ -21,7 +23,7 @@ export function coerceSessionDescriptionInit(raw, signalingState) {
     if (!sdp.startsWith('v=')) return null;
     const type = inferSdpTypeForPeerConnection(signalingState);
     if (!type) return null;
-    return { type, sdp };
+    return { type, sdp: sanitizeInboundSdpForWebRtc(sdp) };
   }
 
   if (typeof raw !== 'object') return null;
@@ -45,7 +47,7 @@ export function coerceSessionDescriptionInit(raw, signalingState) {
     return null;
   }
 
-  return { type, sdp: sdpBody };
+  return { type, sdp: sanitizeInboundSdpForWebRtc(String(sdpBody)) };
 }
 
 export function normalizeInboundCallSignal(raw, signalingState) {
@@ -63,7 +65,7 @@ export function normalizeInboundCallSignal(raw, signalingState) {
       coerceSessionDescriptionInit({ type: kind, sdp: raw.sdp }, signalingState);
     if (sdp) return { kind: 'sdp', sdp };
     if (typeof raw.sdp === 'string' && raw.sdp.trim().startsWith('v=')) {
-      return { kind: 'sdp', sdp: { type: kind, sdp: raw.sdp.trim() } };
+      return { kind: 'sdp', sdp: { type: kind, sdp: sanitizeInboundSdpForWebRtc(raw.sdp.trim()) } };
     }
     return null;
   }

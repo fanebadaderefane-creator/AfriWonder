@@ -36,19 +36,18 @@ export function isCellularNetwork(net: NetworkSnapshot | null | undefined): bool
 /**
  * Réseau probablement derrière CGNAT opérateur (cellulaire explicite).
  *
- * Parité Web/Android (juin 2026) : `unknown` ne force plus le relais — sur Android,
- * NetInfo `unknown` arrive aussi en Wi‑Fi mal détecté (Samsung/Xiaomi), ce qui
- * imposait TURN TLS-only à tort. Seul `cellular` déclenche `iceTransportPolicy:
- * 'relay'`. Les serveurs TURN restent dans iceServers : ICE peut toujours choisir
- * un relais si le P2P échoue.
+ * Parité Web/Android (juin 2026) : `unknown` ne force plus le relais **sur web**
+ * (NetInfo ambigu). Sur **natif**, `unknown` est fréquent au Mali → traité CGNAT.
  */
 export function shouldTreatAsMobileCgnatNetwork(
   net: NetworkSnapshot | null | undefined,
-  _isWeb: boolean,
+  isWeb: boolean,
 ): boolean {
   const type = String(net?.type || '').toLowerCase();
   if (type === 'wifi' || type === 'ethernet') return false;
-  return isCellularNetwork(net);
+  if (isCellularNetwork(net)) return true;
+  if (!isWeb && type === 'unknown') return true;
+  return false;
 }
 
 /** Intervalle entre retentes `MediaStream#toURL()` avant montage RTCView natif. */
@@ -80,6 +79,9 @@ export function pickVoiceOpusBitrateForNetwork(net: NetworkSnapshot | null | und
   if (isCellularNetwork(net) && gen === '3g') return VOICE_OPUS_BITRATE_3G;
   return VOICE_OPUS_BITRATE_DEFAULT;
 }
+
+/** Pool ICE pré-alloué — audit juin 2026 (Maroc↔Mali, latence élevée). */
+export const CALL_ICE_CANDIDATE_POOL_SIZE = 10;
 
 /** Watchdog « connexion média » — TURN + 2G/3G nécessitent plus de temps qu’en Wi‑Fi. */
 export function callConnectionWatchdogMs(net: NetworkSnapshot | null | undefined): number {
@@ -155,9 +157,9 @@ export function pickVideoProfileForNetwork(net: NetworkSnapshot | null | undefin
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
- * **Cellulaire** (natif + web) : relais obligatoire si TURN configuré (CGNAT opérateurs Afrique).
- * **Wi‑Fi / Ethernet** : ICE direct + STUN d’abord (comme navigateur) — évite d’imposer un relais
- * TURN TLS-only sur APK Android (`usesCleartextTraffic: false`) quand le P2P local suffit.
+ * **Natif (APK/iOS)** : relais obligatoire si TURN configuré — le P2P cross-border
+ * (Maroc↔Mali) échoue même en Wi‑Fi ; le relais Metered est requis des deux côtés.
+ * **Web** : relais sur cellulaire / unknown (CGNAT navigateur mobile).
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
@@ -165,6 +167,7 @@ export function shouldForceTurnRelay(input: {
   net?: NetworkSnapshot | null | undefined;
 }): boolean {
   if (!input.turnConfigured) return false;
+  if (!input.isWeb) return true;
   return shouldTreatAsMobileCgnatNetwork(input.net, input.isWeb);
 }
 
@@ -322,8 +325,8 @@ export function buildCallIceConfig(input: {
 }): RTCConfiguration {
   if (input.isWeb) {
     const webConfig: RTCConfiguration = {
-      iceServers: input.iceServers.slice(0, 4),
-      iceCandidatePoolSize: 4,
+      iceServers: input.iceServers.slice(0, 6),
+      iceCandidatePoolSize: CALL_ICE_CANDIDATE_POOL_SIZE,
       bundlePolicy: 'max-bundle' as RTCBundlePolicy,
       rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
     };
@@ -345,7 +348,7 @@ export function buildCallIceConfig(input: {
       turnConfigured: input.turnConfigured,
       iceServers: input.iceServers,
     }),
-    iceCandidatePoolSize: 8,
+    iceCandidatePoolSize: CALL_ICE_CANDIDATE_POOL_SIZE,
     bundlePolicy: 'max-bundle' as RTCBundlePolicy,
     rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
   };

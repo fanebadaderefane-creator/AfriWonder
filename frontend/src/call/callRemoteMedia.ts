@@ -104,6 +104,11 @@ export function shouldMarkCallConnected(input: {
   hasRemoteDescription?: boolean;
   /** SDP distant contient `m=video` — si false, audio seul suffit (correspondant sans caméra). */
   remoteSdpHasVideo?: boolean;
+  /**
+   * Relais TURN obligatoire (Maroc↔Mali) : ICE `connected` sans RTP ni piste audio
+   * ne doit pas afficher « connecté » / chronomètre (symptôme : muet des deux côtés).
+   */
+  forceTurnRelay?: boolean;
 }): boolean {
   void input.trackKind;
   if (input.role === 'caller' && input.peerAccepted === false) return false;
@@ -119,7 +124,15 @@ export function shouldMarkCallConnected(input: {
    * (symptôme prod : « Connexion média… » → « réseau bloqué » → coupure).
    */
   if (iceReady || pcConnected) {
-    if (!input.isVideo) return true;
+    if (!input.isVideo) {
+      if (input.forceTurnRelay) {
+        if (streamHasLiveAudio(stream)) return true;
+        const audioTracks = stream?.getAudioTracks?.() ?? [];
+        if (audioTracks.length > 0 && streamHasLiveRemoteTrack(audioTracks)) return true;
+        return false;
+      }
+      return true;
+    }
     if (streamHasLiveVideo(stream)) return true;
     /** Appel vidéo : ne pas marquer connecté sur ICE seul + audio (RTCView lié sans vidéo → écran noir). */
     if (streamHasRemoteVideoTrack(stream) && streamHasLiveAudio(stream)) return true;
@@ -198,13 +211,20 @@ export function remoteStreamReadyForConnectedUi(input: {
   iceConnectionState?: string | null;
   hasRemoteDescription?: boolean;
   peerConnectionState?: string;
+  forceTurnRelay?: boolean;
 }): boolean {
   const stream = input.stream;
   const iceReady = isIceConnectionReady(input.iceConnectionState);
   const pcConnected = input.peerConnectionState === 'connected';
 
   if (input.hasRemoteDescription && (iceReady || pcConnected)) {
-    if (!input.isVideo) return true;
+    if (!input.isVideo) {
+      if (input.forceTurnRelay) {
+        const audioTracks = stream?.getAudioTracks?.() ?? [];
+        return streamHasLiveAudio(stream) || audioTracks.length > 0;
+      }
+      return true;
+    }
     if (streamHasLiveVideo(stream)) return true;
     if (streamHasRemoteVideoTrack(stream) && streamHasLiveAudio(stream)) return true;
   }
@@ -232,6 +252,7 @@ export function canPromoteCallToConnected(input: {
   peerAccepted?: boolean;
   hasRemoteDescription?: boolean;
   remoteSdpHasVideo?: boolean;
+  forceTurnRelay?: boolean;
 }): boolean {
   return (
     remoteStreamReadyForConnectedUi({
@@ -240,6 +261,7 @@ export function canPromoteCallToConnected(input: {
       iceConnectionState: input.iceConnectionState,
       hasRemoteDescription: input.hasRemoteDescription,
       peerConnectionState: input.peerConnectionState,
+      forceTurnRelay: input.forceTurnRelay,
     }) &&
     shouldMarkCallConnected({
       stream: input.stream,
@@ -251,6 +273,7 @@ export function canPromoteCallToConnected(input: {
       peerAccepted: input.peerAccepted,
       hasRemoteDescription: input.hasRemoteDescription,
       remoteSdpHasVideo: input.remoteSdpHasVideo,
+      forceTurnRelay: input.forceTurnRelay,
     })
   );
 }
