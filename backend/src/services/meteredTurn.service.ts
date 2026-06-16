@@ -3,9 +3,18 @@
  * Doc : https://www.metered.ca/docs/turn-server-service/
  */
 
+import {
+  applyMeteredRegionalTurn,
+  resolveMeteredTurnRelayHosts,
+  rewriteMeteredTurnUrlList,
+} from './meteredTurnRegions.js';
+
 export const PUBLIC_STUN_FALLBACKS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
+  'stun:stun2.l.google.com:19302',
+  'stun:stun3.l.google.com:3478',
+  'stun:stun4.l.google.com:19302',
   'stun:stun.cloudflare.com:3478',
   'stun:global.stun.twilio.com:3478',
   'stun:stun.relay.metered.ca:80',
@@ -27,6 +36,9 @@ export type TurnCredentialsData = {
   realm: string;
   publicStun: string[];
   turnConfigured: boolean;
+  /** Preset région Metered (diagnostic Maroc↔Mali). */
+  turnRegion?: string;
+  turnRelayHosts?: string[];
 };
 
 type MeteredCache = {
@@ -72,7 +84,7 @@ function isTurnUrl(urls: string | string[]): boolean {
 /** Construit le payload API AfriWonder à partir d'une liste iceServers complète. */
 export function turnPayloadFromIceServers(
   iceServers: IceServerEntry[],
-  input?: { ttlSec?: number; realm?: string },
+  input?: { ttlSec?: number; realm?: string; turnRegion?: string; turnRelayHosts?: string[] },
 ): TurnCredentialsData {
   const turnEntries = iceServers.filter((s) => isTurnUrl(s.urls));
   const firstTurn = turnEntries[0];
@@ -90,19 +102,41 @@ export function turnPayloadFromIceServers(
     realm: input?.realm ?? String(process.env.TURN_REALM || 'metered.ca').trim(),
     publicStun: PUBLIC_STUN_FALLBACKS,
     turnConfigured: turnEntries.length > 0 && Boolean(firstTurn?.username && firstTurn?.credential),
+    ...(input?.turnRegion ? { turnRegion: input.turnRegion } : {}),
+    ...(input?.turnRelayHosts?.length ? { turnRelayHosts: input.turnRelayHosts } : {}),
   };
 }
 
-/** URLs TURN Metered recommandées (dashboard statique). */
-export const METERED_STATIC_TURN_URLS = [
-  'turn:global.relay.metered.ca:80',
-  'turn:global.relay.metered.ca:80?transport=tcp',
-  'turn:global.relay.metered.ca:443',
-  'turns:global.relay.metered.ca:443?transport=tcp',
-];
+/** Applique la région TURN configurée (Render) — sans rebuild APK. */
+export function applyConfiguredMeteredRegion(iceServers: IceServerEntry[]): {
+  iceServers: IceServerEntry[];
+  region: ReturnType<typeof resolveMeteredTurnRelayHosts>;
+} {
+  const region = resolveMeteredTurnRelayHosts();
+  return {
+    region,
+    iceServers: applyMeteredRegionalTurn(iceServers, region.hosts),
+  };
+}
+
+/** URLs TURN Metered pour la région AfriWonder (France + EU-Ouest + repli). */
+export function resolveMeteredStaticTurnUrls(): string[] {
+  const { hosts } = resolveMeteredTurnRelayHosts();
+  return [...new Set(hosts.flatMap((h) => [
+    `turn:${h}:80`,
+    `turn:${h}:80?transport=tcp`,
+    `turn:${h}:443`,
+    `turns:${h}:443?transport=tcp`,
+  ]))];
+}
+
+/** @deprecated Utiliser resolveMeteredStaticTurnUrls() — conservé pour imports existants. */
+export const METERED_STATIC_TURN_URLS = resolveMeteredStaticTurnUrls();
 
 export function buildStaticIceServers(urls: string[], username: string, credential: string): IceServerEntry[] {
-  const sortedUrls = [...urls].sort((a, b) => {
+  const { hosts } = resolveMeteredTurnRelayHosts();
+  const regionalUrls = rewriteMeteredTurnUrlList(urls, hosts);
+  const sortedUrls = [...regionalUrls].sort((a, b) => {
     const score = (u: string) => {
       const lower = String(u).toLowerCase();
       let s = 0;
@@ -145,10 +179,14 @@ export async function fetchMeteredTurnCredentials(): Promise<TurnCredentialsData
   if (!res.ok) return null;
 
   const raw = (await res.json()) as unknown;
-  const iceServers = normalizeMeteredIceServers(raw);
-  if (!iceServers) return null;
+  const iceServersRaw = normalizeMeteredIceServers(raw);
+  if (!iceServersRaw) return null;
 
-  const payload = turnPayloadFromIceServers(iceServers);
+  const { iceServers, region } = applyConfiguredMeteredRegion(iceServersRaw);
+  const payload = turnPayloadFromIceServers(iceServers, {
+    turnRegion: region.preset,
+    turnRelayHosts: [...region.hosts],
+  });
   if (!payload.turnConfigured) return null;
 
   meteredCache = {

@@ -209,6 +209,8 @@ const defaultOrigins = [
   'https://afriwonder.vercel.app',
   'https://afri-wonder.app',
   'https://www.afri-wonder.app',
+  'https://afriwonder.app',
+  'https://www.afriwonder.app',
   'https://afriwonder.com',
   'https://www.afriwonder.com',
 ];

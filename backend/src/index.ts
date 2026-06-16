@@ -225,6 +225,10 @@ const corsOrigins: (string | RegExp)[] = [
   'http://127.0.0.1:19006',
   'https://afri-wonder.vercel.app',
   'https://afriwonder.vercel.app',
+  'https://afri-wonder.app',
+  'https://www.afri-wonder.app',
+  'https://afriwonder.app',
+  'https://www.afriwonder.app',
   'https://afriwonder.com',
   'https://www.afriwonder.com',
 ];

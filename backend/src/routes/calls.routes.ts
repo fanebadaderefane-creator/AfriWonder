@@ -14,6 +14,7 @@ import {
 } from '../services/meteredTurn.service.js';
 import { recordCallLogMessage } from '../services/callLogMessage.service.js';
 import type { CallLogOutcome } from '../utils/callLogPayload.js';
+import { parseCallHistoryLimit } from '../utils/callHistoryLimit.js';
 
 const router = Router();
 
@@ -117,6 +118,24 @@ router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
     });
   }
   return res.json({ success: true, data: creds });
+});
+
+/** GET /api/calls/history — journal récent (audit juin 2026, persistance hors socket seul). */
+router.get('/history', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const limit = parseCallHistoryLimit(req.query.limit);
+    const calls = await prisma.directCall.findMany({
+      where: {
+        OR: [{ caller_id: userId }, { receiver_id: userId }],
+      },
+      orderBy: { updated_at: 'desc' },
+      take: limit,
+    });
+    return res.json({ success: true, data: calls });
+  } catch (error: unknown) {
+    next(error);
+  }
 });
 
 // POST /api/calls/initiate - Initier un appel payant
