@@ -75,7 +75,7 @@ describe('meteredTurn.service', () => {
     const turnUrls = servers.flatMap((s) =>
       Array.isArray(s.urls) ? s.urls.map(String) : [String(s.urls)],
     );
-    expect(turnUrls.some((u) => u.includes('fr.relay.metered.ca'))).toBe(true);
+    expect(turnUrls.some((u) => u.includes('eu-west-1.relay.metered.ca'))).toBe(true);
   });
 
   it('applyConfiguredMeteredRegion expose turnRegion dans le payload', () => {
@@ -92,11 +92,11 @@ describe('meteredTurn.service', () => {
       turnRelayHosts: [...region.hosts],
     });
     expect(payload.turnRegion).toBe('afriwonder');
-    expect(payload.turnRelayHosts).toContain('fr.relay.metered.ca');
+    expect(payload.turnRelayHosts).toContain('eu-west-1.relay.metered.ca');
   });
 
   it('resolveMeteredStaticTurnUrls — plus de global Canada seul par défaut', () => {
     const urls = resolveMeteredStaticTurnUrls();
-    expect(urls.some((u) => u.includes('fr.relay.metered.ca'))).toBe(true);
+    expect(urls.some((u) => u.includes('eu-west-1.relay.metered.ca'))).toBe(true);
   });
 });

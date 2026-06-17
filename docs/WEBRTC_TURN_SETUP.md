@@ -68,9 +68,9 @@ METERED_TURN_DOMAIN=afriwonder.metered.live
 METERED_TURN_API_KEY=<clé dashboard Metered>
 
 # Région TURN — OBLIGATOIRE pour Maroc ↔ Mali (pas de rebuild APK)
-# Défaut backend si absent : afriwonder (France + EU-Ouest + repli global)
+# Défaut backend si absent : afriwonder (eu-west-1 + eu-central-1 + repli global)
 METERED_TURN_REGION=afriwonder
-# Override fin : METERED_TURN_RELAY_HOSTS=fr.relay.metered.ca,eu-west.relay.metered.ca
+# Override fin : METERED_TURN_RELAY_HOSTS=eu-west-1.relay.metered.ca,eu-central-1.relay.metered.ca
 
 # Option B — coturn self-hosted (VPS EU/FR — OVH, Scaleway…)
 TURN_URL=turn:turn.afriwonder.com:3478?transport=udp,turn:turn.afriwonder.com:3478?transport=tcp,turns:turn.afriwonder.com:5349?transport=tcp
@@ -125,7 +125,7 @@ Puis redéployer le backend (TURN) et reconstruire l'APK si l'URL backend change
 Pour un usage intensif, prevoir:
 - monitoring bande passante TURN
 - rotation des credentials
-- **Région TURN** : `METERED_TURN_REGION=afriwonder` sur Render (France + EU-Ouest) — voir `backend/src/services/meteredTurnRegions.ts`
+- **Région TURN** : `METERED_TURN_REGION=afriwonder` sur Render (eu-west-1 + eu-central-1) — voir `backend/src/services/meteredTurnRegions.ts`
 
 ### Maroc ↔ Mali sans rebuild APK
 
@@ -133,7 +133,7 @@ Les credentials TURN sont récupérés **à chaque appel** via l'API backend. Il
 
 1. Ajouter sur **Render** : `METERED_TURN_REGION=afriwonder`
 2. Redéployer le **backend** (pas l'APK)
-3. Vérifier : `node scripts/test-turn-credentials-decisive.mjs` → URLs contenant `fr.relay.metered.ca`
+3. Vérifier : `node scripts/test-turn-credentials-decisive.mjs` → URLs contenant `eu-west-1.relay.metered.ca`
 
 Metered n'a pas de PoP Afrique de l'Ouest ; `fr` + `eu-west` minimisent la latence vs `global` (Canada).
 

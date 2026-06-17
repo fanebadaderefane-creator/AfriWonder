@@ -95,17 +95,16 @@ async function main() {
   }
 
   const hasGlobalRelay = urls.some((u) => String(u).includes('global.relay.metered.ca'));
-  const hasFrRelay = urls.some((u) => String(u).includes('fr.relay.metered.ca'));
-  const hasEuWestRelay = urls.some((u) => String(u).includes('eu-west.relay.metered.ca'));
-  const hasAfriwonderLive = urls.some((u) => String(u).includes('afriwonder.metered.live'));
+  const hasEuWest1Relay = urls.some((u) => String(u).includes('eu-west-1.relay.metered.ca'));
+  const hasEuCentral1Relay = urls.some((u) => String(u).includes('eu-central-1.relay.metered.ca'));
   console.log('\n--- Analyse ---');
   console.log('turnRegion:', data?.turnRegion || '(non exposé — backend ancien)');
   console.log('turnRelayHosts:', data?.turnRelayHosts || []);
-  console.log('Contient fr.relay.metered.ca (Maroc/EU):', hasFrRelay ? 'OUI ✓' : 'NON ✗');
-  console.log('Contient eu-west.relay.metered.ca:', hasEuWestRelay ? 'OUI ✓' : 'NON');
+  console.log('Contient eu-west-1.relay.metered.ca (Irlande / Maroc↔Mali):', hasEuWest1Relay ? 'OUI ✓' : 'NON ✗');
+  console.log('Contient eu-central-1.relay.metered.ca:', hasEuCentral1Relay ? 'OUI ✓' : 'NON ✗');
   console.log('Contient global.relay.metered.ca (repli):', hasGlobalRelay ? 'OUI' : 'NON');
-  if (!hasFrRelay && !hasEuWestRelay && hasGlobalRelay) {
-    console.warn('\n⚠️  TURN encore sur global (Canada) — ajoutez METERED_TURN_REGION=afriwonder sur Render et redéployez le backend.');
+  if (!hasEuWest1Relay && !hasEuCentral1Relay && hasGlobalRelay) {
+    console.warn('\n⚠️  TURN encore sur global seul — ajoutez METERED_TURN_REGION=afriwonder sur Render et redéployez le backend.');
   }
   console.log(
     'Branche probable:',

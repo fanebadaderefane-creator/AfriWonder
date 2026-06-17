@@ -16,7 +16,11 @@ function run(script) {
     cwd: root,
     stdio: 'inherit',
     shell: true,
-    env: { ...process.env, CI: process.env.CI || 'true' },
+    env: {
+      ...process.env,
+      CI: process.env.CI || 'true',
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=8192'].filter(Boolean).join(' '),
+    },
   });
   if (res.status !== 0) process.exit(res.status ?? 1);
 }

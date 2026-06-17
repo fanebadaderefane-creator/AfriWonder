@@ -2,7 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
-const allowed = new Set(['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'SECURITY.md']);
+const allowed = new Set([
+  'README.md',
+  'CHANGELOG.md',
+  'CONTRIBUTING.md',
+  'LICENSE',
+  'SECURITY.md',
+  'AGENTS.md',
+]);
 
 const entries = fs.readdirSync(repoRoot, { withFileTypes: true });
 const rootMarkdown = entries

@@ -9,24 +9,30 @@ export type MeteredIceServerEntry = {
   credential?: string;
 };
 
+/** Sans flag `g` — `.test()` en boucle reste fiable (pas de lastIndex alterné). */
 export const METERED_RELAY_HOST_PATTERN =
-  /(?:global|standard|[a-z0-9-]+)\.relay\.metered\.ca/gi;
+  /(?:global|standard|[a-z0-9-]+)\.relay\.metered\.ca/i;
 
-/** Presets AfriWonder — évite le relais Canada (global seul) sur liens Maroc↔Mali. */
+/**
+ * Presets AfriWonder — hôtes AWS Metered réels (pas fr./eu-west. fictifs).
+ * Les deux peers reçoivent les mêmes hôtes → relais cohérent cross-border.
+ */
 export const METERED_TURN_REGION_PRESETS: Record<string, readonly string[]> = {
-  /** Auto geo-routing Metered (déconseillé seul pour Afrique ↔ EU). */
+  /** Routage géo-distribué automatique officiel */
   global: ['global.relay.metered.ca'],
   /**
-   * Défaut produit AfriWonder : France (Maroc) + EU-Ouest (Mali via câbles EU) + repli global.
-   * Les deux peers obtiennent les mêmes hôtes → relais cohérent cross-border.
+   * Défaut produit AfriWonder :
+   * - eu-west-1 (Irlande) — câbles UE ↔ Afrique du Nord / Ouest
+   * - eu-central-1 (Allemagne) — redondance
+   * - global — repli
    */
-  afriwonder: ['fr.relay.metered.ca', 'eu-west.relay.metered.ca', 'global.relay.metered.ca'],
-  europe: ['europe.relay.metered.ca'],
-  eu: ['eu.relay.metered.ca'],
-  'eu-west': ['eu-west.relay.metered.ca'],
-  fr: ['fr.relay.metered.ca'],
-  'middle-east': ['middle-east.relay.metered.ca'],
-  qa: ['qa.relay.metered.ca'],
+  afriwonder: ['eu-west-1.relay.metered.ca', 'eu-central-1.relay.metered.ca', 'global.relay.metered.ca'],
+  europe: ['eu-west-1.relay.metered.ca', 'eu-central-1.relay.metered.ca'],
+  eu: ['eu-west-1.relay.metered.ca', 'eu-central-1.relay.metered.ca'],
+  'eu-west': ['eu-west-1.relay.metered.ca'],
+  fr: ['eu-west-1.relay.metered.ca'],
+  'middle-east': ['me-south-1.relay.metered.ca'],
+  qa: ['me-south-1.relay.metered.ca'],
 };
 
 export function meteredTurnUrlsForHost(host: string): string[] {

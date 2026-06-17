@@ -30,12 +30,12 @@ try {
   fail = 1;
 }
 
-// 2. npm audit frontend (root)
+// 2. npm audit PWA (runtime prod — sans outils de build/dev)
 try {
-  execSync('npm audit --audit-level=high', { cwd: process.cwd(), stdio: 'inherit' });
-  console.log('   ✅ Frontend: pas de vulnérabilités high/critical');
+  execSync('npm audit --omit=dev --audit-level=high', { cwd: process.cwd(), stdio: 'inherit' });
+  console.log('   ✅ PWA (runtime): pas de vulnérabilités high/critical');
 } catch {
-  console.log('   ⚠️ Frontend: vulnérabilités détectées');
+  console.log('   ⚠️ PWA (runtime): vulnérabilités détectées');
   fail = 1;
 }
 
