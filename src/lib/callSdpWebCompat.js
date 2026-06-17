@@ -7,6 +7,22 @@ function detectSdpEol(sdp) {
   return sdp.includes('\r\n') ? '\r\n' : '\n';
 }
 
+/** RFC 4566 — CRLF obligatoire pour parseurs natifs (APK) et web. */
+export function normalizeSdpCrLf(sdp, options) {
+  const raw = String(sdp || '').trim();
+  if (!raw) return '';
+  const lines = raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+  if (!lines.length) return '';
+  const joined = lines.join('\r\n');
+  if (options?.trailingCrlf === false) return joined;
+  return `${joined}\r\n`;
+}
+
 function parseSdpSections(sdp) {
   const eol = detectSdpEol(sdp);
   const sessionLines = [];
@@ -56,18 +72,20 @@ export function stripLegacySsrcMsidLines(sdp) {
     .join(eol);
 }
 
-export function fixInvalidSsrcCnameLines(sdp) {
-  if (!sdp || !/cname:\{/i.test(sdp)) {
+export function stripAllSsrcAttributeLines(sdp) {
+  if (!sdp || !sdp.includes('a=ssrc')) {
     return sdp;
   }
   const eol = detectSdpEol(sdp);
   return sdp
     .split(/\r?\n/)
-    .map((line) => {
-      if (!/^a=ssrc:\S+\s+cname:/i.test(line)) return line;
-      return line.replace(/cname:\{([^}]+)\}/gi, 'cname:$1');
-    })
+    .filter((line) => !/^a=ssrc-group:/i.test(line) && !/^a=ssrc:/i.test(line))
     .join(eol);
+}
+
+/** @deprecated Préférer stripAllSsrcAttributeLines */
+export function fixInvalidSsrcCnameLines(sdp) {
+  return stripAllSsrcAttributeLines(sdp);
 }
 
 export function collapseDuplicateSdpMediaSections(sdp, kind) {
@@ -85,9 +103,9 @@ export function collapseDuplicateSdpMediaSections(sdp, kind) {
 }
 
 export function sanitizeInboundSdpForWebRtc(sdp) {
-  let out = stripLegacySsrcMsidLines(sdp);
-  out = fixInvalidSsrcCnameLines(out);
+  let out = stripAllSsrcAttributeLines(sdp);
+  out = stripLegacySsrcMsidLines(out);
   out = collapseDuplicateSdpMediaSections(out, 'audio');
   out = collapseDuplicateSdpMediaSections(out, 'video');
-  return out;
+  return normalizeSdpCrLf(out);
 }

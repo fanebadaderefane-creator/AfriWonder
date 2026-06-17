@@ -4,7 +4,7 @@
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import notificationService from './notification.service.js';
-import messageService, { emitToConversationRoom } from './message.service.js';
+import messageService, { emitInboxActivityToUsers, emitToConversationRoom } from './message.service.js';
 import {
   buildCallLogContent,
   callLogPreviewLabel,
@@ -137,6 +137,23 @@ const senderInclude = {
   sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
 } as const;
 
+function emitCallLogInboxActivity(
+  conversation: { id: string; unread_count_map?: Record<string, number> | null },
+  callerId: string,
+  receiverId: string,
+  message: { created_at: Date },
+  preview: string,
+): void {
+  const unreadMap = (conversation.unread_count_map as Record<string, number>) || {};
+  emitInboxActivityToUsers([callerId, receiverId], unreadMap, {
+    conversationId: conversation.id,
+    lastMessage: preview.slice(0, 200),
+    lastMessageAt: message.created_at.toISOString(),
+    lastMsgType: 'call',
+    senderId: callerId,
+  });
+}
+
 /** Idempotent — une seule ligne par callId ; mise à jour incoming → état terminal. */
 export async function recordCallLogMessage(input: RecordCallLogInput): Promise<void> {
   const callId = String(input.callId || '').trim();
@@ -206,8 +223,9 @@ export async function recordCallLogMessage(input: RecordCallLogInput): Promise<v
         include: senderInclude,
       });
 
+      const preview = callLogPreviewLabel(input.outcome, media);
+
       if (isTerminalOutcome(input.outcome)) {
-        const preview = callLogPreviewLabel(input.outcome, media);
         await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
@@ -220,6 +238,13 @@ export async function recordCallLogMessage(input: RecordCallLogInput): Promise<v
       }
 
       emitToConversationRoom(conversation.id, 'message:new', message);
+      emitCallLogInboxActivity(
+        { id: conversation.id, unread_count_map: conversation.unread_count_map as Record<string, number> | null },
+        callerId,
+        receiverId,
+        message,
+        preview,
+      );
       return;
     }
 
@@ -260,6 +285,13 @@ export async function recordCallLogMessage(input: RecordCallLogInput): Promise<v
     });
 
     emitToConversationRoom(conversation.id, 'message:new', message);
+    emitCallLogInboxActivity(
+      { id: conversation.id, unread_count_map: conversation.unread_count_map as Record<string, number> | null },
+      callerId,
+      receiverId,
+      message,
+      preview,
+    );
 
     if (isTerminalOutcome(input.outcome)) {
       await sendTerminalNotifications(input, durationSec);

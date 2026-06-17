@@ -154,11 +154,20 @@ export function pickVideoProfileForNetwork(net: NetworkSnapshot | null | undefin
   return VIDEO_PROFILES.medium;
 }
 
+/** Web local (2 onglets / Expo web) : le relais-only empêche host/srflx → 0 candidat ICE. */
+export function isWebLocalhostDevOrigin(): boolean {
+  if (typeof globalThis === 'undefined') return false;
+  const loc = (globalThis as { location?: { hostname?: string } }).location;
+  const host = String(loc?.hostname || '').trim().toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
  * TURN configuré → relais obligatoire **natif et web** : le P2P cross-border
  * (Maroc↔Mali) échoue même en Wi‑Fi ; les deux extrémités doivent utiliser Metered.
+ * Exception : web sur localhost (dev) — autoriser host/srflx pour tests 2 navigateurs.
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
@@ -166,6 +175,7 @@ export function shouldForceTurnRelay(input: {
   net?: NetworkSnapshot | null | undefined;
 }): boolean {
   if (!input.turnConfigured) return false;
+  if (input.isWeb && isWebLocalhostDevOrigin()) return false;
   return true;
 }
 

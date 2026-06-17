@@ -10,6 +10,7 @@
  */
 
 import { parseIceCandidateMeta } from './callDiagnosticLog';
+import { normalizeSdpCrLf } from './callSdpWebCompat';
 import {
   type SdpCandidateCounts,
   sdpCandidateCounts,
@@ -76,8 +77,8 @@ export function embedIceCandidatesInSdp(
   sdp: string,
   candidates: ReadonlyArray<IceCandidateInitLite>,
 ): string {
-  const body = String(sdp || '').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n').trimEnd();
-  if (!body || !candidates.length) return body;
+  const body = normalizeSdpCrLf(sdp, { trailingCrlf: false });
+  if (!body || !candidates.length) return body ? `${body}\r\n` : '';
 
   const seen = new Set<string>();
   const lines: string[] = [];

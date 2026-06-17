@@ -59,7 +59,7 @@ describe('callNativeMedia', () => {
     __setInCallManagerLoaderForTests(null);
   });
 
-  it('startNativeCallAudioSession enables InCallManager ringback for outgoing caller', async () => {
+  it('startNativeCallAudioSession enables DTMF ringback for outgoing caller', async () => {
     g.__AFW_TEST_PLATFORM_OS = 'android';
     incallMock.start.mockClear();
     const {
@@ -73,7 +73,7 @@ describe('callNativeMedia', () => {
     expect(incallMock.start).toHaveBeenCalledWith({
       media: 'audio',
       auto: true,
-      ringback: '_DEFAULT_',
+      ringback: '_DTMF_',
     });
   });
 

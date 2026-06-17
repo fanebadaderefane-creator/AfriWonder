@@ -56,6 +56,15 @@ export function formatCallDurationFr(sec: number): string {
   return m === 1 ? '1 min' : `${m} min`;
 }
 
+/** Aperçu inbox pour un message type `call`. */
+export function callLogInboxPreview(content: string, viewerUserId: string): string {
+  const meta = parseCallLogContent(content);
+  if (!meta) return 'Appel';
+  const title = formatCallLogTitle(meta, viewerUserId);
+  const sub = formatCallLogSubtitle(meta, viewerUserId);
+  return sub ? `${title} · ${sub}` : title;
+}
+
 /** Bulle à droite (sortant) ou à gauche (reçu / manqué) — comme WhatsApp. */
 export function callLogBubbleIsMine(meta: CallLogMeta, viewerUserId: string): boolean {
   return viewerUserId === meta.callerId;

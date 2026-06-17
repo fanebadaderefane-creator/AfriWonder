@@ -6,7 +6,7 @@ export type InboxConversationPatch = {
   conversationId: string;
   lastMessage?: string;
   lastMessageAt?: string;
-  lastMsgType?: 'text' | 'image' | 'video' | 'voice' | 'file' | 'audio';
+  lastMsgType?: 'text' | 'image' | 'video' | 'voice' | 'file' | 'audio' | 'call';
   isMine?: boolean;
   /** Statut du dernier message sortant (accusé de lecture). */
   lastOutgoingStatus?: 'sent' | 'delivered' | 'read';

@@ -19,6 +19,26 @@ function detectSdpEol(sdp: string): string {
   return sdp.includes('\r\n') ? '\r\n' : '\n';
 }
 
+/**
+ * RFC 4566 — chaque ligne SDP doit se terminer par CRLF (`\r\n`).
+ * Le parseur natif (react-native-webrtc / APK) et le tuning web (`sdpTuned`) peuvent
+ * produire des `\n` seuls → décalage du parseur → « Invalid SDP line » sur `a=ssrc:`.
+ */
+export function normalizeSdpCrLf(sdp: string, options?: { trailingCrlf?: boolean }): string {
+  const raw = String(sdp || '').trim();
+  if (!raw) return '';
+  const lines = raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+  if (!lines.length) return '';
+  const joined = lines.join('\r\n');
+  if (options?.trailingCrlf === false) return joined;
+  return `${joined}\r\n`;
+}
+
 function parseSdpSections(sdp: string): ParsedSdp {
   const eol = detectSdpEol(sdp);
   const sessionLines: string[] = [];
@@ -69,20 +89,26 @@ export function stripLegacySsrcMsidLines(sdp: string): string {
 }
 
 /**
- * react-native-webrtc sometimes emits `cname:{uuid}` — Chrome rejects the braces.
+ * Unified Plan (Chrome / Firefox / Safari) : les lignes `a=ssrc` / `a=ssrc-group`
+ * héritées Plan-B cassent `setRemoteDescription` (« Invalid SDP line ») même avec
+ * un `cname:` valide. Les flux sont corrélés via `a=msid` sur chaque `m=`.
  */
-export function fixInvalidSsrcCnameLines(sdp: string): string {
-  if (!sdp || !/cname:\{/i.test(sdp)) {
+export function stripAllSsrcAttributeLines(sdp: string): string {
+  if (!sdp || !sdp.includes('a=ssrc')) {
     return sdp;
   }
   const eol = detectSdpEol(sdp);
   return sdp
     .split(/\r?\n/)
-    .map((line) => {
-      if (!/^a=ssrc:\S+\s+cname:/i.test(line)) return line;
-      return line.replace(/cname:\{([^}]+)\}/gi, 'cname:$1');
-    })
+    .filter((line) => !/^a=ssrc-group:/i.test(line) && !/^a=ssrc:/i.test(line))
     .join(eol);
+}
+
+/**
+ * @deprecated Préférer `stripAllSsrcAttributeLines` — Chrome rejette aussi les cname valides.
+ */
+export function fixInvalidSsrcCnameLines(sdp: string): string {
+  return stripAllSsrcAttributeLines(sdp);
 }
 
 /**
@@ -105,9 +131,9 @@ export function collapseDuplicateSdpMediaSections(sdp: string, kind: SdpMediaKin
 
 /** Sanitize inbound remote SDP before RTCPeerConnection.setRemoteDescription. */
 export function sanitizeInboundSdpForWebRtc(sdp: string): string {
-  let out = stripLegacySsrcMsidLines(sdp);
-  out = fixInvalidSsrcCnameLines(out);
+  let out = stripAllSsrcAttributeLines(sdp);
+  out = stripLegacySsrcMsidLines(out);
   out = collapseDuplicateSdpMediaSections(out, 'audio');
   out = collapseDuplicateSdpMediaSections(out, 'video');
-  return out;
+  return normalizeSdpCrLf(out);
 }

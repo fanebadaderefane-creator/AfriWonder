@@ -1,4 +1,5 @@
 import { VOICE_OPUS_BITRATE_DEFAULT } from './callNetworkConfig';
+import { normalizeSdpCrLf } from './callSdpWebCompat';
 
 /** Profil vocal VoIP — proche messageries (Opus mono, FEC, faible latence). */
 
@@ -37,12 +38,12 @@ export function tuneVoiceCallSdp(
     out = out.replace(fmtpRe, fmtpLine);
   } else {
     out = out.replace(
-      new RegExp(`(a=rtpmap:${payloadType} opus/48000/1\r\\n)`, 'i'),
-      `$1${fmtpLine}\r\n`,
+      new RegExp(`(a=rtpmap:${payloadType} opus/48000/1)(?:\r\n|\n|$)`, 'i'),
+      `$1\r\n${fmtpLine}\r\n`,
     );
   }
 
-  return out;
+  return normalizeSdpCrLf(out);
 }
 
 export function withTunedVoiceSdp<T extends { type: RTCSdpType; sdp?: string }>(

@@ -39,6 +39,8 @@ import { isGroupSocketEnvelope } from '../../src/messages/dmThreadApi';
 import { extractMessageReadReaderId, shouldApplyPeerReceiptEvent } from '../../src/messages/dmReadReceipt';
 import { fetchPeerPresenceOnlineMap } from '../../src/messages/fetchPeerPresenceBatch';
 import { openNativeCallScreen } from '../../src/call/openNativeCallScreen';
+import { applyInboxActivity } from '../../src/messages/inboxRealtime';
+import { callLogInboxPreview } from '../../src/messages/callLogDisplay';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
@@ -83,14 +85,42 @@ function sortConversationsByRecency(list: Conversation[]): Conversation[] {
   });
 }
 
-function bumpConversationToTop(list: Conversation[], conversationId: string): Conversation[] {
-  const idx = list.findIndex((c) => c.id === conversationId);
-  if (idx <= 0) return list;
-  const next = [...list];
-  const [picked] = next.splice(idx, 1);
-  if (!picked) return list;
-  next.unshift(picked);
-  return next;
+function messagePreviewFromSocket(
+  msg: Record<string, unknown>,
+  currentUserId: string | undefined,
+): { preview: string; lastMsgType: string } {
+  const type = String(msg?.type || 'text').toLowerCase();
+  if (type === 'call') {
+    return {
+      preview: callLogInboxPreview(String(msg?.content || ''), currentUserId || ''),
+      lastMsgType: 'call',
+    };
+  }
+  const preview =
+    type === 'image'
+      ? 'Photo'
+      : type === 'video'
+        ? 'Video'
+        : type === 'audio' || type === 'voice'
+          ? 'Audio'
+          : type === 'file'
+            ? 'Fichier'
+            : type === 'location'
+              ? 'Position'
+              : type === 'contact'
+                ? 'Contact'
+                : String(msg?.content || '').slice(0, 200) || 'Message';
+  const lastMsgType =
+    type === 'image'
+      ? 'image'
+      : type === 'video'
+        ? 'video'
+        : type === 'audio' || type === 'voice'
+          ? 'voice'
+          : type === 'file'
+            ? 'file'
+            : 'text';
+  return { preview, lastMsgType };
 }
 
 /** Petit wrapper pour pouvoir scroller la liste de statuts en dessous de la carte « Mon statut ». */
@@ -329,29 +359,35 @@ export default function MessagesListScreen() {
     (patch: import('../../src/messages/inboxSync').InboxConversationPatch) => {
       const at = patch.lastMessageAt || new Date().toISOString();
       setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === patch.conversationId);
-        const timeStr = formatTimeAgo(at);
-        const lastOutgoingRead = patch.isMine === true && patch.lastOutgoingStatus === 'read';
-        if (idx < 0) {
+        const next = applyInboxActivity(
+          prev,
+          {
+            conversationId: patch.conversationId,
+            lastMessage: patch.lastMessage,
+            lastMessageAt: at,
+            lastMsgType: patch.lastMsgType,
+            ...(patch.isMine === true ? { senderId: currentUser?.id } : {}),
+          },
+          currentUser?.id,
+          formatTimeAgo,
+        );
+        if (!next) {
           void loadConversations();
           return prev;
         }
-        const updated = [...prev];
-        const cur = updated[idx];
-        updated[idx] = {
-          ...cur,
-          ...(patch.lastMessage != null && patch.lastMessage !== '' ? { lastMessage: patch.lastMessage } : {}),
-          lastMessageAt: at,
-          time: timeStr,
-          ...(patch.lastMsgType ? { lastMsgType: patch.lastMsgType } : {}),
-          isMine: patch.isMine ?? cur.isMine,
-          lastOutgoingRead:
-            patch.lastOutgoingStatus != null ? lastOutgoingRead : cur.lastOutgoingRead,
-        };
-        return sortConversationsByRecency(updated);
+        if (patch.lastOutgoingStatus != null && patch.isMine) {
+          const idx = next.findIndex((c) => c.id === patch.conversationId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              lastOutgoingRead: patch.lastOutgoingStatus === 'read',
+            };
+          }
+        }
+        return next;
       });
     },
-    [loadConversations],
+    [loadConversations, currentUser?.id],
   );
 
   useEffect(() => {
@@ -426,67 +462,62 @@ export default function MessagesListScreen() {
         void loadConversations();
         return;
       }
-      const type = String(msg?.type || 'text').toLowerCase();
-      const preview =
-        type === 'image'
-          ? 'Photo'
-          : type === 'video'
-            ? 'Video'
-            : type === 'audio' || type === 'voice'
-              ? 'Audio'
-              : type === 'file'
-                ? 'Fichier'
-                : type === 'location'
-                  ? 'Position'
-                  : type === 'contact'
-                    ? 'Contact'
-                    : String(msg?.content || '').slice(0, 200) || 'Message';
+      const { preview, lastMsgType } = messagePreviewFromSocket(msg, currentUser?.id);
       const at = msg?.created_at ? String(msg.created_at) : new Date().toISOString();
       const senderId = String(msg?.sender_id || '').trim();
       const isMine = Boolean(currentUser?.id && senderId && senderId === currentUser.id);
       setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === convId);
-        const timeStr = formatTimeAgo(at);
-        if (idx < 0) {
+        const prevIdx = prev.findIndex((c) => c.id === convId);
+        const next = applyInboxActivity(
+          prev,
+          {
+            conversationId: convId,
+            lastMessage: preview,
+            lastMessageAt: at,
+            lastMsgType,
+            senderId,
+          },
+          currentUser?.id,
+          formatTimeAgo,
+        );
+        if (!next) {
           void loadConversations();
           return prev;
         }
-        const updated = [...prev];
-        const cur = updated[idx];
-        updated[idx] = {
-          ...cur,
-          lastMessage: preview,
-          lastMessageAt: at,
-          time: timeStr,
-          lastMsgType:
-            type === 'image'
-              ? 'image'
-              : type === 'video'
-                ? 'video'
-                : type === 'audio' || type === 'voice'
-                  ? 'voice'
-                  : type === 'file'
-                    ? 'file'
-                    : 'text',
-          isMine,
-          lastOutgoingRead: false,
-          unread: isMine ? cur.unread : cur.unread + 1,
-        };
-        return bumpConversationToTop(updated, convId);
+        const idx = next.findIndex((c) => c.id === convId);
+        if (idx >= 0 && !isMine) {
+          next[idx] = { ...next[idx], unread: (prev[prevIdx]?.unread ?? 0) + 1 };
+        }
+        return next;
       });
     });
-    const offUnread = socketService.on('message:unread', (data: { conversationId?: string; unread?: number }) => {
-      if (!data?.conversationId) return;
-      const n = Math.max(0, Number(data.unread) || 0);
-      setConversations((prev) => {
-        const updated = prev.map((c) =>
-          c.id === data.conversationId
-            ? { ...c, unread: n, lastMessageAt: c.lastMessageAt || new Date().toISOString() }
-            : c,
-        );
-        return bumpConversationToTop(updated, data.conversationId!);
-      });
-    });
+    const offUnread = socketService.on(
+      'message:unread',
+      (data: {
+        conversationId?: string;
+        unread?: number;
+        lastMessage?: string;
+        lastMessageAt?: string;
+        lastMsgType?: string;
+        senderId?: string;
+      }) => {
+        const convId = String(data?.conversationId || '').trim();
+        if (!convId) return;
+        setConversations((prev) => {
+          const next = applyInboxActivity(
+            prev,
+            { ...data, conversationId: convId },
+            currentUser?.id,
+            formatTimeAgo,
+          );
+          if (!next) {
+            void loadConversations();
+            return prev;
+          }
+          return next;
+        });
+      },
+    );
     const offRead = socketService.on('messages_read', (data: unknown) => {
       const row = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
       const convId = String(row.conversationId || '').trim();

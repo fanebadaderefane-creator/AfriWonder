@@ -113,6 +113,34 @@ function incrementUnreadForUser(map: UnreadCountMap | null, userId: string): Unr
   return out;
 }
 
+/** Payload temps réel inbox — émis via `message:unread` vers `user:{userId}` (liste discussions). */
+export type InboxActivitySocketPayload = {
+  conversationId: string;
+  unread: number;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  lastMsgType?: string;
+  senderId?: string;
+};
+
+/** Met à jour la liste inbox des participants (tri par `lastMessageAt` côté client). */
+export function emitInboxActivityToUsers(
+  userIds: string[],
+  unreadMap: UnreadCountMap,
+  payload: Omit<InboxActivitySocketPayload, 'unread'>,
+): void {
+  if (!messageIo) return;
+  const seen = new Set<string>();
+  for (const uid of userIds) {
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    messageIo.to(`user:${uid}`).emit('message:unread', {
+      ...payload,
+      unread: getUnreadForUser(unreadMap, uid),
+    });
+  }
+}
+
 function makeHttpError(message: string, statusCode: number): Error & { statusCode?: number } {
   const error = new Error(message) as Error & { statusCode?: number };
   error.statusCode = statusCode;
@@ -963,7 +991,13 @@ class MessageService {
 
     if (messageIo) {
       messageIo.to(`conversation:${conversation.id}`).emit('message:new', message);
-      messageIo.to(`user:${otherId}`).emit('message:unread', { conversationId: conversation.id, unread: getUnreadForUser(newMap, otherId) });
+      emitInboxActivityToUsers([senderId, otherId], newMap, {
+        conversationId: conversation.id,
+        lastMessage: lastText.slice(0, 200),
+        lastMessageAt: message.created_at.toISOString(),
+        lastMsgType: normalizedType,
+        senderId,
+      });
     }
 
     const recipientMuted =
@@ -1095,7 +1129,13 @@ class MessageService {
     if (messageIo) {
       const sentMessage = { ...message, status: 'sent' as const };
       messageIo.to(`conversation:${conv.id}`).emit('message:new', sentMessage);
-      messageIo.to(`user:${otherId}`).emit('message:unread', { conversationId: conv.id, unread: getUnreadForUser(newMap, otherId) });
+      emitInboxActivityToUsers([senderId, otherId], newMap, {
+        conversationId: conv.id,
+        lastMessage: lastText.slice(0, 200),
+        lastMessageAt: sentMessage.created_at.toISOString(),
+        lastMsgType: t,
+        senderId,
+      });
     }
 
     try {

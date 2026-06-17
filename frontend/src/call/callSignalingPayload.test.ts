@@ -16,7 +16,7 @@ import {
   pickOutboundCallSdp,
 } from './callSignalingPayload';
 
-const SAMPLE_SDP = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1';
+const SAMPLE_SDP = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n';
 
 describe('callSignalingPayload', () => {
   it('callUserIdsEqual normalise UUID et ignore la casse', () => {
@@ -167,7 +167,7 @@ describe('callSignalingPayload', () => {
     );
     expect(normalized?.kind).toBe('sdp');
     if (normalized?.kind === 'sdp') {
-      expect(normalized.sdp.sdp).toContain('cname:02f4fcf5-c70c-4e40-8911-308e3774b5f2');
+      expect(normalized.sdp.sdp).not.toContain('a=ssrc:');
       expect(normalized.sdp.sdp).not.toContain('a=mid:1');
       expect(normalized.sdp.sdp.match(/^m=audio/gm)?.length).toBe(1);
     }

@@ -52,9 +52,21 @@ describe('callAudioQuality', () => {
     expect(shouldOptimizeCallAudioBeforeFirstNegotiation(true)).toBe(true);
   });
 
-  it('tuneVoiceCallSdp laisse intact un SDP sans Opus', () => {
+  it('tuneVoiceCallSdp laisse intact un SDP sans Opus (normalisé CRLF)', () => {
     const plain = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 0\r\n';
     expect(tuneVoiceCallSdp(plain)).toBe(plain);
+  });
+
+  it('tuneVoiceCallSdp normalise LF-only et injecte fmtp', () => {
+    const lfSdp = [
+      'v=0',
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+      'a=rtpmap:111 opus/48000/2',
+    ].join('\n');
+    const tuned = tuneVoiceCallSdp(lfSdp)!;
+    expect(tuned).toContain('a=fmtp:111');
+    expect(tuned.endsWith('\r\n')).toBe(true);
+    expect(tuned.split('\n').every((line) => line === '' || line.endsWith('\r'))).toBe(true);
   });
 
   it('tuneVoiceCallSdp accepte un bitrate adapté 2G/3G', () => {

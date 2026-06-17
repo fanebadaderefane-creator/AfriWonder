@@ -662,6 +662,9 @@ export async function requestNativeCallPermissions(isVideo: boolean): Promise<bo
   }
 }
 
+/** Tonalité d’attente appelant — `_DTMF_` (bip-bip), distincte de la sonnerie entrante (`_DEFAULT_` / expo-av). */
+const NATIVE_OUTGOING_RINGBACK = '_DTMF_';
+
 /**
  * Libère la session `expo-av` (sonnerie / feed) pour que `react-native-webrtc` prenne le micro + HP.
  * Ne pas appeler `setAudioModeAsync` juste avant getUserMedia — ça bloque l’audio des deux côtés.
@@ -696,7 +699,7 @@ export async function startNativeCallAudioSession(
     return;
   }
   const incall = loadInCallManager();
-  const ringback = options?.outgoingRingback ? '_DEFAULT_' : '';
+  const ringback = options?.outgoingRingback ? NATIVE_OUTGOING_RINGBACK : '';
   if (incall) {
     try {
       incall.start({ media: isVideo ? 'video' : 'audio', auto: true, ringback });

@@ -137,6 +137,18 @@ describe('shouldForceTurnRelay — CGNAT Afrique / Maroc↔Mali', () => {
       shouldForceTurnRelay({ turnConfigured: false, isWeb: false, net: { type: 'cellular' } }),
     ).toBe(false);
   });
+  it('web localhost dev → pas de relais forcé (tests 2 onglets)', () => {
+    const g = globalThis as { location?: { hostname: string } };
+    const prev = g.location;
+    g.location = { hostname: 'localhost' };
+    try {
+      expect(
+        shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'other' } }),
+      ).toBe(false);
+    } finally {
+      g.location = prev;
+    }
+  });
 });
 
 describe('réseaux lents 2G/3G — vocal et délais', () => {

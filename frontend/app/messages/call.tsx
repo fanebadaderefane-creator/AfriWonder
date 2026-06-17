@@ -3747,7 +3747,7 @@ function CallScreenInner() {
    */
   useEffect(() => {
     if (role !== 'caller' || callState !== 'ringing') return;
-    /** Natif : tonalité via InCallManager dans startNativeCallAudioSession — pas expo-av (double sonnerie). */
+    /** Natif : tonalité d’attente via InCallManager (`_DTMF_`) — distincte de la sonnerie entrante (expo-av). */
     if (!isWebRuntime) return;
     if (webrtcMediaActiveRef.current) return;
     let cancelled = false;
