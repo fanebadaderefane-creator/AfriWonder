@@ -109,9 +109,6 @@ const checks = [
   ['Maroc↔Mali — sdp_send_deferred relay_missing', /sdp_send_deferred/],
   ['Maroc↔Mali — answer retry jusqu\'à relay', /ANSWER_SEND_RETRY_DELAYS_MS/],
   ['Maroc↔Mali — half-trickle réseau (Mali 4G)', /callHalfTrickleMaxWaitMs/],
-  ['DM natif — Agora écran dédié', /DirectCallAgoraScreen/],
-  ['DM natif — shouldUseAgoraDmCalls', /shouldUseAgoraDmCalls/],
-  ['DM natif — hook useDirectCallAgoraRtc', /useDirectCallAgoraRtc/],
   ['Helpers safeGetAudioTracks (callStreamTracks)', /callStreamTracks/],
   ['Audio bidirectionnel — bind URL distante précoce', /shouldBindNativeRemoteStreamUrl/],
   ['Audio bidirectionnel — RTCView vocal en connecting', /shouldShowNativeRemoteAudioRtc/],
@@ -123,6 +120,34 @@ const checks = [
 ];
 for (const [label, re] of checks) {
   if (re.test(callTsx)) ok(label);
+  else fail(label);
+}
+
+console.log('\n━━ DM natif — Agora (APK Android/iOS) ━━');
+const dmAgoraScreen = read('src/call/DirectCallAgoraScreen.tsx');
+const dmAgoraHook = read('src/hooks/useDirectCallAgoraRtc.native.tsx');
+const dmEngine = read('src/call/dmCallMediaEngine.ts');
+const agoraDmChecks = [
+  ['call.tsx route vers DirectCallAgoraScreen (natif)', /Platform\.OS !== 'web'[\s\S]*shouldUseAgoraDmCalls[\s\S]*DirectCallAgoraScreen/],
+  ['dmCallMediaEngine — Agora par défaut natif', /dmCallsAgora/],
+  ['DirectCallAgoraScreen — hook Agora', /useDirectCallAgoraRtc/],
+  ['DirectCallAgoraScreen — pas de RTCPeerConnection', () => !/RTCPeerConnection/.test(dmAgoraScreen)],
+  ['DirectCallAgoraScreen — pas de turn-credentials', () => !/turn-credentials/.test(dmAgoraScreen)],
+  ['DirectCallAgoraScreen — signalisation socket invite/accept', /call:invite|call:accept/],
+  ['useDirectCallAgoraRtc.native — GET agora-token', /\/agora-token/],
+  ['useDirectCallAgoraRtc.native — joinChannel Agora', /joinChannel/],
+  ['useDirectCallAgoraRtc.native — react-native-agora', /createAgoraRtcEngine/],
+  ['package.json — react-native-agora', () => /"react-native-agora"/.test(read('package.json'))],
+];
+for (const [label, re] of agoraDmChecks) {
+  const pass = typeof re === 'function' ? re() : re.test(
+    label.includes('call.tsx') ? callTsx
+      : label.includes('dmCallMediaEngine') ? dmEngine
+        : label.includes('useDirectCallAgoraRtc') ? dmAgoraHook
+          : label.includes('package.json') ? read('package.json')
+            : dmAgoraScreen,
+  );
+  if (pass) ok(label);
   else fail(label);
 }
 
