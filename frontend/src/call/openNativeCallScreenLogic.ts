@@ -30,6 +30,8 @@ export type ReceiverCallScreenInput = {
   peerName: string;
   peerAvatar?: string;
   type: 'audio' | 'video';
+  /** false si l’utilisateur a désactivé sa vidéo avant d’accepter (appel vidéo entrant). */
+  initialCamOn?: boolean;
 };
 
 /** Params Expo Router — rétro-compat `peerId` / `callType` + forme canonique `otherUserId` / `type`. */
@@ -50,6 +52,7 @@ export function buildReceiverCallRouteParams(input: ReceiverCallScreenInput): Re
     type: media,
     callType: media,
     role: 'receiver',
+    initialCamOn: input.initialCamOn === false ? '0' : '1',
   };
 }
 

@@ -24,6 +24,7 @@
     "verify:android-boot": "node ./scripts/verify-android-boot-safety.cjs",
     "verify:expo-fs": "node ./scripts/verify-expo-filesystem-imports.cjs",
     "verify:call-stack": "node ./scripts/verify-call-stack-prod.cjs",
+    "verify:agora-dm": "node ./scripts/verify-agora-dm.cjs",
     "verify:pre-apk": "node ./scripts/verify-pre-apk.cjs",
     "generate:call-sounds": "node ./scripts/generate-call-sounds.cjs",
     "verify:call-media": "node ./scripts/verify-call-media-readiness.cjs",

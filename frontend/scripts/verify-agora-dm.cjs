@@ -1,0 +1,255 @@
+#!/usr/bin/env node
+/**
+ * Smoke test Agora DM 1:1 (vocal + vidéo) — remplace TURN pour le média natif.
+ *
+ * Usage:
+ *   node frontend/scripts/verify-agora-dm.cjs
+ *   BACKEND_ORIGIN=https://afriwonder.onrender.com node frontend/scripts/verify-agora-dm.cjs
+ *
+ * Test token réel (recommandé avant APK) :
+ *   AFW_TEST_EMAIL=... AFW_TEST_PASSWORD=... node frontend/scripts/verify-agora-dm.cjs
+ */
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const REPO = path.resolve(ROOT, '..');
+const ORIGIN = (process.env.BACKEND_ORIGIN || 'https://afriwonder.onrender.com').replace(/\/+$/, '');
+
+const results = [];
+
+function pass(name, detail) {
+  results.push({ ok: true, name, detail });
+  console.log(`✅ ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+function fail(name, detail) {
+  results.push({ ok: false, name, detail });
+  console.error(`❌ ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+function warn(name, detail) {
+  results.push({ ok: true, name, detail, warn: true });
+  console.warn(`⚠️  ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+function read(rel) {
+  return fs.readFileSync(path.join(ROOT, rel), 'utf8');
+}
+
+async function fetchJson(urlPath, init = {}) {
+  const url = `${ORIGIN}${urlPath}`;
+  const res = await fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(45_000),
+    headers: { Accept: 'application/json', ...(init.headers || {}) },
+  });
+  const text = await res.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text.slice(0, 300) };
+  }
+  return { status: res.status, body, url };
+}
+
+function checkFrontendWiring() {
+  const callTsx = read('app/messages/call.tsx');
+  const agoraScreen = read('src/call/DirectCallAgoraScreen.native.tsx');
+  const hook = read('src/hooks/useDirectCallAgoraRtc.native.tsx');
+  const pkg = read('package.json');
+
+  if (/shouldUseAgoraDmCalls/.test(callTsx) && /DirectCallAgoraScreen/.test(callTsx)) {
+    pass('call.tsx route Agora natif', 'DirectCallAgoraScreen');
+  } else fail('call.tsx route Agora natif', 'branche Agora absente');
+
+  if (/\/agora-token/.test(hook) && /createAgoraRtcEngine/.test(hook) && /joinChannel/.test(hook)) {
+    pass('Hook useDirectCallAgoraRtc.native', 'token + joinChannel');
+  } else fail('Hook useDirectCallAgoraRtc.native', 'incomplet');
+
+  if (/enableLocalAudio\(true\)/.test(hook) && /enableLocalVideo\(true\)/.test(hook)) {
+    pass('Hook Agora — audio + vidéo local', 'enableLocalAudio/Video');
+  } else fail('Hook Agora — média local', 'manquant');
+
+  if (/startAgoraMediaTracks|beginAgoraMedia/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — démarrage média Agora', 'OK');
+  } else fail('DirectCallAgoraScreen — média', 'manquant');
+
+  if (/IncomingCallOverlay/.test(read('app/_layout.tsx')) && /navigateToReceiverCallScreen/.test(read('src/components/call/IncomingCallOverlay.native.tsx'))) {
+    pass('Appel entrant → écran receveur Agora', 'overlay OK');
+  } else warn('Appel entrant', 'vérifier IncomingCallOverlay');
+
+  if (/"react-native-agora"/.test(pkg)) {
+    pass('Dépendance react-native-agora', 'package.json');
+  } else fail('react-native-agora', 'absent de package.json');
+}
+
+async function verifyProdAgoraFlag() {
+  const res = await fetchJson('/api/mobile/health');
+  if (res.status !== 200) {
+    fail('GET /api/mobile/health', `HTTP ${res.status}`);
+    return;
+  }
+  const caps = res.body?.data?.capabilities;
+  if (caps?.agora_rtc === true) {
+    pass('Production Agora RTC', 'capabilities.agora_rtc=true');
+  } else {
+    fail('Production Agora RTC', 'agora_rtc=false — configurer AGORA_APP_ID + AGORA_APP_CERTIFICATE sur Render');
+  }
+}
+
+async function verifyAgoraTokenRouteProtected() {
+  const res = await fetchJson('/api/proxy/calls/smoke-agora-call/agora-token');
+  if (res.status === 401 || res.status === 403) {
+    pass('Route agora-token protégée', `HTTP ${res.status}`);
+  } else {
+    fail('Route agora-token protégée', `HTTP ${res.status} — attendu 401`);
+  }
+}
+
+async function verifyAuthenticatedAgoraToken() {
+  const email = process.env.AFW_TEST_EMAIL?.trim();
+  const password = process.env.AFW_TEST_PASSWORD?.trim();
+  if (!email || !password) {
+    warn(
+      'Token Agora authentifié (vocal/vidéo réel)',
+      'skip — définir AFW_TEST_EMAIL + AFW_TEST_PASSWORD pour valider un vrai token prod',
+    );
+    return;
+  }
+
+  const login = await fetchJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const token =
+    login.body?.data?.accessToken ||
+    login.body?.accessToken ||
+    login.body?.data?.token ||
+    login.body?.token;
+  if (!token) {
+    fail('Login test Agora', `HTTP ${login.status} — pas de JWT`);
+    return;
+  }
+  pass('Login test Agora', `HTTP ${login.status}`);
+
+  const callId = `call-smoke-${Date.now()}`;
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const upsert = await fetchJson('/api/proxy/calls/session/upsert', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      callId,
+      peerUserId: '00000000-0000-0000-0000-000000000099',
+      role: 'caller',
+      status: 'pending',
+    }),
+  });
+  if (upsert.status >= 200 && upsert.status < 300) {
+    pass('Session appel upsert', `callId=${callId}`);
+  } else {
+    warn('Session upsert', `HTTP ${upsert.status} — token Agora peut quand même répondre`);
+  }
+
+  const tokRes = await fetchJson(`/api/proxy/calls/${encodeURIComponent(callId)}/agora-token`, {
+    headers: auth,
+  });
+  if (tokRes.status !== 200) {
+    fail('GET agora-token authentifié', `HTTP ${tokRes.status}`);
+    return;
+  }
+
+  const agora = tokRes.body?.data?.agora ?? tokRes.body?.agora;
+  if (!agora?.appId || !agora?.token || !agora?.channel || agora?.uid == null) {
+    if (agora === null && tokRes.body?.data?.message?.includes('non configuré')) {
+      fail('Token Agora prod', tokRes.body.data.message);
+    } else {
+      fail('Payload agora-token', JSON.stringify(tokRes.body?.data || tokRes.body).slice(0, 200));
+    }
+    return;
+  }
+
+  if (!String(agora.channel).startsWith('dm_')) {
+    fail('Canal Agora DM', `channel=${agora.channel} — attendu préfixe dm_`);
+    return;
+  }
+
+  if (String(agora.token).length < 32) {
+    fail('Token Agora', 'token trop court');
+    return;
+  }
+
+  pass('Token Agora vocal/vidéo prod', `channel=${agora.channel} uid=${agora.uid} len=${String(agora.token).length}`);
+  pass('App ID Agora prod', `${String(agora.appId).slice(0, 8)}…`);
+}
+
+function runBackendAgoraTests() {
+  try {
+    execSync('npm run test -- src/utils/__tests__/agoraDmChannel.test.ts src/services/__tests__/liveAgoraToken.test.ts', {
+      cwd: path.join(REPO, 'backend'),
+      stdio: 'pipe',
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+    pass('Tests backend Agora', 'canal dm_ + génération token');
+  } catch (e) {
+    const out = (e.stdout || '') + (e.stderr || '');
+    fail('Tests backend Agora', out.slice(-400) || e.message);
+  }
+}
+
+function runFrontendAgoraTests() {
+  try {
+    execSync(
+      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/openNativeCallScreen.test.ts',
+      { cwd: ROOT, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
+    );
+    pass('Tests frontend Agora DM', 'dmCallMediaEngine + session + UI');
+  } catch (e) {
+    const out = (e.stdout || '') + (e.stderr || '');
+    fail('Tests frontend Agora DM', out.slice(-400) || e.message);
+  }
+}
+
+async function main() {
+  console.log('\n🎥 Vérification Agora — appels DM vocal + vidéo\n');
+  console.log(`Backend: ${ORIGIN}\n`);
+
+  console.log('━━ Code mobile ━━');
+  checkFrontendWiring();
+
+  console.log('\n━━ Production ━━');
+  await verifyProdAgoraFlag();
+  await verifyAgoraTokenRouteProtected();
+  await verifyAuthenticatedAgoraToken();
+
+  console.log('\n━━ Tests unitaires ━━');
+  runBackendAgoraTests();
+  runFrontendAgoraTests();
+
+  const failed = results.filter((r) => !r.ok);
+  const warns = results.filter((r) => r.warn);
+
+  console.log('\n══════════════════════════════════════════');
+  console.log(`  OK: ${results.filter((r) => r.ok && !r.warn).length}  |  Warnings: ${warns.length}  |  Échecs: ${failed.length}`);
+  console.log('══════════════════════════════════════════');
+
+  if (failed.length === 0 && warns.some((w) => w.name.includes('Token Agora authentifié'))) {
+    console.log('\n💡 Pour un token Agora RÉEL sur prod (dernière étape auto) :');
+    console.log('   $env:AFW_TEST_EMAIL="..."; $env:AFW_TEST_PASSWORD="..."; npm run verify:agora-dm');
+    console.log('\n📱 Ensuite obligatoire : APK EAS preview + appel vocal puis vidéo entre 2 téléphones.');
+  } else if (failed.length === 0) {
+    console.log('\n📱 Stack Agora prête. Dernière preuve : 2 APK + appel vocal puis vidéo (Wi‑Fi puis 4G).');
+  }
+
+  process.exit(failed.length > 0 ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCallDurationMmSs, formatCallStatusLine } from './callStatusLine';
+import { formatCallDurationCompact, formatCallDurationMmSs, formatCallStatusLine, formatWhatsAppCallStatus } from './callStatusLine';
 
 describe('formatCallDurationMmSs', () => {
   it('formate mm:ss avec zéros à gauche', () => {
@@ -7,6 +7,43 @@ describe('formatCallDurationMmSs', () => {
     expect(formatCallDurationMmSs(9)).toBe('00:09');
     expect(formatCallDurationMmSs(65)).toBe('01:05');
     expect(formatCallDurationMmSs(3599)).toBe('59:59');
+  });
+});
+
+describe('formatCallDurationCompact', () => {
+  it('formate style WhatsApp', () => {
+    expect(formatCallDurationCompact(0)).toBe('0:00');
+    expect(formatCallDurationCompact(4)).toBe('0:04');
+    expect(formatCallDurationCompact(83)).toBe('1:23');
+  });
+});
+
+describe('formatWhatsAppCallStatus', () => {
+  it('progression Appel → connexion → chronomètre', () => {
+    expect(
+      formatWhatsAppCallStatus({
+        callState: 'ringing',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('Appel en cours…');
+    expect(
+      formatWhatsAppCallStatus({
+        callState: 'connecting',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('Connexion média…');
+    expect(
+      formatWhatsAppCallStatus({
+        callState: 'connected',
+        durationSeconds: 4,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('0:04');
   });
 });
 

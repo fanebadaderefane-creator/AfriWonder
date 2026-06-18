@@ -11,6 +11,33 @@ export function formatCallDurationMmSs(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
+/** Chronomètre style WhatsApp : `0:04`, `1:23` (sans zéro sur les minutes). */
+export function formatCallDurationCompact(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Libellés appel vocal DM — parité WhatsApp (Appel → Appel en cours… → Connexion média… → 0:04). */
+export function formatWhatsAppCallStatus(input: {
+  callState: CallUiState;
+  durationSeconds: number;
+  role: CallUiRole;
+  errorMsg: string | null;
+}): string {
+  if (input.callState === 'ended') return 'Appel terminé';
+  if (input.callState === 'connected') {
+    return formatCallDurationCompact(input.durationSeconds);
+  }
+  if (input.errorMsg) return input.errorMsg;
+  if (input.callState === 'connecting') return 'Connexion média…';
+  if (input.callState === 'ringing') {
+    if (input.role === 'receiver') return 'Appel entrant…';
+    return 'Appel en cours…';
+  }
+  return 'Appel';
+}
+
 export function formatCallStatusLine(input: {
   hasWebRtcSupport: boolean;
   errorMsg: string | null;

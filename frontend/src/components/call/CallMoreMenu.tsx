@@ -29,8 +29,12 @@ export type CallMoreOptionsSheetProps = {
   onShareScreen: () => void;
   onOpenMessageComposer: () => void;
   screenShareLoading: boolean;
-  /** Web + appel vidéo uniquement (pas de faux bouton mobile → alerte « produit mort »). */
+  /** Affiche « Partager l’écran » (natif Agora ou web getDisplayMedia). */
   showScreenShare?: boolean;
+  /** Masquer « Lever la main » (menu WhatsApp DM). */
+  showRaiseHand?: boolean;
+  /** Masquer « Envoyer un message » dans le sheet (icône chat en haut). */
+  showMessageComposer?: boolean;
 };
 
 /** Bottom sheet « trois points » pendant un appel (style WhatsApp). */
@@ -47,6 +51,8 @@ export function CallMoreOptionsSheet({
   onOpenMessageComposer,
   screenShareLoading,
   showScreenShare = false,
+  showRaiseHand = true,
+  showMessageComposer = true,
 }: CallMoreOptionsSheetProps) {
   const barColor =
     connectionQuality === 'good' ? '#69F0AE' : connectionQuality === 'fair' ? '#FFD54F' : '#FF8A65';
@@ -73,18 +79,40 @@ export function CallMoreOptionsSheet({
             ))}
           </ScrollView>
 
-          <TouchableOpacity
-            style={[styles.sheetRow, myRaisedHand && styles.sheetRowActive]}
-            onPress={onToggleRaiseHand}
-          >
-            <Text style={styles.sheetRowLabel}>Lever la main</Text>
-            <Ionicons name="hand-left-outline" size={22} color="#FFF" />
-          </TouchableOpacity>
+          {showRaiseHand ? (
+            <TouchableOpacity
+              style={[styles.sheetRow, myRaisedHand && styles.sheetRowActive]}
+              onPress={onToggleRaiseHand}
+            >
+              <Text style={styles.sheetRowLabel}>Lever la main</Text>
+              <Ionicons name="hand-left-outline" size={22} color="#FFF" />
+            </TouchableOpacity>
+          ) : null}
 
           {showScreenShare ? (
-            <View style={styles.groupedBox}>
+            showMessageComposer ? (
+              <View style={styles.groupedBox}>
+                <TouchableOpacity
+                  style={[styles.sheetRowGrouped, styles.sheetRowGroupedFirst]}
+                  onPress={onShareScreen}
+                  disabled={screenShareLoading}
+                >
+                  <Text style={styles.sheetRowLabel}>Partager l’écran</Text>
+                  {screenShareLoading ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Ionicons name="phone-portrait-outline" size={22} color="#FFF" />
+                  )}
+                </TouchableOpacity>
+                <View style={styles.groupDivider} />
+                <TouchableOpacity style={styles.sheetRowGrouped} onPress={onOpenMessageComposer}>
+                  <Text style={styles.sheetRowLabel}>Envoyer un message</Text>
+                  <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            ) : (
               <TouchableOpacity
-                style={[styles.sheetRowGrouped, styles.sheetRowGroupedFirst]}
+                style={styles.sheetRow}
                 onPress={onShareScreen}
                 disabled={screenShareLoading}
               >
@@ -95,18 +123,13 @@ export function CallMoreOptionsSheet({
                   <Ionicons name="phone-portrait-outline" size={22} color="#FFF" />
                 )}
               </TouchableOpacity>
-              <View style={styles.groupDivider} />
-              <TouchableOpacity style={styles.sheetRowGrouped} onPress={onOpenMessageComposer}>
-                <Text style={styles.sheetRowLabel}>Envoyer un message</Text>
-                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-          ) : (
+            )
+          ) : showMessageComposer ? (
             <TouchableOpacity style={styles.sheetRow} onPress={onOpenMessageComposer}>
               <Text style={styles.sheetRowLabel}>Envoyer un message</Text>
               <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
             </TouchableOpacity>
-          )}
+          ) : null}
 
           <View style={styles.qualityRow}>
             <SignalBars bars={connectionBars} color={barColor} />

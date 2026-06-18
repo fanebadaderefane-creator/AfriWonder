@@ -11,6 +11,8 @@ const OUTGOING_WAV = require('../../assets/sounds/outgoing_ringback.wav');
 export type { CallRingPreset } from './callRingtoneTiming';
 export { ringPulseTiming } from './callRingtoneTiming';
 
+const activeNativeRingStops = new Set<() => Promise<void>>();
+
 /** Réglage lecture forte pour la sonnerie entrante (sans micro — n’écrase pas la session d’un appel en cours). */
 async function applyIncomingRingAudioMode(): Promise<void> {
   if (Platform.OS === 'web') return;
@@ -111,11 +113,19 @@ async function startPulsedCallRing(
 
   void playBurst();
 
-  return async () => {
+  const stop = async () => {
     cancelled = true;
     clearTimers();
     await unloadSound();
   };
+
+  const trackedStop = async () => {
+    activeNativeRingStops.delete(trackedStop);
+    await stop();
+  };
+
+  activeNativeRingStops.add(trackedStop);
+  return trackedStop;
 }
 
 /**
@@ -136,9 +146,12 @@ export async function startOutgoingRingbackPattern(volume = 0.58): Promise<() =>
   return startPulsedCallRing(volume, 'outgoing');
 }
 
-/** Arrête toutes les sonneries actives (web : overlay entrant + ringback). */
+/** Arrête toutes les sonneries actives (overlay entrant, ringback expo-av, web). */
 export async function stopAllCallRings(): Promise<void> {
   if (Platform.OS === 'web') {
     await stopAllWebCallRings();
   }
+  const stops = [...activeNativeRingStops];
+  activeNativeRingStops.clear();
+  await Promise.all(stops.map((stop) => stop().catch(() => {})));
 }

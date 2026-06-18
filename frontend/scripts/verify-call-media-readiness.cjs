@@ -124,20 +124,37 @@ for (const [label, re] of checks) {
 }
 
 console.log('\n━━ DM natif — Agora (APK Android/iOS) ━━');
-const dmAgoraScreen = read('src/call/DirectCallAgoraScreen.tsx');
+const dmAgoraScreen = read('src/call/DirectCallAgoraScreen.native.tsx');
 const dmAgoraHook = read('src/hooks/useDirectCallAgoraRtc.native.tsx');
 const dmEngine = read('src/call/dmCallMediaEngine.ts');
 const agoraDmChecks = [
   ['call.tsx route vers DirectCallAgoraScreen (natif)', /Platform\.OS !== 'web'[\s\S]*shouldUseAgoraDmCalls[\s\S]*DirectCallAgoraScreen/],
   ['dmCallMediaEngine — Agora par défaut natif', /dmCallsAgora/],
-  ['DirectCallAgoraScreen — hook Agora', /useDirectCallAgoraRtc/],
+  ['DirectCallAgoraScreen — import hook Agora (natif)', /useDirectCallAgoraRtc/],
+  ['DirectCallAgoraScreen.web — stub web sans Agora', () => /return null/.test(read('src/call/DirectCallAgoraScreen.web.tsx'))],
   ['DirectCallAgoraScreen — pas de RTCPeerConnection', () => !/RTCPeerConnection/.test(dmAgoraScreen)],
   ['DirectCallAgoraScreen — pas de turn-credentials', () => !/turn-credentials/.test(dmAgoraScreen)],
   ['DirectCallAgoraScreen — signalisation socket invite/accept', /call:invite|call:accept/],
   ['useDirectCallAgoraRtc.native — GET agora-token', /\/agora-token/],
   ['useDirectCallAgoraRtc.native — joinChannel Agora', /joinChannel/],
   ['useDirectCallAgoraRtc.native — react-native-agora', /createAgoraRtcEngine/],
+  ['useDirectCallAgoraRtc.native — onRemoteAudioStateChanged', /onRemoteAudioStateChanged/],
+  ['useDirectCallAgoraRtc.native — enableLocalAudio', /enableLocalAudio\(true\)/],
+  ['useDirectCallAgoraRtc.native — enableLocalVideo (appel vidéo)', /enableLocalVideo\(true\)/],
+  ['useDirectCallAgoraRtc.native — muteAllRemoteVideoStreams', /muteAllRemoteVideoStreams\(false\)/],
+  ['DirectCallAgoraScreen — vidéo distante indépendante caméra locale', /shouldShowAgoraVideoStage/],
+  ['DirectCallAgoraScreen — bootstrap une seule fois', /bootstrapDoneRef/],
+  ['DirectCallAgoraScreen — call:invite:ack', /call:invite:ack/],
+  ['openNativeCallScreen — pas de downgrade vidéo receveur', () => {
+    const src = read('src/call/openNativeCallScreen.ts');
+    return /navigateToReceiverCallScreen/.test(src) && !/resolveOutboundCallTypeForNetwork/.test(
+      src.slice(src.indexOf('navigateToReceiverCallScreen')),
+    );
+  }],
+  ['DirectCallAgoraScreen — libère InCallManager avant Agora', /stopEveryCallRingAlert[\s\S]*agora_media_start|agora_media_start[\s\S]*stopEveryCallRingAlert/],
+  ['agoraDmCallSession — receveur callId obligatoire', /resolveAgoraDmCallId/],
   ['package.json — react-native-agora', () => /"react-native-agora"/.test(read('package.json'))],
+  ['pas de barrel useDirectCallAgoraRtc.ts → web', () => !fs.existsSync(path.join(FRONTEND, 'src', 'hooks', 'useDirectCallAgoraRtc.ts'))],
 ];
 for (const [label, re] of agoraDmChecks) {
   const pass = typeof re === 'function' ? re() : re.test(

@@ -68,6 +68,31 @@ async function verifyHealth() {
   }
 }
 
+async function verifyAgoraCapabilityFlag() {
+  const res = await fetchJson('/api/mobile/health');
+  if (res.status !== 200) {
+    fail('Agora flag /api/mobile/health', `HTTP ${res.status}`);
+    return;
+  }
+  const agora = res.body?.data?.capabilities?.agora_rtc;
+  if (agora === true) {
+    pass('Agora RTC configuré sur Render', 'capabilities.agora_rtc=true');
+  } else if (agora === false) {
+    fail('Agora sur Render', 'capabilities.agora_rtc=false — AGORA_APP_ID / AGORA_APP_CERTIFICATE manquants');
+  } else {
+    fail('Agora sur Render', 'réponse inattendue');
+  }
+}
+
+async function verifyAgoraTokenRoute() {
+  const res = await fetchJson('/api/proxy/calls/smoke-call-id/agora-token');
+  if (res.status === 401 || res.status === 403) {
+    pass('Route agora-token DM (mobile proxy)', `protégée (HTTP ${res.status})`);
+  } else {
+    fail('Route agora-token DM', `HTTP ${res.status} — attendu 401 sans JWT`);
+  }
+}
+
 async function verifyTurnCapabilityFlag() {
   const res = await fetchJson('/api/mobile/health');
   if (res.status !== 200) {
@@ -233,6 +258,8 @@ async function verifyAppVersionRoute() {
 async function main() {
   console.log(`\n🔍 Vérification stack appels — ${ORIGIN}\n`);
   await verifyHealth();
+  await verifyAgoraCapabilityFlag();
+  await verifyAgoraTokenRoute();
   await verifyTurnCapabilityFlag();
   await verifyTurnCredentialsRoute();
   await verifyTurnCredentialsAuthenticated();

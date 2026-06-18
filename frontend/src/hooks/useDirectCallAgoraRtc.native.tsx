@@ -5,6 +5,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { IRtcEngine, IRtcEngineEventHandler } from 'react-native-agora';
 import apiClient from '../api/client';
+import { connectionQualityFromAgoraNetwork } from '../call/agoraConnectionQuality';
+import { logAfwCall } from '../call/callDiagnosticLog';
+import { requestNativeCallPermissions } from '../call/callNativeMedia';
+import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
+import type { ConnectionQualityDisplay } from '../call/webrtcConnectionQuality';
 import type { DirectCallAgoraRtcOptions, DirectCallAgoraRtcResult } from './useDirectCallAgoraRtc.d';
 
 type AgoraTokenPayload = {
@@ -27,14 +32,35 @@ async function fetchDirectCallAgoraToken(callId: string): Promise<AgoraTokenPayl
   };
 }
 
+function noteRemotePeer(
+  uid: number,
+  callId: string,
+  source: string,
+  remoteUidRef: React.MutableRefObject<number | null>,
+  remoteNotifiedRef: React.MutableRefObject<boolean>,
+  setRemoteUid: (uid: number) => void,
+  setRemoteJoined: (v: boolean) => void,
+  onRemoteJoinedRef: React.MutableRefObject<(() => void) | undefined>,
+) {
+  if (remoteUidRef.current === uid && remoteNotifiedRef.current) return;
+  remoteUidRef.current = uid;
+  setRemoteUid(uid);
+  setRemoteJoined(true);
+  if (!remoteNotifiedRef.current) {
+    remoteNotifiedRef.current = true;
+    logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
+    onRemoteJoinedRef.current?.();
+  }
+}
+
 export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCallAgoraRtcResult {
   const {
     callId,
     enabled,
     audioOnly,
     muted = false,
-    videoEnabled = true,
     cameraFlipNonce = 0,
+    speakerOn = true,
     onRemoteJoined,
     onRemoteLeft,
     onError,
@@ -43,13 +69,32 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const engineRef = useRef<IRtcEngine | null>(null);
   const handlerRef = useRef<IRtcEngineEventHandler | null>(null);
   const remoteUidRef = useRef<number | null>(null);
+  const remoteNotifiedRef = useRef(false);
+  const onRemoteJoinedRef = useRef(onRemoteJoined);
+  const onRemoteLeftRef = useRef(onRemoteLeft);
+  const onErrorRef = useRef(onError);
+  const videoPublishedRef = useRef(!audioOnly);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
 
   const [joined, setJoined] = useState(false);
   const [remoteJoined, setRemoteJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(!audioOnly && videoEnabled);
+  const [camOn, setCamOn] = useState(!audioOnly);
+  const [videoPublished, setVideoPublished] = useState(!audioOnly);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const screenSharingRef = useRef(false);
+  const [connectionDisplay, setConnectionDisplay] = useState<ConnectionQualityDisplay>({
+    quality: 'fair',
+    labelFr: 'Connexion…',
+    bars: 2,
+  });
+
+  useEffect(() => {
+    onRemoteJoinedRef.current = onRemoteJoined;
+    onRemoteLeftRef.current = onRemoteLeft;
+    onErrorRef.current = onError;
+  }, [onRemoteJoined, onRemoteLeft, onError]);
 
   const leave = useCallback(async () => {
     const engine = engineRef.current;
@@ -57,9 +102,19 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     engineRef.current = null;
     handlerRef.current = null;
     remoteUidRef.current = null;
+    remoteNotifiedRef.current = false;
     setRemoteUid(null);
     if (engine) {
       try {
+        if (screenSharingRef.current) {
+          try {
+            engine.stopScreenCapture();
+          } catch {
+            /* ignore */
+          }
+          screenSharingRef.current = false;
+          setScreenSharing(false);
+        }
         if (handler) engine.unregisterEventHandler(handler);
         await engine.leaveChannel();
         engine.release();
@@ -80,13 +135,81 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   }, [micOn]);
 
   const toggleCam = useCallback(() => {
-    if (audioOnly) return;
+    if (!videoPublishedRef.current || screenSharingRef.current) return;
     const engine = engineRef.current;
     if (!engine) return;
     const next = !camOn;
     engine.muteLocalVideoStream(!next);
     setCamOn(next);
-  }, [audioOnly, camOn]);
+  }, [camOn]);
+
+  const upgradeToVideo = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
+    const engine = engineRef.current;
+    if (!engine || !joined) {
+      return { ok: false, message: 'Attendez que l’appel soit connecté.' };
+    }
+    if (videoPublishedRef.current) return { ok: true };
+    const permitted = await requestNativeCallPermissions(true);
+    if (!permitted) {
+      return {
+        ok: false,
+        message: 'Caméra non autorisée. Autorisez la caméra dans Réglages → AfriWonder.',
+      };
+    }
+    try {
+      const mod = await import('react-native-agora');
+      const ChannelMediaOptions = mod.ChannelMediaOptions as (new () => {
+        publishCameraTrack?: boolean;
+        publishMicrophoneTrack?: boolean;
+        publishScreenCaptureVideo?: boolean;
+        publishScreenCaptureAudio?: boolean;
+        autoSubscribeVideo?: boolean;
+      }) | undefined;
+      engine.enableVideo();
+      engine.enableLocalVideo(true);
+      engine.startPreview();
+      try {
+        engine.muteAllRemoteVideoStreams(false);
+      } catch {
+        /* ignore */
+      }
+      const pub = ChannelMediaOptions ? new ChannelMediaOptions() : ({} as Record<string, boolean>);
+      pub.publishCameraTrack = true;
+      pub.publishMicrophoneTrack = true;
+      pub.publishScreenCaptureVideo = false;
+      pub.publishScreenCaptureAudio = false;
+      pub.autoSubscribeVideo = true;
+      const rUp = engine.updateChannelMediaOptions(pub);
+      if (typeof rUp === 'number' && rUp !== 0) {
+        return { ok: false, message: `Publication vidéo refusée (code ${rUp}).` };
+      }
+      videoPublishedRef.current = true;
+      setVideoPublished(true);
+      setCamOn(true);
+      logAfwCall('agora_upgrade_video', { callId });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: (e as Error)?.message || 'Impossible de passer en vidéo.' };
+    }
+  }, [callId, joined]);
+
+  const toggleScreenShare = useCallback(async () => {
+    const engine = engineRef.current;
+    const hadCameraPreview = videoPublishedRef.current && camOn;
+    const result = await toggleAgoraScreenShare(engine, screenSharingRef.current, {
+      hadCameraPreview,
+    });
+    if (result.ok && typeof result.on === 'boolean') {
+      screenSharingRef.current = result.on;
+      setScreenSharing(result.on);
+      logAfwCall('agora_screen_share', { callId, active: result.on });
+    }
+    return result;
+  }, [callId, camOn]);
+
+  useEffect(() => {
+    videoPublishedRef.current = videoPublished;
+  }, [videoPublished]);
 
   useEffect(() => {
     if (!enabled || !callId || Platform.OS === 'web') {
@@ -98,59 +221,125 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     void (async () => {
       try {
         setError(null);
+        remoteNotifiedRef.current = false;
         const tokenData = await fetchDirectCallAgoraToken(callId);
         if (cancelled) return;
         if (!tokenData) {
           const msg = 'Média indisponible — Agora non configuré sur le serveur.';
           setError(msg);
-          onError?.(msg);
+          logAfwCall('agora_token_missing', { callId });
+          onErrorRef.current?.(msg);
           return;
         }
 
+        logAfwCall('agora_token_ok', {
+          callId,
+          channel: tokenData.channel,
+          uid: tokenData.uid,
+        });
+
         const mod = await import('react-native-agora');
-        const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType } = mod;
+        const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, AudioScenarioType } = mod;
         const engine = createAgoraRtcEngine();
         engineRef.current = engine;
         engine.initialize({ appId: tokenData.appId });
         engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
+        engine.setAudioScenario(AudioScenarioType.AudioScenarioChatroom);
         engine.enableAudio();
+        engine.enableLocalAudio(true);
         engine.setDefaultAudioRouteToSpeakerphone(true);
 
-        const publishVideo = !audioOnly && videoEnabled;
+        const publishVideo = !audioOnly;
         if (publishVideo) {
           engine.enableVideo();
+          engine.enableLocalVideo(true);
           engine.startPreview();
         } else {
           engine.disableVideo();
         }
 
         const eventHandler: IRtcEngineEventHandler = {
-          onJoinChannelSuccess() {
+          onJoinChannelSuccess(_conn, elapsed) {
             if (cancelled) return;
             setJoined(true);
             setError(null);
+            try {
+              engine.setEnableSpeakerphone(true);
+              engine.adjustPlaybackSignalVolume(100);
+              engine.adjustRecordingSignalVolume(100);
+              engine.muteLocalAudioStream(false);
+              engine.muteAllRemoteAudioStreams(false);
+              if (!audioOnly) {
+                engine.muteAllRemoteVideoStreams(false);
+              }
+            } catch {
+              /* ignore */
+            }
+            logAfwCall('agora_join_ok', { callId, channel: tokenData.channel, elapsed });
           },
           onError(_conn, errCode) {
             if (cancelled) return;
             const msg = `Erreur connexion média (code ${errCode}).`;
             setError(msg);
-            onError?.(msg);
+            logAfwCall('agora_error', { callId, errCode });
+            onErrorRef.current?.(msg);
           },
           onUserJoined(_conn, uid) {
             if (cancelled || uid == null) return;
-            remoteUidRef.current = uid;
-            setRemoteUid(uid);
-            setRemoteJoined(true);
-            onRemoteJoined?.();
+            noteRemotePeer(
+              uid,
+              callId,
+              'onUserJoined',
+              remoteUidRef,
+              remoteNotifiedRef,
+              setRemoteUid,
+              setRemoteJoined,
+              onRemoteJoinedRef,
+            );
+          },
+          onFirstRemoteVideoDecoded(_conn, uid) {
+            if (cancelled || uid == null) return;
+            noteRemotePeer(
+              uid,
+              callId,
+              'onFirstRemoteVideoDecoded',
+              remoteUidRef,
+              remoteNotifiedRef,
+              setRemoteUid,
+              setRemoteJoined,
+              onRemoteJoinedRef,
+            );
+          },
+          onRemoteAudioStateChanged(_conn, uid, state) {
+            if (cancelled || uid == null) return;
+            logAfwCall('agora_remote_audio_state', { callId, remoteUid: uid, state });
+            if (state === 2 /* Decoding */) {
+              noteRemotePeer(
+                uid,
+                callId,
+                'onRemoteAudioStateChanged',
+                remoteUidRef,
+                remoteNotifiedRef,
+                setRemoteUid,
+                setRemoteJoined,
+                onRemoteJoinedRef,
+              );
+            }
           },
           onUserOffline(_conn, uid) {
             if (cancelled) return;
             if (remoteUidRef.current === uid) {
               remoteUidRef.current = null;
+              remoteNotifiedRef.current = false;
               setRemoteUid(null);
               setRemoteJoined(false);
-              onRemoteLeft?.();
+              logAfwCall('agora_remote_left', { callId, remoteUid: uid });
+              onRemoteLeftRef.current?.();
             }
+          },
+          onNetworkQuality(_conn, _uid, txQuality, rxQuality) {
+            if (cancelled) return;
+            setConnectionDisplay(connectionQualityFromAgoraNetwork(rxQuality, txQuality));
           },
         };
         engine.registerEventHandler(eventHandler);
@@ -168,7 +357,8 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         if (cancelled) return;
         const msg = (e as Error)?.message || 'Impossible de rejoindre l’appel.';
         setError(msg);
-        onError?.(msg);
+        logAfwCall('agora_join_failed', { callId, error: msg });
+        onErrorRef.current?.(msg);
       }
     })();
 
@@ -176,16 +366,17 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       cancelled = true;
       void leave();
     };
-  }, [
-    audioOnly,
-    callId,
-    enabled,
-    leave,
-    onError,
-    onRemoteJoined,
-    onRemoteLeft,
-    videoEnabled,
-  ]);
+  }, [audioOnly, callId, enabled, leave]);
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !joined || audioOnly) return;
+    try {
+      engine.muteLocalVideoStream(!camOn);
+    } catch {
+      /* ignore */
+    }
+  }, [audioOnly, camOn, joined]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -199,21 +390,31 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
   useEffect(() => {
     const engine = engineRef.current;
-    if (!engine || !joined || audioOnly) return;
+    if (!engine || !joined) return;
+    try {
+      engine.setEnableSpeakerphone(!!speakerOn);
+    } catch {
+      /* ignore */
+    }
+  }, [joined, speakerOn]);
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !joined || !videoPublished) return;
     try {
       engine.switchCamera();
     } catch {
       /* ignore */
     }
-  }, [audioOnly, cameraFlipNonce, joined]);
+  }, [cameraFlipNonce, joined, videoPublished]);
 
   const LocalView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {
-      if (audioOnly || Platform.OS === 'web') return <View style={style} />;
+      if (!videoPublished || Platform.OS === 'web') return <View style={style} />;
       const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
       return <RtcSurfaceView style={style} canvas={{ uid: 0 }} zOrderMediaOverlay />;
     },
-    [audioOnly],
+    [videoPublished],
   );
 
   const RemoteView = useCallback(
@@ -231,8 +432,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     remoteJoined,
     micOn,
     camOn,
+    screenSharing,
+    connectionDisplay,
+    videoPublished,
     toggleMic,
     toggleCam,
+    toggleScreenShare,
+    upgradeToVideo,
     leave,
     LocalView,
     RemoteView,

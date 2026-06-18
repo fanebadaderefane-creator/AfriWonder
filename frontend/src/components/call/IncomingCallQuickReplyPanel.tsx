@@ -47,7 +47,6 @@ export function IncomingCallQuickReplyPanel({
         <View style={styles.sheetScrim}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onCloseQuick} />
           <View style={styles.quickCard}>
-            <Text style={styles.quickTitle}>Réponse rapide</Text>
             {INCOMING_CALL_QUICK_REPLIES.map((line) => (
               <TouchableOpacity
                 key={line}
@@ -63,7 +62,7 @@ export function IncomingCallQuickReplyPanel({
               onPress={onOpenCustom}
               disabled={sendingReply}
             >
-              <Text style={[styles.quickText, styles.quickCustom]}>Message personnalisé…</Text>
+              <Text style={styles.quickText}>Message personnalisé...</Text>
             </TouchableOpacity>
             {sendingReply ? (
               <ActivityIndicator color="#128C7E" style={{ marginTop: 12 }} />
@@ -145,18 +144,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   quickRow: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E8EAED',
   },
   quickText: {
     fontSize: 16,
-    color: '#202124',
-  },
-  quickCustom: {
-    color: '#128C7E',
-    fontWeight: '600',
+    color: '#3B4A54',
+    lineHeight: 22,
   },
   customOverlay: {
     ...StyleSheet.absoluteFillObject,

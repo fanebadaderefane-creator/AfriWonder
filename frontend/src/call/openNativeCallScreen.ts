@@ -108,16 +108,8 @@ export type { ReceiverCallScreenInput };
 export function navigateToReceiverCallScreen(input: ReceiverCallScreenInput): void {
   prepareCallSessionMemory();
   void (async () => {
-    let callType = input.type;
-    if (input.type === 'video') {
-      const net = await fetchCallNetworkSnapshot();
-      const resolved = resolveOutboundCallTypeForNetwork('video', net);
-      callType = resolved.type;
-      const downgradeMsg = resolved.downgradedFromVideo ? outboundVideoDowngradeMessage(net) : null;
-      if (downgradeMsg) {
-        Alert.alert('Appel entrant', downgradeMsg);
-      }
-    }
+    /** Appel vidéo entrant : ne pas rétrograder en audio seul (sinon pas de `autoSubscribeVideo` Agora). */
+    const callType = input.type;
     if (Platform.OS === 'web') {
       primeWebCallMediaCapture(callType === 'video');
     }

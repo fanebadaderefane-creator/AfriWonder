@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image,
   Modal,
-  Platform,
   Alert,
   Animated,
 } from 'react-native';
@@ -26,17 +25,20 @@ import { INCOMING_CALL_RING_VOLUME, startIncomingCallVibration } from '../../cal
 import { startLoopingCallRing, stopAllCallRings } from '../../call/callRingtone';
 import { buildCallDeclinePayload, callUserIdsEqual } from '../../call/callSignalingPayload';
 import { logAfwCall } from '../../call/callDiagnosticLog';
+import { formatIncomingCallerSubtitle } from '../../call/incomingCallDisplay';
 import { dismissIncomingCall } from '../../services/incomingCallService';
 import { profileAvatarUri } from '../../utils/avatarFallback';
 import apiClient from '../../api/client';
 import { getAlertMessageForCaughtError } from '../../utils/userFacingError';
 import { useToast } from '../common/ToastProvider';
+import { ChatWallpaperPattern } from '../messages/ChatWallpaperPattern';
 import { IncomingCallQuickReplyPanel } from './IncomingCallQuickReplyPanel';
 import { navigateToReceiverCallScreen } from '../../call/openNativeCallScreen';
+import { useIncomingCallVideoPreview } from '../../hooks/useIncomingCallVideoPreview.native';
 
 /**
- * Appel entrant plein écran (Refuser · balayer pour accepter · Message avec réponses rapides).
- * Sonnerie pulsée + vibration discrète (style WhatsApp) jusqu'à réponse / refus / fin.
+ * Appel entrant plein écran — parité WhatsApp (audio · vidéo · réponses rapides).
+ * ⛔ Ne pas émettre `call:accept` ici — uniquement dans l’écran d’appel après setup média.
  */
 
 type IncomingCall = {
@@ -46,10 +48,12 @@ type IncomingCall = {
   type: 'audio' | 'video';
   callerName?: string;
   callerAvatar?: string;
+  callerPhone?: string;
 };
 
 const SWIPE_ACCEPT_THRESHOLD_PX = 40;
 const SWIPE_ACCEPT_VELOCITY = -420;
+const SWIPE_MESSAGE_THRESHOLD_PX = -28;
 
 export function IncomingCallOverlay() {
   const myUserId = useAuthStore((s) => s.user?.id);
@@ -63,11 +67,20 @@ export function IncomingCallOverlay() {
   const [customText, setCustomText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
 
-  const dragY = useSharedValue(0);
+  const acceptDragY = useSharedValue(0);
+  const messageDragY = useSharedValue(0);
   const pulse = useRef(new Animated.Value(1)).current;
   const acceptingRef = useRef(false);
   const stopRingRef = useRef<(() => Promise<void>) | null>(null);
   const stopVibrationRef = useRef<(() => void) | null>(null);
+
+  const isVideo = incoming?.type === 'video';
+  const { PreviewView, previewOn, togglePreview, stopPreview } = useIncomingCallVideoPreview({
+    callId: incoming?.callId || '',
+    enabled: !!incoming && isVideo,
+  });
+  const previewOnRef = useRef(previewOn);
+  previewOnRef.current = previewOn;
 
   const stopIncomingRing = useCallback(async () => {
     await stopRingRef.current?.();
@@ -84,6 +97,10 @@ export function IncomingCallOverlay() {
     setCustomText('');
   }, []);
 
+  const openQuickReplies = useCallback(() => {
+    setShowQuickReplies(true);
+  }, []);
+
   useEffect(() => {
     if (!myUserId) return;
     if (!featureFlags.callsOnNative) return;
@@ -98,9 +115,10 @@ export function IncomingCallOverlay() {
     const clearIfSameCall = (payload: { callId?: string }) => {
       const cur = incomingRef.current;
       if (cur && payload?.callId === cur.callId) {
-        setIncoming(null);
-        setShowQuickReplies(false);
-        setShowCustomMessage(false);
+        void stopIncomingRing();
+        void stopPreview();
+        void dismissIncomingCall(cur.callId);
+        dismissIncomingUi();
       }
     };
     const offInvite = socketService.on('call:invite', onInvite);
@@ -113,7 +131,7 @@ export function IncomingCallOverlay() {
       offDecline();
       offMissed();
     };
-  }, [myUserId]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing, stopPreview]);
 
   useEffect(() => {
     if (!incoming) return;
@@ -125,7 +143,6 @@ export function IncomingCallOverlay() {
     );
     loop.start();
     return () => loop.stop();
-    /* pulse : Animated.Value stable via useRef ; relance uniquement pour un nouvel appel. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incoming?.callId]);
 
@@ -154,19 +171,9 @@ export function IncomingCallOverlay() {
     const c = incomingRef.current;
     if (!c || !myUserId) return;
     acceptingRef.current = true;
-    logAfwCall('overlay_accept_tap', { callId: c.callId, type: c.type });
+    logAfwCall('overlay_accept_tap', { callId: c.callId, type: c.type, previewOn: previewOnRef.current });
     try {
-      /**
-       * ⛔ VERROUILLÉ — Ne pas émettre `call:accept` ici (régression silence + SDP perdu).
-       * L’appelant envoie l’offre dès accept : le receveur doit avoir monté sa PeerConnection avant.
-       * `call:accept` est émis uniquement dans `call.tsx` après getUserMedia.
-       * Règle : `.cursor/rules/call-signaling-locked.mdc`
-       *
-       * La navigation NE DOIT PAS dépendre de l'arrêt de la sonnerie : sur appareils lents
-       * (Mali, 2-3 Go) `stopIncomingRing()` pouvait traîner/rejeter et bloquer l'accept
-       * (« rien ne se passe »). On navigue d'abord, on coupe la sonnerie en best-effort
-       * (call.tsx libère de toute façon l'audio expo-av via releaseExpoAvForWebRtcCall).
-       */
+      await stopPreview();
       dismissIncomingUi();
       void dismissIncomingCall(c.callId);
       navigateToReceiverCallScreen({
@@ -175,6 +182,7 @@ export function IncomingCallOverlay() {
         peerName: c.callerName || 'Contact',
         peerAvatar: c.callerAvatar || '',
         type: c.type,
+        initialCamOn: c.type === 'video' ? previewOnRef.current : undefined,
       });
       void stopIncomingRing();
     } catch (e) {
@@ -182,10 +190,11 @@ export function IncomingCallOverlay() {
     } finally {
       acceptingRef.current = false;
     }
-  }, [dismissIncomingUi, myUserId, stopIncomingRing]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing, stopPreview]);
 
   const decline = useCallback(async () => {
     const c = incomingRef.current;
+    await stopPreview();
     await stopIncomingRing();
     dismissIncomingUi();
     if (c) void dismissIncomingCall(c.callId);
@@ -201,7 +210,7 @@ export function IncomingCallOverlay() {
         8_000,
       );
     }
-  }, [dismissIncomingUi, myUserId, stopIncomingRing]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing, stopPreview]);
 
   const sendTextToCaller = useCallback(
     async (text: string) => {
@@ -212,6 +221,8 @@ export function IncomingCallOverlay() {
       const callId = c.callId;
       setSendingReply(true);
       try {
+        await stopPreview();
+        await stopIncomingRing();
         let conversationId: string | undefined;
         try {
           const r = await apiClient.get(`/messages/conversation/${encodeURIComponent(callerUserId)}`);
@@ -237,6 +248,7 @@ export function IncomingCallOverlay() {
           8_000,
         );
         dismissIncomingUi();
+        if (c.callId) void dismissIncomingCall(c.callId);
         showToast({ message: 'Message envoyé', type: 'success' });
       } catch (err: unknown) {
         Alert.alert('Message', getAlertMessageForCaughtError(err));
@@ -244,7 +256,7 @@ export function IncomingCallOverlay() {
         setSendingReply(false);
       }
     },
-    [dismissIncomingUi, myUserId, showToast],
+    [dismissIncomingUi, myUserId, showToast, stopIncomingRing, stopPreview],
   );
 
   const panAccept = Gesture.Pan()
@@ -252,35 +264,47 @@ export function IncomingCallOverlay() {
     .failOffsetX([-56, 56])
     .onUpdate((e) => {
       if (e.translationY < 0) {
-        dragY.value = Math.max(e.translationY, -140);
+        acceptDragY.value = Math.max(e.translationY, -140);
       }
     })
     .onEnd((e) => {
       const shouldAccept =
-        dragY.value < -SWIPE_ACCEPT_THRESHOLD_PX || e.velocityY < SWIPE_ACCEPT_VELOCITY;
+        acceptDragY.value < -SWIPE_ACCEPT_THRESHOLD_PX || e.velocityY < SWIPE_ACCEPT_VELOCITY;
       if (shouldAccept) {
         runOnJS(accept)();
       }
-      dragY.value = withSpring(0, { damping: 18, stiffness: 220 });
+      acceptDragY.value = withSpring(0, { damping: 18, stiffness: 220 });
     });
 
-  /**
-   * Le tap d'acceptation passe par un TouchableOpacity fiable (comme « Refuser »),
-   * pas par un Gesture.Tap : sur appareils lents (2-3 Go RAM, marché Mali), un tap
-   * > maxDuration ou avec micro-mouvement était ignoré → « accepter ne faisait rien »
-   * alors que « refuser » (TouchableOpacity) marchait toujours. Le Pan reste pour
-   * le balayage vers le haut. `acceptingRef` empêche une double acceptation.
-   */
-  const acceptGesture = panAccept;
+  const panMessage = Gesture.Pan()
+    .activeOffsetY(-8)
+    .failOffsetX([-48, 48])
+    .onUpdate((e) => {
+      if (e.translationY < 0) {
+        messageDragY.value = Math.max(e.translationY, -80);
+      }
+    })
+    .onEnd((e) => {
+      const shouldOpen =
+        messageDragY.value < -SWIPE_MESSAGE_THRESHOLD_PX || e.velocityY < SWIPE_ACCEPT_VELOCITY;
+      if (shouldOpen) {
+        runOnJS(openQuickReplies)();
+      }
+      messageDragY.value = withSpring(0, { damping: 18, stiffness: 220 });
+    });
 
   const acceptCircleStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: dragY.value }],
+    transform: [{ translateY: acceptDragY.value }],
+  }));
+
+  const messageCircleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: messageDragY.value }],
   }));
 
   if (!featureFlags.callsOnNative || !incoming) return null;
 
   const avatarUri = profileAvatarUri(incoming.callerAvatar, incoming.callerName || 'Contact');
-  const video = incoming.type === 'video';
+  const subtitle = formatIncomingCallerSubtitle({ callerPhone: incoming.callerPhone });
 
   return (
     <Modal
@@ -291,76 +315,109 @@ export function IncomingCallOverlay() {
       presentationStyle="fullScreen"
     >
       <GestureHandlerRootView style={styles.root}>
+        {isVideo ? (
+          <>
+            <PreviewView style={StyleSheet.absoluteFill} />
+            <View style={styles.videoDimOverlay} />
+          </>
+        ) : (
+          <>
+            <View style={styles.audioBg} />
+            <ChatWallpaperPattern variant="dark" />
+          </>
+        )}
+
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-              <View style={styles.headerBlock}>
-                <Text style={styles.callerName} numberOfLines={2}>
-                  {incoming.callerName || 'Contact'}
+          <View style={styles.headerBlock}>
+            <Text style={styles.callerName} numberOfLines={2}>
+              {incoming.callerName || 'Contact'}
+            </Text>
+            <View style={styles.subRow}>
+              <Ionicons name="logo-whatsapp" size={16} color="rgba(255,255,255,0.72)" />
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            </View>
+          </View>
+
+          <View style={styles.centerBlock}>
+            <Animated.View style={{ transform: [{ scale: pulse }] }}>
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            </Animated.View>
+
+            {isVideo ? (
+              <TouchableOpacity
+                style={styles.disableVideoPill}
+                onPress={togglePreview}
+                activeOpacity={0.85}
+                accessibilityLabel={
+                  previewOn ? 'Désactiver votre vidéo' : 'Activer votre vidéo'
+                }
+              >
+                <Ionicons
+                  name={previewOn ? 'videocam-off-outline' : 'videocam-outline'}
+                  size={20}
+                  color="#FFF"
+                />
+                <Text style={styles.disableVideoText}>
+                  {previewOn ? 'Désactiver votre vidéo' : 'Activer votre vidéo'}
                 </Text>
-                <View style={styles.subRow}>
-                  <Ionicons name="call" size={16} color="rgba(255,255,255,0.65)" />
-                  <Text style={styles.subtitle}>
-                    {video ? 'Appel vidéo AfriWonder' : 'Appel audio AfriWonder'}
-                  </Text>
-                </View>
-              </View>
+              </TouchableOpacity>
+            ) : null}
+          </View>
 
-              <View style={styles.avatarWrap}>
-                <Animated.View style={{ transform: [{ scale: pulse }] }}>
-                  <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                </Animated.View>
-              </View>
+          <View style={styles.bottomDock}>
+            <View style={styles.dockCol}>
+              <TouchableOpacity
+                style={[styles.circleBtn, styles.btnDecline]}
+                onPress={decline}
+                activeOpacity={0.85}
+                accessibilityLabel="Refuser l’appel"
+              >
+                <Ionicons name="call" size={30} color="#FFF" style={styles.iconHangup} />
+              </TouchableOpacity>
+              <Text style={styles.dockLabel}>Refuser</Text>
+            </View>
 
-              <View style={styles.bottomDock}>
-                <View style={styles.dockCol}>
+            <View style={styles.dockCol}>
+              <View style={styles.chevrons}>
+                <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.85)" />
+                <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.55)" />
+                <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.35)" />
+              </View>
+              <GestureDetector gesture={panAccept}>
+                <AnimatedRe.View style={[styles.circleBtn, styles.btnAccept, acceptCircleStyle]}>
                   <TouchableOpacity
-                    style={[styles.circleBtn, styles.btnDecline]}
-                    onPress={decline}
+                    style={styles.circleHit}
+                    onPress={() => void accept()}
                     activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel="Refuser l’appel"
+                    accessibilityLabel="Accepter l’appel"
                   >
-                    <Ionicons name="call" size={30} color="#FFF" style={styles.iconHangup} />
+                    <Ionicons
+                      name={isVideo ? 'videocam' : 'call'}
+                      size={isVideo ? 30 : 32}
+                      color="#FFF"
+                    />
                   </TouchableOpacity>
-                  <Text style={styles.dockLabel}>Refuser</Text>
-                </View>
+                </AnimatedRe.View>
+              </GestureDetector>
+              <Text style={styles.swipeHint}>Balayer vers le haut pour accepter</Text>
+            </View>
 
-                <View style={styles.dockCol}>
-                  <Ionicons name="chevron-up" size={18} color="rgba(255,255,255,0.85)" />
-                  <Ionicons
-                    name="chevron-up"
-                    size={18}
-                    color="rgba(255,255,255,0.55)"
-                    style={{ marginTop: -10 }}
-                  />
-                  <GestureDetector gesture={acceptGesture}>
-                    <AnimatedRe.View style={[styles.circleBtn, styles.btnAccept, acceptCircleStyle]}>
-                      <TouchableOpacity
-                        style={styles.acceptHit}
-                        onPress={() => void accept()}
-                        activeOpacity={0.85}
-                        accessibilityRole="button"
-                        accessibilityLabel="Accepter l’appel"
-                      >
-                        <Ionicons name="call" size={32} color="#FFF" />
-                      </TouchableOpacity>
-                    </AnimatedRe.View>
-                  </GestureDetector>
-                  <Text style={styles.swipeHint}>Appuyer ou balayer vers le haut pour accepter</Text>
-                </View>
-
-                <View style={styles.dockCol}>
+            <View style={styles.dockCol}>
+              <GestureDetector gesture={panMessage}>
+                <AnimatedRe.View style={[styles.circleBtn, styles.btnMessage, messageCircleStyle]}>
                   <TouchableOpacity
-                    style={[styles.circleBtn, styles.btnMessage]}
-                    onPress={() => setShowQuickReplies(true)}
+                    style={styles.circleHit}
+                    onPress={openQuickReplies}
                     activeOpacity={0.85}
-                    accessibilityRole="button"
                     accessibilityLabel="Répondre par un message"
                   >
                     <Ionicons name="chatbubble-ellipses" size={26} color="#FFF" />
                   </TouchableOpacity>
-                  <Text style={styles.dockLabel}>Message</Text>
-                </View>
-              </View>
+                </AnimatedRe.View>
+              </GestureDetector>
+              <Text style={styles.dockLabel}>Message</Text>
+            </View>
+          </View>
 
           <IncomingCallQuickReplyPanel
             showQuickReplies={showQuickReplies}
@@ -391,6 +448,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0B141A',
   },
+  audioBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0B141A',
+  },
+  videoDimOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
   safe: {
     flex: 1,
   },
@@ -413,18 +478,34 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.72)',
   },
-  avatarWrap: {
+  centerBlock: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
+    gap: 28,
   },
   avatar: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     backgroundColor: '#2A3942',
+  },
+  disableVideoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  disableVideoText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   bottomDock: {
     flexDirection: 'row',
@@ -438,6 +519,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 8,
   },
+  chevrons: {
+    alignItems: 'center',
+    marginBottom: -4,
+    gap: -8,
+  },
   dockLabel: {
     marginTop: 10,
     fontSize: 13,
@@ -450,7 +536,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.65)',
     textAlign: 'center',
     paddingHorizontal: 4,
-    maxWidth: 120,
+    maxWidth: 130,
   },
   circleBtn: {
     width: 72,
@@ -460,19 +546,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 8,
   },
-  btnDecline: {
-    backgroundColor: '#E53935',
-  },
-  btnAccept: {
-    backgroundColor: '#25D366',
-    marginTop: 10,
-  },
-  acceptHit: {
+  circleHit: {
     width: '100%',
     height: '100%',
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  btnDecline: {
+    backgroundColor: '#E53935',
+  },
+  btnAccept: {
+    backgroundColor: '#25D366',
+    marginTop: 4,
   },
   btnMessage: {
     backgroundColor: '#2A3942',

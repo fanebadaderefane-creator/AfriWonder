@@ -17,6 +17,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { ToastProvider } from '../src/components/common/ToastProvider';
 import { IncomingCallOverlay } from '../src/components/call/IncomingCallOverlay';
+import { InCallFloatingBar } from '../src/components/call/InCallFloatingBar';
 import socketService from '../src/services/socketService';
 import { ThemeProvider, useAppTheme } from '../src/theme/ThemeContext';
 import { View, StyleSheet, Platform, AppState } from 'react-native';
@@ -437,6 +438,7 @@ function RootLayoutContent() {
             <OfflineBanner />
             <AppUpdatePrompt />
             <IncomingCallOverlay />
+            <InCallFloatingBar />
             <MobileNavigationStability />
             <Stack
               screenOptions={{

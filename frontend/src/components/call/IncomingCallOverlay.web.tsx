@@ -34,6 +34,12 @@ export function IncomingCallOverlay() {
   const acceptingRef = useRef(false);
   const stopRingRef = useRef<(() => Promise<void>) | null>(null);
 
+  const stopIncomingRing = useCallback(async () => {
+    await stopRingRef.current?.();
+    stopRingRef.current = null;
+    await stopAllCallRings();
+  }, []);
+
   useEffect(() => {
     if (!myUserId || !featureFlags.callsOnNative) return;
 
@@ -59,7 +65,10 @@ export function IncomingCallOverlay() {
     };
     const clearIfSameCall = (payload: { callId?: string }) => {
       const cur = incomingRef.current;
-      if (cur && payload?.callId === cur.callId) setIncoming(null);
+      if (cur && payload?.callId === cur.callId) {
+        void stopIncomingRing();
+        setIncoming(null);
+      }
     };
     const offInvite = socketService.on('call:invite', onInvite);
     const offEnd = socketService.on('call:end', clearIfSameCall);
@@ -71,17 +80,11 @@ export function IncomingCallOverlay() {
       offDecline();
       offMissed();
     };
-  }, [myUserId]);
+  }, [myUserId, stopIncomingRing]);
 
   useEffect(() => {
     if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
     void Notification.requestPermission().catch(() => {});
-  }, []);
-
-  const stopIncomingRing = useCallback(async () => {
-    await stopRingRef.current?.();
-    stopRingRef.current = null;
-    await stopAllCallRings();
   }, []);
 
   useEffect(() => {

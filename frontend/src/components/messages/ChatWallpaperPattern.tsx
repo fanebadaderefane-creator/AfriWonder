@@ -20,7 +20,15 @@ const WALLPAPER_ICON_NAMES = [
   'mic-outline',
 ] as const;
 
-export const ChatWallpaperPattern = memo(function ChatWallpaperPattern() {
+type ChatWallpaperPatternProps = {
+  variant?: 'light' | 'dark';
+};
+
+export const ChatWallpaperPattern = memo(function ChatWallpaperPattern({
+  variant = 'light',
+}: ChatWallpaperPatternProps) {
+  const iconColor =
+    variant === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(17,27,33,0.06)';
   const tiles = useMemo(() => {
     const rows = 16;
     const cols = 7;
@@ -62,7 +70,7 @@ export const ChatWallpaperPattern = memo(function ChatWallpaperPattern() {
             transform: [{ rotate: t.rotate }],
           }}
         >
-          <Ionicons name={t.name} size={20} color="rgba(17,27,33,0.06)" />
+          <Ionicons name={t.name} size={20} color={iconColor} />
         </View>
       ))}
     </View>

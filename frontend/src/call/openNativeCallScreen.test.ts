@@ -85,4 +85,22 @@ describe('openNativeCallScreen', () => {
     expect(params.callType).toBe('video');
     expect(params.name).toBe('Ada');
   });
+
+  it('buildReceiverCallRouteParams transmet initialCamOn pour vidéo entrant', () => {
+    expect(
+      buildReceiverCallRouteParams({
+        peerUserId: 'u1',
+        peerName: 'Bob',
+        type: 'video',
+        initialCamOn: false,
+      }).initialCamOn,
+    ).toBe('0');
+    expect(
+      buildReceiverCallRouteParams({
+        peerUserId: 'u1',
+        peerName: 'Bob',
+        type: 'video',
+      }).initialCamOn,
+    ).toBe('1');
+  });
 });
