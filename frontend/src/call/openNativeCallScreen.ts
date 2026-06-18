@@ -16,6 +16,7 @@ import {
   type ReceiverCallScreenInput,
 } from './openNativeCallScreenLogic';
 import { primeWebCallMediaCapture } from './webCallMediaSession';
+import { shouldUseAgoraDmCalls } from './dmCallMediaEngine';
 import { logAfwCall } from './callDiagnosticLog';
 
 export type { NativeCallLaunchBlockReason } from './openNativeCallScreenLogic';
@@ -73,6 +74,8 @@ export function openNativeCallScreen(params: OpenNativeCallScreenParams): boolea
     platformOs: Platform.OS,
     callsOnNative: featureFlags.callsOnNative,
     hasWebRtcRuntime: isWebRtcRuntimeAvailable(),
+    hasAgoraRtc: Platform.OS !== 'web',
+    dmCallsUseAgora: shouldUseAgoraDmCalls(),
     peerUserId: params.peerUserId,
   });
   if (block) {

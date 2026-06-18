@@ -26,14 +26,32 @@ describe('openNativeCallScreen', () => {
         peerUserId: 'u1',
       }),
     ).toBe('web_no_webrtc');
+  });
+
+  it('blocks android without WebRTC when Agora DM désactivé', () => {
     expect(
       getNativeCallLaunchBlockReason({
         platformOs: 'android',
         callsOnNative: true,
         hasWebRtcRuntime: false,
+        dmCallsUseAgora: false,
+        hasAgoraRtc: true,
         peerUserId: 'u1',
       }),
     ).toBe('no_webrtc_module');
+  });
+
+  it('allows android Agora DM without react-native-webrtc', () => {
+    expect(
+      getNativeCallLaunchBlockReason({
+        platformOs: 'android',
+        callsOnNative: true,
+        hasWebRtcRuntime: false,
+        dmCallsUseAgora: true,
+        hasAgoraRtc: true,
+        peerUserId: 'u1',
+      }),
+    ).toBeNull();
   });
 
   it('allows launch when native WebRTC and peer are ready', () => {
@@ -47,9 +65,9 @@ describe('openNativeCallScreen', () => {
     ).toBeNull();
   });
 
-  it('nativeCallLaunchBlockedMessage mentions Expo Go for missing module', () => {
+  it('nativeCallLaunchBlockedMessage mentions APK for missing module', () => {
     const msg = nativeCallLaunchBlockedMessage('no_webrtc_module');
-    expect(msg.toLowerCase()).toContain('expo go');
+    expect(msg.toLowerCase()).toContain('apk');
   });
 
   it('buildReceiverCallRouteParams unifie peerId et otherUserId', () => {

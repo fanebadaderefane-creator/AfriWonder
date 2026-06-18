@@ -34,5 +34,9 @@ describe('parseTurnCredentialsResponse', () => {
     const parsed = parseTurnCredentialsResponse({ turnConfigured: false });
     expect(parsed.turnConfigured).toBe(false);
     expect(parsed.iceServers.length).toBeGreaterThan(0);
+    const flat = parsed.iceServers.flatMap((e) =>
+      Array.isArray(e.urls) ? e.urls.map(String) : [String(e.urls)],
+    );
+    expect(flat).toContain('stun:stun.relay.metered.ca:443');
   });
 });

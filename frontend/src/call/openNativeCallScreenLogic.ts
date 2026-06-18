@@ -8,10 +8,16 @@ export function getNativeCallLaunchBlockReason(input: {
   platformOs: string;
   callsOnNative: boolean;
   hasWebRtcRuntime: boolean;
+  hasAgoraRtc?: boolean;
+  dmCallsUseAgora?: boolean;
   peerUserId: string;
 }): NativeCallLaunchBlockReason | null {
   if (!input.callsOnNative) return 'feature_disabled';
-  if (!input.hasWebRtcRuntime) {
+  const agoraPath =
+    input.platformOs !== 'web' &&
+    Boolean(input.dmCallsUseAgora) &&
+    Boolean(input.hasAgoraRtc);
+  if (!input.hasWebRtcRuntime && !agoraPath) {
     return input.platformOs === 'web' ? 'web_no_webrtc' : 'no_webrtc_module';
   }
   if (!String(input.peerUserId || '').trim()) return 'missing_peer';
@@ -54,7 +60,7 @@ export function nativeCallLaunchBlockedMessage(reason: NativeCallLaunchBlockReas
     case 'feature_disabled':
       return 'Les appels sont temporairement désactivés sur cette version.';
     case 'no_webrtc_module':
-      return 'Les appels nécessitent l’application AfriWonder installée (APK ou App Store). Expo Go ne prend pas en charge WebRTC.';
+      return 'Les appels nécessitent l’application AfriWonder installée (APK ou App Store).';
     case 'missing_peer':
       return 'Impossible d’appeler : contact introuvable.';
     default:

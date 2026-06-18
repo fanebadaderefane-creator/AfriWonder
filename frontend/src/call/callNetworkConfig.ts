@@ -93,6 +93,22 @@ export function callConnectionWatchdogMs(net: NetworkSnapshot | null | undefined
   return 60_000;
 }
 
+/**
+ * Attente half-trickle avant émission SDP (offer/answer) — relay TURN dans le SDP.
+ * Mali / 4G / unknown : TURN met plus de temps à produire un candidat `relay`.
+ */
+export function callHalfTrickleMaxWaitMs(input: {
+  turnConfigured: boolean;
+  net?: NetworkSnapshot | null;
+}): number {
+  if (!input.turnConfigured) return 3_000;
+  const type = String(input.net?.type || '').toLowerCase();
+  const gen = String(input.net?.cellularGeneration || '').toLowerCase();
+  if (isCellularNetwork(input.net) && (gen === '2g' || gen === '3g')) return 25_000;
+  if (isCellularNetwork(input.net) || type === 'unknown') return 20_000;
+  return 12_000;
+}
+
 /** Délai avant message « connexion lente » après acceptation. */
 export function callMediaReadyHintMs(net: NetworkSnapshot | null | undefined): number {
   const gen = String(net?.cellularGeneration || '').toLowerCase();
@@ -165,14 +181,37 @@ export function isWebLocalhostDevOrigin(): boolean {
 /**
  * Faut‑il forcer le relais TURN (`iceTransportPolicy: 'relay'`) ?
  *
- * TURN configuré → relais obligatoire **natif et web** : le P2P cross-border
- * (Maroc↔Mali) échoue même en Wi‑Fi ; les deux extrémités doivent utiliser Metered.
- * Exception : web sur localhost (dev) — autoriser host/srflx pour tests 2 navigateurs.
+ * Relais obligatoire sur **CGNAT cellulaire / unknown natif** (Maroc↔Mali 4G).
+ * Wi‑Fi / ethernet : ICE choisit host/srflx/relay — évite échec total si TURN UDP
+ * injoignable depuis l'opérateur (Orange/Moov Mali) tout en gardant TURN disponible.
+ * Web localhost : exception dev (2 onglets).
  */
 export function shouldForceTurnRelay(input: {
   turnConfigured: boolean;
   isWeb: boolean;
   net?: NetworkSnapshot | null | undefined;
+}): boolean {
+  if (!input.turnConfigured) return false;
+  if (input.isWeb && isWebLocalhostDevOrigin()) return false;
+
+  const type = String(input.net?.type || '').toLowerCase();
+  if (type === 'wifi' || type === 'ethernet') return false;
+
+  return true;
+}
+
+/**
+ * Faut‑il attendre un candidat `relay` dans le SDP sortant (half-trickle) ?
+ *
+ * **Distinct** de `shouldForceTurnRelay` (`iceTransportPolicy`) :
+ * - Wi‑Fi international Maroc↔Mali : policy `all` (évite échec total si TURN UDP bloqué)
+ *   mais le SDP DOIT quand même embarquer des candidats relay — sinon ICE n'a que
+ *   host/srflx inutilisables transfrontière → « Connexion média… » indéfinie.
+ * - Cellulaire / unknown natif : idem + policy `relay`.
+ */
+export function shouldRequireRelayInOutboundSdp(input: {
+  turnConfigured: boolean;
+  isWeb: boolean;
 }): boolean {
   if (!input.turnConfigured) return false;
   if (input.isWeb && isWebLocalhostDevOrigin()) return false;
@@ -244,7 +283,10 @@ function isUdpTurnUrl(url: string): boolean {
  * On garde TOUJOURS au moins un `turns:` quand il existe (garde
  * `shouldBlockNativeCellularWithoutTlsTurn`).
  */
-export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RTCIceServer[] {
+export function optimizeIceServersForNativeRelay(
+  iceServers: RTCIceServer[],
+  options?: { preferTlsFirst?: boolean },
+): RTCIceServer[] {
   if (iceServers.length === 0) return iceServers;
 
   const stunEntries: RTCIceServer[] = [];
@@ -275,13 +317,10 @@ export function optimizeIceServersForNativeRelay(iceServers: RTCIceServer[]): RT
 
   const udpTurnUrls = plainTurnUrls.filter(isUdpTurnUrl);
   const tcpPlainTurnUrls = plainTurnUrls.filter((u) => !isUdpTurnUrl(u));
-  const chosenTurnUrls = [
-    ...new Set([
-      ...udpTurnUrls,
-      ...sortTurnUrlsPreferTls(turnsUrls),
-      ...tcpPlainTurnUrls,
-    ]),
-  ];
+  const sortedTls = sortTurnUrlsPreferTls(turnsUrls);
+  const chosenTurnUrls = options?.preferTlsFirst
+    ? [...new Set([...sortedTls, ...udpTurnUrls, ...tcpPlainTurnUrls])]
+    : [...new Set([...udpTurnUrls, ...sortedTls, ...tcpPlainTurnUrls])];
   if (chosenTurnUrls.length === 0 || !username || !credential) {
     return iceServers;
   }
@@ -333,6 +372,7 @@ export function prepareIceServersForPlatform(input: {
   isWeb: boolean;
   turnConfigured: boolean;
   iceServers: RTCIceServer[];
+  net?: NetworkSnapshot | null;
 }): RTCIceServer[] {
   if (input.isWeb) {
     return prepareIceServersForWeb(input.iceServers);
@@ -340,7 +380,12 @@ export function prepareIceServersForPlatform(input: {
   if (!input.turnConfigured) {
     return input.iceServers;
   }
-  return optimizeIceServersForNativeRelay(input.iceServers);
+  const preferTlsFirst = shouldForceTurnRelay({
+    turnConfigured: true,
+    isWeb: false,
+    net: input.net,
+  });
+  return optimizeIceServersForNativeRelay(input.iceServers, { preferTlsFirst });
 }
 
 /** Cellulaire natif + relais TURN obligatoire : exige au moins une URL `turns:`. */
@@ -388,6 +433,7 @@ export function buildCallIceConfig(input: {
       isWeb: false,
       turnConfigured: input.turnConfigured,
       iceServers: input.iceServers,
+      net: input.net,
     }),
     iceCandidatePoolSize: CALL_ICE_CANDIDATE_POOL_SIZE,
     bundlePolicy: 'max-bundle' as RTCBundlePolicy,

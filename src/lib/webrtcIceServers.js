@@ -29,12 +29,36 @@ export function setTemporaryTurnCredentials(payload) {
   }
 }
 
+/** Préfère turns:443 / TCP — opérateurs Mali bloquent souvent UDP 3478. */
+function sortTurnUrlsPreferTls(urls) {
+  const list = Array.isArray(urls) ? urls.map(String) : [String(urls)];
+  return [...list].sort((a, b) => {
+    const score = (u) => {
+      const lower = String(u).toLowerCase();
+      let s = 0;
+      if (lower.startsWith('turns:')) s += 100;
+      else if (lower.startsWith('turn:')) s += 10;
+      if (lower.includes('transport=tcp')) s += 20;
+      if (lower.includes(':443')) s += 5;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+}
+
+function normalizeTurnUrls(urls) {
+  if (!urls) return urls;
+  const sorted = sortTurnUrlsPreferTls(urls);
+  return sorted.length === 1 ? sorted[0] : sorted;
+}
+
 /**
  * Configuration RTCPeerConnection pour DirectCall (et futurs appels WebRTC).
  * - STUN publics Google (développement / réseaux ouverts).
  * - TURN temporaire via API backend prioritaire (credentials short-lived).
  * - Fallback env VITE_TURN_* uniquement pour dev local.
- * - VITE_ICE_TRANSPORT_POLICY=relay pour forcer le relais (debug NAT strict).
+ * - iceTransportPolicy: 'all' par défaut (host+srflx+relay) — Maroc↔Maroc intact.
+ * - VITE_ICE_TRANSPORT_POLICY=relay pour forcer le relais (debug NAT strict uniquement).
  */
 export function getWebRtcConfiguration() {
   const iceServers = [
@@ -45,7 +69,7 @@ export function getWebRtcConfiguration() {
   const cachedTurn = getCachedTurnCredentials();
   if (cachedTurn) {
     iceServers.push({
-      urls: cachedTurn.urls,
+      urls: normalizeTurnUrls(cachedTurn.urls),
       username: cachedTurn.username,
       credential: cachedTurn.credential,
     });
@@ -69,15 +93,10 @@ export function getWebRtcConfiguration() {
       .split(',')
       .map((u) => u.trim())
       .filter(Boolean);
-    if (urls.length === 1) {
+    const sorted = normalizeTurnUrls(urls);
+    if (sorted) {
       iceServers.push({
-        urls: urls[0],
-        username: turnUsername,
-        credential: turnCredential,
-      });
-    } else if (urls.length > 1) {
-      iceServers.push({
-        urls,
+        urls: sorted,
         username: turnUsername,
         credential: turnCredential,
       });
@@ -88,16 +107,14 @@ export function getWebRtcConfiguration() {
     typeof import.meta !== 'undefined' && import.meta.env?.VITE_ICE_TRANSPORT_POLICY
       ? String(import.meta.env.VITE_ICE_TRANSPORT_POLICY).trim().toLowerCase()
       : '';
-  const turnConfigured = Boolean(
-    cachedTurn?.urls ||
-      (turnUrlRaw && turnUsername && turnCredential),
-  );
-  const iceTransportPolicy =
-    policyRaw === 'relay' || turnConfigured ? 'relay' : undefined;
+  /** 'all' : ICE choisit host/srflx/relay — évite échec total si TURN UDP injoignable (Mali CGNAT). */
+  const iceTransportPolicy = policyRaw === 'relay' ? 'relay' : 'all';
 
   return {
     iceServers,
     iceCandidatePoolSize: 10,
-    ...(iceTransportPolicy ? { iceTransportPolicy } : {}),
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
+    iceTransportPolicy,
   };
 }

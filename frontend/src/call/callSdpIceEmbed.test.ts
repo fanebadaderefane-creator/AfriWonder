@@ -7,6 +7,7 @@ import {
   iceCandidateInitCounts,
   shouldAwaitIceBeforeOutboundSdp,
   shouldAwaitMinimalIceBeforeAnswerEmbed,
+  shouldBlockOutboundSdpWithoutRequiredRelay,
   minimalIceGatherReady,
 } from './callSdpIceEmbed';
 
@@ -107,5 +108,19 @@ describe('minimal answer ICE embed', () => {
     expect(minimalIceGatherReady(0, 'gathering')).toBe(false);
     expect(minimalIceGatherReady(1, 'gathering')).toBe(true);
     expect(minimalIceGatherReady(0, 'complete')).toBe(true);
+  });
+});
+
+describe('shouldBlockOutboundSdpWithoutRequiredRelay', () => {
+  it('bloque answer/offer sans relay quand requireRelay', () => {
+    expect(shouldBlockOutboundSdpWithoutRequiredRelay({ requireRelay: true, relayCount: 0 })).toBe(
+      true,
+    );
+    expect(shouldBlockOutboundSdpWithoutRequiredRelay({ requireRelay: true, relayCount: 2 })).toBe(
+      false,
+    );
+    expect(shouldBlockOutboundSdpWithoutRequiredRelay({ requireRelay: false, relayCount: 0 })).toBe(
+      false,
+    );
   });
 });

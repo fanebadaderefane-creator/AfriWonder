@@ -62,6 +62,11 @@ export const featureFlags = {
    */
   callsOnNative: readEnvFlag('EXPO_PUBLIC_ENABLE_NATIVE_CALLS', true),
   /**
+   * Appels DM 1:1 — média Agora RTC (natif). Désactiver pour revenir au WebRTC/TURN :
+   * `EXPO_PUBLIC_DM_CALLS_AGORA=0`
+   */
+  dmCallsAgora: readEnvFlag('EXPO_PUBLIC_DM_CALLS_AGORA', true),
+  /**
    * Paid Video Calls (User ↔ Star) — module isolé, backend `/api/stars/*`.
    * Désactiver via `EXPO_PUBLIC_ENABLE_STAR_CALLS=0` si besoin (build interne).
    * Par défaut : **on** (parité produit : l’écran charge les données réelles ou états vides).

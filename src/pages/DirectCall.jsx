@@ -95,6 +95,8 @@ export default function DirectCallPage() {
   const targetUserId = mode === 'outgoing' ? receiverId : callerId;
 
   const localVideoRef = useRef(null);
+  /** PiP actif — ref séparée (un ref React ne peut pointer que vers un seul <video>). */
+  const localPipRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -327,7 +329,28 @@ export default function DirectCallPage() {
     onAccept: async (payload) => {
       if (mode !== 'outgoing') return;
       if (!callUserIdsEqual(payload?.fromUserId, targetUserId) || !callIdsEqual(payload?.callId, callId)) return;
+
+      /** Attendre getUserMedia — offer sans piste audio = answer vide = DTLS bloqué (Maroc↔Mali). */
+      const MEDIA_WAIT_MS = 100;
+      const MEDIA_WAIT_MAX = 80;
+      for (let i = 0; i < MEDIA_WAIT_MAX; i += 1) {
+        if (localStreamRef.current) break;
+        await new Promise((r) => setTimeout(r, MEDIA_WAIT_MS));
+      }
+      if (!localStreamRef.current) {
+        toast.error("Impossible d'accéder au micro — appel annulé");
+        return;
+      }
+
       const pc = await ensurePeerConnection(emit, user.id, targetUserId);
+      if (
+        localStreamRef.current &&
+        !(pc.getSenders?.() ?? []).some((sender) => sender.track?.kind === 'audio')
+      ) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          pc.addTrack(track, localStreamRef.current);
+        });
+      }
       pruneRedundantCallTransceivers(pc);
       const offer = await pc.createOffer(callSdpNegotiationOptions());
       await pc.setLocalDescription(offer);
@@ -396,6 +419,7 @@ export default function DirectCallPage() {
             throw firstErr;
           }
         }
+        /** Offer ET answer : candidats ICE reçus avant setRemoteDescription (file pendingCandidates). */
         await applyPendingCandidates(pc);
         if (remoteSdp.type === 'offer') {
           pruneRedundantCallTransceivers(pc);
@@ -518,6 +542,7 @@ export default function DirectCallPage() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        if (localPipRef.current) localPipRef.current.srcObject = stream;
         if (autoAccept && mode === 'incoming' && !receiverAcceptSentRef.current && user?.id && targetUserId) {
           receiverAcceptSentRef.current = true;
           autoAcceptedRef.current = true;
@@ -546,7 +571,9 @@ export default function DirectCallPage() {
     if (callType !== 'video') return;
     const stream = localStreamRef.current;
     const el = localVideoRef.current;
+    const pip = localPipRef.current;
     if (stream && el && el.srcObject !== stream) el.srcObject = stream;
+    if (stream && pip && pip.srcObject !== stream) pip.srcObject = stream;
   }, [callType, user, remoteUser, callStatus]);
 
   useEffect(() => {
@@ -929,7 +956,7 @@ export default function DirectCallPage() {
 
         {callType === 'video' && callStatus !== 'ringing' ? (
           <div className="absolute top-16 right-4 z-20 w-20 h-24 rounded-2xl bg-slate-700/90 border border-white/20 overflow-hidden flex items-center justify-center">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <video ref={localPipRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <span className="absolute bottom-2 left-2 text-[11px] font-semibold text-white">You</span>
           </div>
         ) : null}

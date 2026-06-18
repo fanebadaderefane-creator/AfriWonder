@@ -16,6 +16,8 @@ import { resolveMeteredTurnRelayHosts } from '../services/meteredTurnRegions.js'
 import { recordCallLogMessage } from '../services/callLogMessage.service.js';
 import type { CallLogOutcome } from '../utils/callLogPayload.js';
 import { parseCallHistoryLimit } from '../utils/callHistoryLimit.js';
+import liveService from '../services/live.service.js';
+import { agoraDmChannelFromCallId } from '../utils/agoraDmChannel.js';
 
 const router = Router();
 
@@ -127,6 +129,52 @@ router.get('/turn-credentials', authenticate, async (req: AuthRequest, res) => {
     });
   }
   return res.json({ success: true, data: creds });
+});
+
+/** GET /api/calls/:callId/agora-token — token RTC Agora pour appel DM 1:1 (remplace TURN/WebRTC média). */
+router.get('/:callId/agora-token', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const callId = param(req, 'callId');
+    if (!callId) {
+      return res.status(400).json({ success: false, error: { message: 'callId requis' } });
+    }
+
+    const call = await prisma.directCall.findUnique({ where: { id: callId } });
+    if (call && ![call.caller_id, call.receiver_id].includes(userId)) {
+      return res.status(403).json({ success: false, error: { message: 'Accès interdit à cet appel' } });
+    }
+
+    const channel = agoraDmChannelFromCallId(callId);
+    const agora = await liveService.getAgoraToken(channel, userId, 'host');
+    if (!agora) {
+      return res.json({
+        success: true,
+        data: {
+          agora: null,
+          mediaEngine: 'agora',
+          message: 'Agora non configuré (AGORA_APP_ID / AGORA_APP_CERTIFICATE)',
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        agora: {
+          appId: agora.appId,
+          channel: agora.channel,
+          token: agora.token,
+          uid: agora.uid,
+          expireTime: agora.expireTime,
+        },
+        mediaEngine: 'agora',
+        callId,
+      },
+    });
+  } catch (error: unknown) {
+    next(error);
+  }
 });
 
 /** GET /api/calls/history — journal récent (audit juin 2026, persistance hors socket seul). */

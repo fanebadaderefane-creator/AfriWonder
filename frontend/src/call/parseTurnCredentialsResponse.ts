@@ -13,6 +13,8 @@ export const DEFAULT_STUN_FALLBACKS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' },
   { urls: 'stun:stun.relay.metered.ca:80' },
+  /** Port 443 — souvent non filtré sur CGNAT Orange/Moov Mali (UDP 80 bloqué). */
+  { urls: 'stun:stun.relay.metered.ca:443' },
 ];
 
 export type ParsedTurnCredentials = {

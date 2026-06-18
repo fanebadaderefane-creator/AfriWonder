@@ -6,6 +6,7 @@ import {
   VOICE_OPUS_BITRATE_DEFAULT,
   buildCallIceConfig,
   callConnectionWatchdogMs,
+  callHalfTrickleMaxWaitMs,
   callMediaReadyHintMs,
   isCellularNetwork,
   isSlowCellularNetwork,
@@ -17,6 +18,7 @@ import {
   resolveOutboundCallTypeForNetwork,
   shouldBlockCellularWithoutTurn,
   shouldForceTurnRelay,
+  shouldRequireRelayInOutboundSdp,
   optimizeIceServersForNativeRelay,
   prepareIceServersForPlatform,
   prepareIceServersForWeb,
@@ -119,17 +121,30 @@ describe('shouldForceTurnRelay — CGNAT Afrique / Maroc↔Mali', () => {
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
     ).toBe(true);
   });
-  it('natif + TURN → relais forcé même en Wi‑Fi (cross-border Maroc↔Mali)', () => {
+  it('natif cellular/unknown + TURN → relais forcé (CGNAT Maroc↔Mali)', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'ethernet' } }),
+    ).toBe(false);
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'unknown' } }),
     ).toBe(true);
+    expect(
+      shouldForceTurnRelay({
+        turnConfigured: true,
+        isWeb: false,
+        net: { type: 'cellular', cellularGeneration: '4g' },
+      }),
+    ).toBe(true);
   });
-  it('web + Wi‑Fi + TURN → relais forcé (parité Maroc↔Mali cross-border)', () => {
+  it('web + Wi‑Fi + TURN → pas de relais forcé (srflx/relay parallèle)', () => {
     expect(
       shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'wifi' } }),
+    ).toBe(false);
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: true, net: { type: 'cellular' } }),
     ).toBe(true);
   });
   it('sans TURN → pas de relais forcé', () => {
@@ -148,6 +163,32 @@ describe('shouldForceTurnRelay — CGNAT Afrique / Maroc↔Mali', () => {
     } finally {
       g.location = prev;
     }
+  });
+});
+
+describe('shouldRequireRelayInOutboundSdp — distinct de iceTransportPolicy', () => {
+  it('TURN configuré → relay requis dans le SDP même en Wi‑Fi (Maroc↔Mali international)', () => {
+    expect(
+      shouldRequireRelayInOutboundSdp({ turnConfigured: true, isWeb: false }),
+    ).toBe(true);
+    expect(
+      shouldRequireRelayInOutboundSdp({ turnConfigured: true, isWeb: true }),
+    ).toBe(true);
+  });
+
+  it('sans TURN → pas d’attente relay dans le SDP', () => {
+    expect(
+      shouldRequireRelayInOutboundSdp({ turnConfigured: false, isWeb: false }),
+    ).toBe(false);
+  });
+
+  it('découplage Wi‑Fi : policy all mais SDP doit embarquer relay', () => {
+    expect(
+      shouldForceTurnRelay({ turnConfigured: true, isWeb: false, net: { type: 'wifi' } }),
+    ).toBe(false);
+    expect(
+      shouldRequireRelayInOutboundSdp({ turnConfigured: true, isWeb: false }),
+    ).toBe(true);
   });
 });
 
@@ -173,6 +214,17 @@ describe('réseaux lents 2G/3G — vocal et délais', () => {
     expect(callConnectionWatchdogMs({ type: 'wifi' })).toBe(60_000);
     expect(callMediaReadyHintMs({ type: 'cellular', cellularGeneration: '2g' })).toBe(35_000);
     expect(callMediaReadyHintMs({ type: 'cellular', cellularGeneration: '3g' })).toBe(28_000);
+  });
+  it('callHalfTrickleMaxWaitMs — Mali 4G/unknown plus long que Wi‑Fi', () => {
+    expect(callHalfTrickleMaxWaitMs({ turnConfigured: false })).toBe(3_000);
+    expect(callHalfTrickleMaxWaitMs({ turnConfigured: true, net: { type: 'wifi' } })).toBe(12_000);
+    expect(
+      callHalfTrickleMaxWaitMs({ turnConfigured: true, net: { type: 'cellular', cellularGeneration: '4g' } }),
+    ).toBe(20_000);
+    expect(callHalfTrickleMaxWaitMs({ turnConfigured: true, net: { type: 'unknown' } })).toBe(20_000);
+    expect(
+      callHalfTrickleMaxWaitMs({ turnConfigured: true, net: { type: 'cellular', cellularGeneration: '2g' } }),
+    ).toBe(25_000);
   });
   it('resolveOutboundCallTypeForNetwork — 2G vidéo → vocal', () => {
     expect(
@@ -236,7 +288,7 @@ describe('buildCallIceConfig', () => {
       iceServers: TURN,
       turnConfigured: true,
       isWeb: true,
-      net: { type: 'wifi' },
+      net: { type: 'cellular', cellularGeneration: '3g' },
     });
     expect(web.iceTransportPolicy).toBe('relay');
     expect(web.iceCandidatePoolSize).toBe(10);
@@ -254,14 +306,14 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
-  it('Wi‑Fi + TURN natif → relay forcé (Maroc↔Mali cross-border)', () => {
+  it('Wi‑Fi + TURN natif → pas de relay forcé (srflx + TURN en parallèle)', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: false,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBe('relay');
+    expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 
   it('web + TURN + cellulaire → relay forcé', () => {
@@ -274,14 +326,14 @@ describe('buildCallIceConfig', () => {
     expect(cfg.iceTransportPolicy).toBe('relay');
   });
 
-  it('web + TURN + Wi‑Fi → relay forcé (cross-border)', () => {
+  it('web + TURN + Wi‑Fi → pas de relay forcé', () => {
     const cfg = buildCallIceConfig({
       iceServers: TURN,
       turnConfigured: true,
       isWeb: true,
       net: { type: 'wifi' },
     });
-    expect(cfg.iceTransportPolicy).toBe('relay');
+    expect(cfg.iceTransportPolicy).toBeUndefined();
   });
 });
 
@@ -333,6 +385,17 @@ describe('optimizeIceServersForNativeRelay', () => {
     expect(turnEntry.credential).toBe('c1');
   });
 
+  it('preferTlsFirst — CGNAT cellulaire : turns: avant UDP (Orange/Moov Mali)', () => {
+    const meteredLike: RTCIceServer[] = [
+      { urls: 'stun:stun.relay.metered.ca:80' },
+      { urls: 'turn:global.relay.metered.ca:80', username: 'u1', credential: 'c1' },
+      { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'u1', credential: 'c1' },
+    ];
+    const out = optimizeIceServersForNativeRelay(meteredLike, { preferTlsFirst: true });
+    const urls = Array.isArray(out[1].urls) ? out[1].urls : [out[1].urls];
+    expect(urls[0]).toBe('turns:global.relay.metered.ca:443?transport=tcp');
+  });
+
   it('repli turn: si aucun turns: dans la réponse', () => {
     const plain: RTCIceServer[] = [
       { urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' },
@@ -376,7 +439,7 @@ describe('shouldBlockNativeCellularWithoutTlsTurn', () => {
         net: { type: 'wifi' },
         iceServers: [{ urls: 'turn:relay.example.com:3478', username: 'u', credential: 'c' }],
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldBlockNativeCellularWithoutTlsTurn({
         isWeb: false,

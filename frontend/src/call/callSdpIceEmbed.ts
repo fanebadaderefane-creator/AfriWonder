@@ -144,6 +144,18 @@ export function minimalIceGatherReady(
 export const MINIMAL_ANSWER_ICE_WAIT_MS = 450;
 export const MINIMAL_ANSWER_ICE_POLL_MS = 50;
 
+/**
+ * Ne pas émettre offer/answer « nus » quand TURN exige un relay dans le SDP
+ * (symptôme prod Maroc↔Mali : `ANSWER_RX iceRelay:0` → ICE `new`, DTLS `new`).
+ * Retourne `false` depuis `sendSdpFromPeerConnection` → boucles de retry (answer/offer).
+ */
+export function shouldBlockOutboundSdpWithoutRequiredRelay(input: {
+  requireRelay: boolean;
+  relayCount: number;
+}): boolean {
+  return input.requireRelay && input.relayCount <= 0;
+}
+
 export function buildOutboundSdpWithEmbeddedIce(input: {
   sdp: string;
   type: string;

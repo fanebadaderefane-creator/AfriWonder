@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, createElement, memo } from 'react';
+import { DirectCallAgoraScreen } from '../../src/call/DirectCallAgoraScreen';
+import { shouldUseAgoraDmCalls } from '../../src/call/dmCallMediaEngine';
 import {
   View,
   Text,
@@ -73,6 +75,7 @@ import {
 import {
   buildCallIceConfig,
   callConnectionWatchdogMs,
+  callHalfTrickleMaxWaitMs,
   callMediaReadyHintMs,
   prepareIceServersForPlatform,
   pickVideoProfileForNetwork,
@@ -82,6 +85,7 @@ import {
   shouldBlockCellularWithoutTurn,
   shouldBlockNativeCellularWithoutTlsTurn,
   shouldForceTurnRelay,
+  shouldRequireRelayInOutboundSdp,
   type NetworkSnapshot,
   type VideoQualityProfile as NetVideoQualityProfile,
 } from '../../src/call/callNetworkConfig';
@@ -132,7 +136,7 @@ import {
   type CallSignalSdpPayload,
 } from '../../src/call/callSignalingPayload';
 import { CallIceOutbox } from '../../src/call/callIceOutbox';
-import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce, shouldAwaitIceBeforeOutboundSdp, shouldAwaitMinimalIceBeforeAnswerEmbed, minimalIceGatherReady, MINIMAL_ANSWER_ICE_WAIT_MS, MINIMAL_ANSWER_ICE_POLL_MS } from '../../src/call/callSdpIceEmbed';
+import { decideIceGatheringWaitWithBuffer, buildOutboundSdpWithEmbeddedIce, shouldAwaitIceBeforeOutboundSdp, shouldAwaitMinimalIceBeforeAnswerEmbed, shouldBlockOutboundSdpWithoutRequiredRelay, iceCandidateInitCounts, minimalIceGatherReady, MINIMAL_ANSWER_ICE_WAIT_MS, MINIMAL_ANSWER_ICE_POLL_MS } from '../../src/call/callSdpIceEmbed';
 import { shouldRefreshNativeRemoteAudioPlayback } from '../../src/call/callNativeRemotePlayback';
 import {
   CALL_NATIVE_STREAM_GUARD_TAG,
@@ -346,11 +350,9 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 const CALL_RING_MS = 30_000;
-/** Half-trickle ICE : attente max d'un candidat relay avant émission SDP. */
-const HALF_TRICKLE_MAX_WAIT_MS = 3_000;
-/** TURN + latence Maroc↔Mali — laisser le temps au candidat relay (audit juin 2026). */
-const HALF_TRICKLE_MAX_WAIT_MS_TURN = 12_000;
 const HALF_TRICKLE_POLL_MS = 150;
+/** Receveur Mali : plusieurs essais jusqu'à relay dans l'answer (ne pas envoyer iceRelay:0). */
+const ANSWER_SEND_RETRY_DELAYS_MS = [0, 400, 2_000, 5_000, 8_000, 12_000, 16_000, 20_000] as const;
 const isWebRuntime = Platform.OS === 'web';
 
 /** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
@@ -930,12 +932,19 @@ function CallScreenInner() {
       return sdpContainsMedia(sdp, 'video');
     };
 
-    /** Relais TURN strict (Maroc↔Mali) — natif toujours ; web sur cellulaire/CGNAT. */
+    /** Relais TURN strict (iceTransportPolicy) — cellulaire/unknown natif uniquement. */
     const callForceTurnRelay = (): boolean =>
       shouldForceTurnRelay({
         turnConfigured: turnConfiguredRef.current,
         isWeb: isWebRuntime,
         net: iceNetSnapshotRef.current,
+      });
+
+    /** Half-trickle : embarquer relay dans le SDP dès que TURN configuré (y compris Wi‑Fi international). */
+    const callRequireRelayInSdp = (): boolean =>
+      shouldRequireRelayInOutboundSdp({
+        turnConfigured: turnConfiguredRef.current,
+        isWeb: isWebRuntime,
       });
 
     const applyLocalDescription = async (
@@ -1584,8 +1593,11 @@ function CallScreenInner() {
     const awaitIceCandidatesInLocalSdp = async (pc: RTCPeerConnection | null): Promise<void> => {
       if (!pc || !pc.localDescription?.sdp) return;
       const startedAt = Date.now();
-      const maxWaitMs = turnConfiguredRef.current ? HALF_TRICKLE_MAX_WAIT_MS_TURN : HALF_TRICKLE_MAX_WAIT_MS;
-      const requireRelay = callForceTurnRelay();
+      const maxWaitMs = callHalfTrickleMaxWaitMs({
+        turnConfigured: turnConfiguredRef.current,
+        net: iceNetSnapshotRef.current,
+      });
+      const requireRelay = callRequireRelayInSdp();
       for (;;) {
         const decision = decideIceGatheringWaitWithBuffer({
           iceGatheringState: pc.iceGatheringState,
@@ -1685,6 +1697,31 @@ function CallScreenInner() {
         type: picked.type,
         gatheredCandidates: localGatheredIceRef.current,
       });
+      const requireRelayInSdp = callRequireRelayInSdp();
+      if (
+        shouldBlockOutboundSdpWithoutRequiredRelay({
+          requireRelay: requireRelayInSdp,
+          relayCount: built.counts.relay,
+        })
+      ) {
+        logCallPhase(callIdRef.current, 'sdp_send_deferred', {
+          reason: 'relay_missing',
+          type: built.type,
+          iceRelay: built.counts.relay,
+          iceTotal: built.counts.total,
+          requireRelay: requireRelayInSdp,
+        });
+        if (isAnswerOutbound) {
+          logAnswerSendError({
+            callId: callIdRef.current,
+            role,
+            reason: 'relay_missing',
+            toUserId: otherUserId,
+            ...summarizeCallSdp(built.sdp, built.type),
+          });
+        }
+        return false;
+      }
       const outbound = {
         type: built.type as CallSignalSdpPayload['type'],
         sdp: built.sdp,
@@ -1745,8 +1782,8 @@ function CallScreenInner() {
       return true;
     };
 
-    /** Réémet l'offre si l'answer n'arrive pas (filet avant watchdog 60 s). */
-    const OFFER_RESEND_UNTIL_ANSWER_MS = [4_000, 10_000, 20_000] as const;
+    /** Réémet l'offre si l'answer n'arrive pas (filet avant watchdog 60 s — Maroc↔Mali). */
+    const OFFER_RESEND_UNTIL_ANSWER_MS = [4_000, 10_000, 20_000, 35_000, 50_000] as const;
     let offerResendTimers: ReturnType<typeof setTimeout>[] = [];
     const clearOfferResendTimers = () => {
       for (const timer of offerResendTimers) clearTimeout(timer);
@@ -1870,11 +1907,10 @@ function CallScreenInner() {
           return;
         }
 
-        if (isIceStillNegotiating(ice) || state === 'connecting' || state === 'new') {
-          armConnectionWatchdog();
-          return;
-        }
-
+        /**
+         * Answer SDP manquante : ice reste `new` — ne pas court-circuiter la réémission
+         * d'offre (symptôme Maroc↔Mali : hasRemoteSdp=false, « Connexion média… »).
+         */
         if (
           shouldResendCallerOffer({
             role,
@@ -1886,13 +1922,23 @@ function CallScreenInner() {
             }),
             hasRemoteDescription: Boolean(pc.remoteDescription),
             resendCount: callerOfferResendCountRef.current,
+            maxResends: 4,
           })
         ) {
           callerOfferResendCountRef.current += 1;
-          void sendSdpFromPeerConnection(pc, pc.localDescription);
+          void sendSdpFromPeerConnection(
+            pc,
+            lastCallerOfferSdpRef ?? pc.localDescription ?? undefined,
+          );
           logCallPhase(callIdRef.current, 'sdp_resend_offer', {
             attempt: callerOfferResendCountRef.current,
+            source: 'watchdog_missing_answer',
           });
+          armConnectionWatchdog();
+          return;
+        }
+
+        if (isIceStillNegotiating(ice) || state === 'connecting' || state === 'new') {
           armConnectionWatchdog();
           return;
         }
@@ -2181,6 +2227,14 @@ function CallScreenInner() {
             ...summarizeCallSdp(remoteSdp.sdp, remoteSdp.type),
           });
           if (isInboundAnswer) {
+            if (String(pc.signalingState || '') === 'stable') {
+              logCallPhase(callIdRef.current, 'signal_ignored', {
+                kind: 'sdp',
+                reason: 'answer_duplicate_stable',
+                signalingState: pc.signalingState,
+              });
+              return;
+            }
             logAnswerRx({
               callId: callIdRef.current,
               role,
@@ -2237,6 +2291,14 @@ function CallScreenInner() {
                 throw firstErr;
               }
             } else {
+              if (isInboundAnswer && role === 'caller') {
+                scheduleOfferResendUntilAnswer();
+                logAfwCall('answer_set_remote_failed_reschedule_offer', {
+                  callId: callIdRef.current,
+                  role,
+                  message: String((firstErr as Error)?.message || firstErr || ''),
+                });
+              }
               throw firstErr;
             }
           }
@@ -2254,6 +2316,8 @@ function CallScreenInner() {
           }
           maybeMarkCallConnected(remoteStreamRef.current as MediaStream, 'audio');
           if (remoteSdp.type === 'offer') {
+            // Candidats pré-offre (mauvais sdpMid) — repartir à zéro pour l'answer (Maroc↔Mali).
+            localGatheredIceRef.current = [];
             const offerHasVideo = sdpContainsMedia(remoteSdp.sdp, 'video');
             if (offerHasVideo && !isVideoCallRef.current) {
               const camOk = await attachVideoToActiveCall();
@@ -2308,18 +2372,33 @@ function CallScreenInner() {
               hasAudio: sdpContainsMedia(localAns?.sdp ?? ans.sdp, 'audio'),
               hasVideo: sdpContainsMedia(localAns?.sdp ?? ans.sdp, 'video'),
             });
-            let answerSent = await sendSdpFromPeerConnection(pc, ans);
-            if (!answerSent) {
-              await new Promise((resolve) => setTimeout(resolve, 350));
+            let answerSent = false;
+            for (const delayMs of ANSWER_SEND_RETRY_DELAYS_MS) {
+              if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+              }
+              if (cancelled || pcTearingDownRef.current) break;
               answerSent = await sendSdpFromPeerConnection(pc, pc.localDescription ?? ans);
+              if (answerSent) break;
             }
             if (!answerSent) {
+              const relayBuf = iceCandidateInitCounts(localGatheredIceRef.current).relay;
               logAnswerSendError({
                 callId: callIdRef.current,
                 role,
                 reason: 'answer_send_exhausted',
                 toUserId: otherUserId,
+                relayInBuffer: relayBuf,
+                bufferLen: localGatheredIceRef.current.length,
               });
+              logCallPhase(callIdRef.current, 'answer_relay_missing', {
+                relayInBuffer: relayBuf,
+                bufferLen: localGatheredIceRef.current.length,
+                turnConfigured: turnConfiguredRef.current,
+              });
+              setErrorMsg(
+                'Relais TURN indisponible — impossible d’établir l’audio. Réessayez en Wi‑Fi ou plus tard.',
+              );
             } else {
               refreshNativeRemoteAudioPlayback('sdp_local_answer', pc);
             }
@@ -3012,17 +3091,7 @@ function CallScreenInner() {
             /* Endpoint indisponible : STUN locaux uniquement. */
           }
         }
-        iceServers = prepareIceServersForPlatform({
-          isWeb: isWebRuntime,
-          turnConfigured,
-          iceServers,
-        });
-        if (setupStale()) return;
 
-        /**
-         * Mobile Afrique : relais TURN forcé sur cellulaire (2G/3G/4G) si TURN configuré (CGNAT opérateur).
-         * Logique pure + testée dans `callNetworkConfig.ts`.
-         */
         let iceNetSnapshot: NetworkSnapshot = { type: 'unknown' };
         try {
           const net = await NetInfo.fetch();
@@ -3036,6 +3105,19 @@ function CallScreenInner() {
         }
         iceNetSnapshotRef.current = iceNetSnapshot;
         turnConfiguredRef.current = turnConfigured;
+
+        iceServers = prepareIceServersForPlatform({
+          isWeb: isWebRuntime,
+          turnConfigured,
+          iceServers,
+          net: iceNetSnapshot,
+        });
+        if (setupStale()) return;
+
+        /**
+         * Mobile Afrique : relais TURN forcé sur cellulaire (2G/3G/4G) si TURN configuré (CGNAT opérateur).
+         * Logique pure + testée dans `callNetworkConfig.ts`.
+         */
         if (
           shouldBlockCellularWithoutTurn({
             turnConfigured,
@@ -3245,6 +3327,10 @@ function CallScreenInner() {
             enableRemoteAudioTracks(remote);
             if (!isWebRuntime) {
               refreshNativeRemoteAudioPlayback('ice_connected', pc);
+              /** Vidéo distante tardive côté appelant — rebind RTCView (PiP noir). */
+              if (isVideoCallRef.current && role === 'caller') {
+                bindNativeRemoteStreamToRtcView(remote);
+              }
             }
             maybeMarkCallConnected(remote, 'audio');
           }
@@ -4799,6 +4885,9 @@ function CallScreenInner() {
 }
 
 export default function CallScreen() {
+  if (Platform.OS !== 'web' && shouldUseAgoraDmCalls()) {
+    return <DirectCallAgoraScreen />;
+  }
   return (
     <CallScreenErrorBoundary>
       <CallScreenInner />
