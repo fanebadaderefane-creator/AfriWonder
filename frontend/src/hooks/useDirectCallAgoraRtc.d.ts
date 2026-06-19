@@ -18,16 +18,19 @@ export interface DirectCallAgoraRtcResult {
   joined: boolean;
   error: string | null;
   remoteJoined: boolean;
+  remoteEverJoined: boolean;
   micOn: boolean;
   camOn: boolean;
   screenSharing: boolean;
   connectionDisplay: ConnectionQualityDisplay;
   videoPublished: boolean;
+  previewActive: boolean;
   toggleMic: () => void;
   toggleCam: () => void;
   toggleScreenShare: () => Promise<{ ok: boolean; on?: boolean; message?: string }>;
   upgradeToVideo: () => Promise<{ ok: boolean; message?: string }>;
   leave: () => Promise<void>;
+  refreshLocalPreview: (reason: string) => void;
   LocalView: (props: { style?: StyleProp<ViewStyle> }) => ReactNode;
   RemoteView: (props: { style?: StyleProp<ViewStyle> }) => ReactNode;
 }

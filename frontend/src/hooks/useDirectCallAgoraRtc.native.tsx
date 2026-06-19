@@ -6,9 +6,21 @@ import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { IRtcEngine, IRtcEngineEventHandler } from 'react-native-agora';
 import apiClient from '../api/client';
 import { connectionQualityFromAgoraNetwork } from '../call/agoraConnectionQuality';
+import {
+  ensureAgoraFrontCamera,
+  logAgoraSwitchCamera,
+  logCameraFacingSelected,
+  logLocalStreamAttached,
+  rebindAgoraLocalPreview,
+} from '../call/agoraCallVideoBind.native';
+import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
 import { logAfwCall } from '../call/callDiagnosticLog';
 import { requestNativeCallPermissions } from '../call/callNativeMedia';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
+import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
+import { AgoraRemoteVideoSurface } from '../call/agoraRemoteVideoSurface.native';
+import { useAgoraDmCallUiStore } from '../call/agoraDmCallUiStore';
+import { consumeAgoraDmPreviewEngine, releaseAgoraDmPreviewSession } from '../call/agoraDmPreviewSession';
 import type { ConnectionQualityDisplay } from '../call/webrtcConnectionQuality';
 import type { DirectCallAgoraRtcOptions, DirectCallAgoraRtcResult } from './useDirectCallAgoraRtc.d';
 
@@ -40,12 +52,14 @@ function noteRemotePeer(
   remoteNotifiedRef: React.MutableRefObject<boolean>,
   setRemoteUid: (uid: number) => void,
   setRemoteJoined: (v: boolean) => void,
+  setRemoteEverJoined: (v: boolean) => void,
   onRemoteJoinedRef: React.MutableRefObject<(() => void) | undefined>,
 ) {
   if (remoteUidRef.current === uid && remoteNotifiedRef.current) return;
   remoteUidRef.current = uid;
   setRemoteUid(uid);
   setRemoteJoined(true);
+  setRemoteEverJoined(true);
   if (!remoteNotifiedRef.current) {
     remoteNotifiedRef.current = true;
     logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
@@ -78,12 +92,15 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
   const [joined, setJoined] = useState(false);
   const [remoteJoined, setRemoteJoined] = useState(false);
+  const [remoteEverJoined, setRemoteEverJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(!audioOnly);
   const [videoPublished, setVideoPublished] = useState(!audioOnly);
   const [screenSharing, setScreenSharing] = useState(false);
   const screenSharingRef = useRef(false);
+  const cameraFacingRef = useRef<'front' | 'back'>('front');
+  const [previewActive, setPreviewActive] = useState(false);
   const [connectionDisplay, setConnectionDisplay] = useState<ConnectionQualityDisplay>({
     quality: 'fair',
     labelFr: 'Connexion…',
@@ -124,6 +141,9 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     }
     setJoined(false);
     setRemoteJoined(false);
+    setRemoteEverJoined(false);
+    setPreviewActive(false);
+    await releaseAgoraDmPreviewSession('rtc_leave');
   }, []);
 
   const toggleMic = useCallback(() => {
@@ -140,8 +160,11 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     if (!engine) return;
     const next = !camOn;
     engine.muteLocalVideoStream(!next);
+    if (next) {
+      rebindAgoraLocalPreview(engine, { callId, reason: 'toggle_cam_on' });
+    }
     setCamOn(next);
-  }, [camOn]);
+  }, [callId, camOn]);
 
   const upgradeToVideo = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
     const engine = engineRef.current;
@@ -167,7 +190,10 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       }) | undefined;
       engine.enableVideo();
       engine.enableLocalVideo(true);
+      ensureAgoraFrontCamera(engine, { callId, phase: 'upgrade_to_video' });
+      cameraFacingRef.current = 'front';
       engine.startPreview();
+      logLocalStreamAttached({ callId, phase: 'upgrade_to_video' });
       try {
         engine.muteAllRemoteVideoStreams(false);
       } catch {
@@ -202,6 +228,9 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     if (result.ok && typeof result.on === 'boolean') {
       screenSharingRef.current = result.on;
       setScreenSharing(result.on);
+      if (!result.on && camOn && engine) {
+        rebindAgoraLocalPreview(engine, { callId, reason: 'screen_share_end' });
+      }
       logAfwCall('agora_screen_share', { callId, active: result.on });
     }
     return result;
@@ -240,9 +269,17 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
         const mod = await import('react-native-agora');
         const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, AudioScenarioType } = mod;
-        const engine = createAgoraRtcEngine();
+
+        const adoptedEngine = consumeAgoraDmPreviewEngine(callId);
+        const adoptedPreview = adoptedEngine != null;
+
+        const engine = adoptedEngine ?? createAgoraRtcEngine();
         engineRef.current = engine;
-        engine.initialize({ appId: tokenData.appId });
+
+        if (!adoptedPreview) {
+          engine.initialize({ appId: tokenData.appId });
+        }
+
         engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
         engine.setAudioScenario(AudioScenarioType.AudioScenarioChatroom);
         engine.enableAudio();
@@ -251,9 +288,18 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
         const publishVideo = !audioOnly;
         if (publishVideo) {
-          engine.enableVideo();
-          engine.enableLocalVideo(true);
-          engine.startPreview();
+          if (!adoptedPreview) {
+            engine.enableVideo();
+            engine.enableLocalVideo(true);
+            ensureAgoraFrontCamera(engine, { callId, phase: 'init' });
+            cameraFacingRef.current = 'front';
+            engine.startPreview();
+            logLocalStreamAttached({ callId, phase: 'init' });
+          } else {
+            logAfwCall('LOCAL_STREAM_REUSED', { callId, phase: 'adopted_preview' });
+            rebindAgoraLocalPreview(engine, { callId, reason: 'adopted_preview' });
+          }
+          if (!cancelled) setPreviewActive(true);
         } else {
           engine.disableVideo();
         }
@@ -271,6 +317,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               engine.muteAllRemoteAudioStreams(false);
               if (!audioOnly) {
                 engine.muteAllRemoteVideoStreams(false);
+                rebindAgoraLocalPreview(engine, { callId, reason: 'join_ok' });
               }
             } catch {
               /* ignore */
@@ -294,6 +341,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               remoteNotifiedRef,
               setRemoteUid,
               setRemoteJoined,
+              setRemoteEverJoined,
               onRemoteJoinedRef,
             );
           },
@@ -307,6 +355,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               remoteNotifiedRef,
               setRemoteUid,
               setRemoteJoined,
+              setRemoteEverJoined,
               onRemoteJoinedRef,
             );
           },
@@ -322,6 +371,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
                 remoteNotifiedRef,
                 setRemoteUid,
                 setRemoteJoined,
+                setRemoteEverJoined,
                 onRemoteJoinedRef,
               );
             }
@@ -401,18 +451,44 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !joined || !videoPublished) return;
+    if (!shouldAgoraSwitchCameraOnNonce(cameraFlipNonce)) return;
     try {
+      logAgoraSwitchCamera({ callId, nonce: cameraFlipNonce });
       engine.switchCamera();
+      cameraFacingRef.current = cameraFacingRef.current === 'front' ? 'back' : 'front';
+      logCameraFacingSelected(cameraFacingRef.current, { callId, nonce: cameraFlipNonce });
+      rebindAgoraLocalPreview(engine, { callId, reason: 'switch_camera' });
     } catch {
       /* ignore */
     }
-  }, [cameraFlipNonce, joined, videoPublished]);
+  }, [callId, cameraFlipNonce, joined, videoPublished]);
+
+  const refreshLocalPreview = useCallback(
+    (reason: string) => {
+      const engine = engineRef.current;
+      if (!engine || !videoPublishedRef.current) return;
+      rebindAgoraLocalPreview(engine, { callId, reason });
+    },
+    [callId],
+  );
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !remoteEverJoined || !videoPublished) return;
+    rebindAgoraLocalPreview(engine, { callId, reason: 'remote_ever_joined_pip' });
+  }, [callId, remoteEverJoined, videoPublished]);
+
+  useEffect(() => {
+    useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(refreshLocalPreview);
+    return () => {
+      useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(null);
+    };
+  }, [refreshLocalPreview]);
 
   const LocalView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {
       if (!videoPublished || Platform.OS === 'web') return <View style={style} />;
-      const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
-      return <RtcSurfaceView style={style} canvas={{ uid: 0 }} zOrderMediaOverlay />;
+      return <AgoraLocalPreviewSurface style={style} />;
     },
     [videoPublished],
   );
@@ -420,8 +496,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const RemoteView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {
       if (Platform.OS === 'web' || remoteUid == null) return <View style={style} />;
-      const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
-      return <RtcSurfaceView style={style} canvas={{ uid: remoteUid }} zOrderMediaOverlay />;
+      return <AgoraRemoteVideoSurface remoteUid={remoteUid} style={style} />;
     },
     [remoteUid],
   );
@@ -430,16 +505,19 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     joined,
     error,
     remoteJoined,
+    remoteEverJoined,
     micOn,
     camOn,
     screenSharing,
     connectionDisplay,
     videoPublished,
+    previewActive,
     toggleMic,
     toggleCam,
     toggleScreenShare,
     upgradeToVideo,
     leave,
+    refreshLocalPreview,
     LocalView,
     RemoteView,
   };

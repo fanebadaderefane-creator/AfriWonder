@@ -34,6 +34,7 @@ import { useToast } from '../common/ToastProvider';
 import { ChatWallpaperPattern } from '../messages/ChatWallpaperPattern';
 import { IncomingCallQuickReplyPanel } from './IncomingCallQuickReplyPanel';
 import { navigateToReceiverCallScreen } from '../../call/openNativeCallScreen';
+import { markAgoraDmPreviewHandoff } from '../../call/agoraDmPreviewSession';
 import { useIncomingCallVideoPreview } from '../../hooks/useIncomingCallVideoPreview.native';
 
 /**
@@ -173,7 +174,7 @@ export function IncomingCallOverlay() {
     acceptingRef.current = true;
     logAfwCall('overlay_accept_tap', { callId: c.callId, type: c.type, previewOn: previewOnRef.current });
     try {
-      await stopPreview();
+      markAgoraDmPreviewHandoff(c.callId);
       dismissIncomingUi();
       void dismissIncomingCall(c.callId);
       navigateToReceiverCallScreen({
@@ -190,7 +191,7 @@ export function IncomingCallOverlay() {
     } finally {
       acceptingRef.current = false;
     }
-  }, [dismissIncomingUi, myUserId, stopIncomingRing, stopPreview]);
+  }, [dismissIncomingUi, myUserId, stopIncomingRing]);
 
   const decline = useCallback(async () => {
     const c = incomingRef.current;

@@ -1,0 +1,96 @@
+---
+description: ⛔ Appels DM vocal/vidéo Agora (natif) + WebRTC (web) — VERROUILLÉ juin 2026
+alwaysApply: true
+---
+
+# ⛔ Appels DM 1:1 — Agora natif + signalisation socket VERROUILLÉ
+
+**Validé terrain (juin 2026)** : vocal + vidéo **Mali↔Mali**, **Maroc↔Maroc**, **Mali↔Maroc** (Wi‑Fi + 4G). Ne pas réintroduire TURN/WebRTC comme chemin média **natif** sans ticket + tests 2 téléphones.
+
+## Architecture (ne pas inverser)
+
+| Plateforme | Média | Signalisation (socket) |
+|------------|-------|------------------------|
+| **Android / iOS** (APK/IPA) | **Agora RTC** (`react-native-agora`) | `call:invite`, `call:accept`, `call:end`, `call:decline`, `call:missed` |
+| **Expo web** | **WebRTC** (`CallScreenInner` dans `call.tsx`) | Même ordre SDP/ICE (zone verrouillée `call-signaling-locked`) |
+| **PWA Vite** | WebRTC (`src/pages/DirectCall.jsx`) | Parité `kind:sdp` / `kind:ice` |
+
+- **`shouldUseAgoraDmCalls()`** : `false` sur web ; `true` sur natif si `featureFlags.dmCallsAgora` (défaut `EXPO_PUBLIC_DM_CALLS_AGORA=true`).
+- **`call.tsx`** : branche **uniquement** `Platform.OS !== 'web' && shouldUseAgoraDmCalls()` → `<DirectCallAgoraScreen />` ; sinon WebRTC.
+
+## Fichiers sacrés (Agora natif)
+
+| Fichier | Rôle |
+|---------|------|
+| `frontend/src/call/DirectCallAgoraScreen.native.tsx` | UI WhatsApp + bootstrap socket + média Agora |
+| `frontend/src/call/DirectCallAgoraScreen.web.tsx` | **Stub** (`return null`) — jamais Agora sur web |
+| `frontend/src/call/DirectCallAgoraScreen.tsx` | Barrel TS uniquement — **Metro web ignore** au profit de `.web.tsx` |
+| `frontend/src/hooks/useDirectCallAgoraRtc.native.tsx` | Engine Agora : token, `joinChannel`, audio/vidéo |
+| `frontend/src/hooks/useDirectCallAgoraRtc.web.tsx` | Stub no-op |
+| `frontend/src/call/agoraScreenShare.native.ts` / `.web.ts` | Partage écran natif seulement |
+| `frontend/src/call/dmCallMediaEngine.ts` | `shouldUseAgoraDmCalls` |
+| `frontend/src/call/agoraDmCallSession.ts` | `resolveAgoraDmCallId`, canal `dm_{callId}` |
+| `frontend/src/components/call/IncomingCallOverlay.native.tsx` | Entrant WhatsApp — **pas** de `call:accept` ici |
+| `backend/src/routes/calls.routes.ts` | `GET …/agora-token` |
+| `backend/src/services/live.service.ts` | `getAgoraToken` |
+
+## Règles strictes
+
+### Bundle web (régression juin 2026)
+
+- **Ne pas** fusionner `DirectCallAgoraScreen` en un seul `.tsx` sans **`.web.tsx` stub**.
+- **Ne pas** importer `react-native-agora` hors fichiers **`.native.ts(x)`**.
+- **Ne pas** créer `useDirectCallAgoraRtc.ts` qui ré-exporte `.native` sans stub `.web.tsx`.
+- Barrels (`DirectCallAgoraScreen.tsx`, `agoraScreenShare.ts`) : ré-export `.native` pour TypeScript ; Metro **doit** résoudre `.web.*` en premier sur web.
+
+### Signalisation (conservée avec Agora)
+
+1. **Ordre** : invite → receveur ouvre écran → **`call:accept` depuis `DirectCallAgoraScreen.native`** (après permissions / setup) → appelant rejoint canal Agora → média.
+2. **Ne pas** émettre `call:accept` depuis `IncomingCallOverlay`, Notifee ou CallKeep.
+3. **Ne pas** supprimer `call:invite:ack` ni `bootstrapDoneRef` (anti double join Agora).
+4. **InCallManager / sonnerie** : libérer **avant** `agora_media_start` (évite micro muet).
+
+### Média Agora
+
+- Token : `GET /api/proxy/calls/:callId/agora-token` — canal **`dm_{callId}`**.
+- **`enableLocalAudio(true)`** + **`enableLocalVideo(true)`** pour appels vidéo ; **`muteAllRemoteVideoStreams(false)`** côté receveur.
+- **Aperçu local (PiP)** : **un seul** `AgoraLocalPreviewSurface` via `AgoraDmLocalPreviewOverlay` dans `_layout.tsx` — **ne pas** remonter un second `RtcSurfaceView` dans `DirectCallAgoraScreen`.
+- **`remoteEverJoined`** : sticky pour le PiP — ne pas lier le démontage à un `remoteJoined` fluctuant.
+- Chronomètre « connecté » : événements Agora (`onRemoteAudioStateChanged` / `remoteJoined`), pas SDP.
+- **Ne pas** remettre `turn-credentials` / `RTCPeerConnection` dans `DirectCallAgoraScreen.native.tsx`.
+
+### UI WhatsApp (ne pas dégrader sans demande)
+
+- Sortant : preview locale + rail droit (ringing) → remote plein écran + PiP (connecté) → panel « Sans réponse ».
+- Entrant : audio (fond doodle), vidéo (preview + « Désactiver votre vidéo »), réponses rapides.
+- Contrôles **opérationnels** (micro, haut-parleur, caméra, raccrocher) — pas décoratif.
+
+## Gates obligatoires (toute modif appels DM)
+
+```bash
+cd frontend && npm run verify:dm-calls
+cd frontend && npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/callSignalingPayload.test.ts
+```
+
+Avant **APK/IPA** :
+
+```bash
+cd frontend && npm run verify:pre-apk
+```
+
+Test manuel **obligatoire** (non automatisable) : 2 téléphones, vocal puis vidéo, **Wi‑Fi puis 4G**, combinaisons **Mali / Maroc**.
+
+## Symptômes de régression
+
+| Symptôme | Cause probable |
+|----------|----------------|
+| `codegenNativeComponent` au `npm start` web | Agora importé dans le bundle web |
+| Sonnerie OK, silence après décrocher | `call:accept` trop tôt ou InCallManager non libéré |
+| Appelant seul connecté | `call:accept` / join Agora avant receveur prêt |
+| Vidéo locale seulement | `enableLocalVideo` / `muteAllRemoteVideoStreams` |
+| Token 401 / canal vide | Route `agora-token` ou session call non upsert |
+| Maroc↔Mali échec (ancien) | TURN/WebRTC natif réactivé par erreur |
+
+## Si l'utilisateur demande un changement
+
+Conserver la séparation **média Agora / signalisation socket** ; ajouter un test Vitest ou une ligne dans `verify-web-call-bundle.cjs` pour chaque bug corrigé. Voir aussi `call-signaling-locked.mdc` (WebRTC web) et `call-native-crash-locked.mdc` (fallback WebRTC natif si flag off).

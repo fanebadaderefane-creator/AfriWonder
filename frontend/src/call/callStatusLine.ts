@@ -4,6 +4,10 @@
 
 export type CallUiRole = 'caller' | 'receiver';
 export type CallUiState = 'ringing' | 'connecting' | 'connected' | 'ended';
+export type CallEndReasonUi = 'completed' | 'failed' | 'missed' | 'declined' | null;
+
+/** Délai affichage « Appel terminé » avant navigation (ms). */
+export const CALL_END_STATUS_DISPLAY_MS = 1000;
 
 export function formatCallDurationMmSs(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -36,6 +40,35 @@ export function formatWhatsAppCallStatus(input: {
     return 'Appel en cours…';
   }
   return 'Appel';
+}
+
+/** Statuts écran appel DM Agora natif — parité WhatsApp / Signal. */
+export function formatAgoraDmCallStatus(input: {
+  callState: CallUiState;
+  durationSeconds: number;
+  role: CallUiRole;
+  errorMsg: string | null;
+  endReason?: CallEndReasonUi;
+}): string {
+  if (input.callState === 'ended' || input.endReason) {
+    const reason = input.endReason ?? 'completed';
+    if (reason === 'missed') return 'Appel manqué';
+    if (reason === 'declined') {
+      return input.role === 'caller' ? 'Appel annulé' : 'Appel refusé';
+    }
+    if (reason === 'failed' && input.errorMsg) return input.errorMsg;
+    return 'Appel terminé';
+  }
+  if (input.callState === 'connected') {
+    return formatCallDurationCompact(input.durationSeconds);
+  }
+  if (input.errorMsg) return input.errorMsg;
+  if (input.callState === 'connecting') return 'Connexion média…';
+  if (input.callState === 'ringing') {
+    if (input.role === 'receiver') return 'Sonnerie…';
+    return 'Appel en cours…';
+  }
+  return 'Appel en cours…';
 }
 
 export function formatCallStatusLine(input: {

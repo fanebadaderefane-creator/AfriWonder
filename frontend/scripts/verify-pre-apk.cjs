@@ -271,6 +271,31 @@ function checkStaticInvariants() {
     fail('invariants', 'Règle Cursor call-native-crash-locked.mdc manquante');
   }
 
+  const agoraRule = path.join(FRONTEND_ROOT, '..', '.cursor', 'rules', 'call-dm-agora-locked.mdc');
+  if (fs.existsSync(agoraRule)) {
+    pass('invariants', 'Règle Cursor call-dm-agora-locked.mdc présente');
+  } else {
+    fail('invariants', 'Règle Cursor call-dm-agora-locked.mdc manquante');
+  }
+
+  if (
+    exists('src/call/DirectCallAgoraScreen.native.tsx')
+    && exists('src/call/DirectCallAgoraScreen.web.tsx')
+    && callTsx.includes('shouldUseAgoraDmCalls')
+    && callTsx.includes('DirectCallAgoraScreen')
+  ) {
+    pass('invariants', 'Appels DM natif — branche Agora + stubs web');
+  } else {
+    fail('invariants', 'Appels DM Agora natif incomplets (DirectCallAgoraScreen / shouldUseAgoraDmCalls)');
+  }
+
+  const layoutTsx = read('../app/_layout.tsx');
+  if (/AgoraDmLocalPreviewOverlay/.test(layoutTsx)) {
+    pass('invariants', 'PiP local persistant — overlay root _layout');
+  } else {
+    fail('invariants', 'AgoraDmLocalPreviewOverlay absent de app/_layout.tsx');
+  }
+
   if (
     callTsx.includes('scheduleStopAllMedia')
     && callTsx.includes('nativeRtcUnmounting')
@@ -376,6 +401,13 @@ function checkScripts() {
     pass('scripts', 'verify-prod-crash-safety');
   } else {
     fail('scripts', 'verify-prod-crash-safety');
+  }
+  if (run('node', [path.join(__dirname, 'verify-dm-call-stack.cjs')], {
+    env: { ...process.env, SKIP_AGORA_PROD: process.env.SKIP_AGORA_PROD || '1' },
+  })) {
+    pass('scripts', 'verify:dm-calls (appels vocal/vidéo — gates locales)');
+  } else {
+    fail('scripts', 'verify:dm-calls — régression appels DM');
   }
 }
 

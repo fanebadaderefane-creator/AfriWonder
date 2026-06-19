@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatCallDurationCompact, formatCallDurationMmSs, formatCallStatusLine, formatWhatsAppCallStatus } from './callStatusLine';
+import {
+  formatAgoraDmCallStatus,
+  formatCallDurationCompact,
+  formatCallDurationMmSs,
+  formatCallStatusLine,
+  formatWhatsAppCallStatus,
+} from './callStatusLine';
 
 describe('formatCallDurationMmSs', () => {
   it('formate mm:ss avec zéros à gauche', () => {
@@ -15,6 +21,79 @@ describe('formatCallDurationCompact', () => {
     expect(formatCallDurationCompact(0)).toBe('0:00');
     expect(formatCallDurationCompact(4)).toBe('0:04');
     expect(formatCallDurationCompact(83)).toBe('1:23');
+  });
+});
+
+describe('formatAgoraDmCallStatus', () => {
+  it('statuts WhatsApp — sonnerie, connexion, chronomètre, fin', () => {
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ringing',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('Appel en cours…');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ringing',
+        durationSeconds: 0,
+        role: 'receiver',
+        errorMsg: null,
+      }),
+    ).toBe('Sonnerie…');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'connecting',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('Connexion média…');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'connected',
+        durationSeconds: 224,
+        role: 'caller',
+        errorMsg: null,
+      }),
+    ).toBe('3:44');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ended',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+        endReason: 'completed',
+      }),
+    ).toBe('Appel terminé');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ended',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+        endReason: 'declined',
+      }),
+    ).toBe('Appel annulé');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ended',
+        durationSeconds: 0,
+        role: 'receiver',
+        errorMsg: null,
+        endReason: 'declined',
+      }),
+    ).toBe('Appel refusé');
+    expect(
+      formatAgoraDmCallStatus({
+        callState: 'ended',
+        durationSeconds: 0,
+        role: 'caller',
+        errorMsg: null,
+        endReason: 'missed',
+      }),
+    ).toBe('Appel manqué');
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Écran appel DM 1:1 — média Agora (signalisation Socket.io conservée).
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -20,10 +20,11 @@ import apiClient from '../api/client';
 import { buildCallAcceptPayload } from './callSignalingPayload';
 import { logAfwCall } from './callDiagnosticLog';
 import { ALLOWED_CALL_REACTIONS } from './callDmMenuConstants';
-import { formatWhatsAppCallStatus } from './callStatusLine';
+import { formatAgoraDmCallStatus, CALL_END_STATUS_DISPLAY_MS } from './callStatusLine';
+import type { CallEndReasonUi } from './callStatusLine';
 import { resolveAgoraDmCallId, shouldStartNativeInCallBeforeAgora } from './agoraDmCallSession';
+import { resolveAgoraDmLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
 import {
-  shouldShowAgoraLocalCameraPip,
   shouldShowAgoraVideoStage,
   shouldShowLocalVideoFullscreen,
   shouldShowRemoteVideoFullscreen,
@@ -35,9 +36,11 @@ import {
   startNativeCallAudioSession,
   applyNativeCallSpeakerRoute,
 } from './callNativeMedia';
-import { tryEnterPictureInPicture } from '../live/liveNativeExtras';
-import { syncAgoraDmCallUiStore, useAgoraDmCallUiStore } from './agoraDmCallUiStore';
+import { tryEnterPictureInPicture, prepareVideoCallSystemPip } from '../live/liveNativeExtras';
+import { syncAgoraDmCallUiStore, useAgoraDmCallUiStore, agoraDmEmptyLocalPreview } from './agoraDmCallUiStore';
+import { ensureAgoraDmPreviewSession, releaseAgoraDmPreviewSession } from './agoraDmPreviewSession';
 import { openDmThreadFromCall } from './openDmThreadFromCall';
+import { enableCallKeepAwake, disableCallKeepAwake } from './agoraCallKeepAwake';
 import { startActiveCallForeground, stopActiveCallForeground } from '../services/incomingCallService';
 import { useDirectCallAgoraRtc } from '../hooks/useDirectCallAgoraRtc';
 import { useAuthStore } from '../store/authStore';
@@ -101,7 +104,6 @@ export function DirectCallAgoraScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cameraFlipNonce, setCameraFlipNonce] = useState(0);
   const [mediaEnabled, setMediaEnabled] = useState(false);
-  const [inviteSent, setInviteSent] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string }[]>([]);
@@ -110,6 +112,7 @@ export function DirectCallAgoraScreen() {
   const [videoUpgradeLoading, setVideoUpgradeLoading] = useState(false);
   const [showMissedPanel, setShowMissedPanel] = useState(false);
   const [videoNoteBusy, setVideoNoteBusy] = useState(false);
+  const [endingReason, setEndingReason] = useState<CallEndReasonUi>(null);
   const finishingRef = useRef(false);
   const mediaEnabledRef = useRef(false);
   const stopOutgoingRingRef = useRef<(() => Promise<void>) | null>(null);
@@ -127,6 +130,36 @@ export function DirectCallAgoraScreen() {
   useEffect(() => {
     logAfwCall('agora_screen_mount', { callId, role, platform: Platform.OS });
   }, [callId, role]);
+
+  /** Appel vidéo sortant — caméra front + aperçu immédiat (avant réponse du correspondant). */
+  useLayoutEffect(() => {
+    if (!startedAsVideo || callState === 'ended' || Platform.OS === 'web') return;
+    let cancelled = false;
+    void (async () => {
+      const ok = await ensureAgoraDmPreviewSession(callIdRef.current);
+      if (!ok || cancelled) return;
+      mediaEnabledRef.current = true;
+      setMediaEnabled(true);
+      useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
+      useAgoraDmCallUiStore.getState().setLocalPreview({
+        mountSurface: true,
+        containerStyle: 'full',
+        showVideo: true,
+        showPipFlip: false,
+        showFullAvatarFallback: false,
+      });
+      syncAgoraDmCallUiStore({
+        active: true,
+        isVideoCall: true,
+        callState: callStateRef.current,
+        callId: callIdRef.current,
+      });
+      logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [callState, role, startedAsVideo]);
 
   const finishCallRef = useRef<
     (reason?: 'completed' | 'failed' | 'missed' | 'declined') => Promise<void>
@@ -159,16 +192,17 @@ export function DirectCallAgoraScreen() {
     joined,
     error: rtcError,
     remoteJoined,
+    remoteEverJoined,
     camOn,
     toggleCam,
     leave: leaveAgora,
-    LocalView,
     RemoteView,
     screenSharing: localScreenSharing,
     connectionDisplay,
     toggleScreenShare,
     upgradeToVideo,
     videoPublished,
+    previewActive,
   } = useDirectCallAgoraRtc({
     callId,
     enabled: mediaEnabled && callState !== 'ended',
@@ -208,6 +242,14 @@ export function DirectCallAgoraScreen() {
   );
 
   useEffect(() => {
+    if (callState === 'ended') return;
+    void enableCallKeepAwake({ callId, role, isVideoCall });
+    return () => {
+      disableCallKeepAwake({ callId, role, reason: 'effect_cleanup' });
+    };
+  }, [callId, callState, isVideoCall, role]);
+
+  useEffect(() => {
     syncAgoraDmCallUiStore({
       active: callState !== 'ended',
       callId,
@@ -234,7 +276,7 @@ export function DirectCallAgoraScreen() {
     async (reason: 'completed' | 'failed' | 'missed' | 'declined' = 'completed') => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
       finishingRef.current = true;
-      setCallState('ended');
+      setEndingReason(reason);
       if (ringTimeoutRef.current) {
         clearTimeout(ringTimeoutRef.current);
         ringTimeoutRef.current = null;
@@ -243,14 +285,19 @@ export function DirectCallAgoraScreen() {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      await new Promise((resolve) => setTimeout(resolve, CALL_END_STATUS_DISPLAY_MS));
+      setCallState('ended');
+      setEndingReason(null);
       mediaEnabledRef.current = false;
       setMediaEnabled(false);
       await leaveAgora();
+      disableCallKeepAwake({ callId: callIdRef.current, reason: 'finish_call' });
       await stopOutgoingRingRef.current?.();
       stopOutgoingRingRef.current = null;
       await stopEveryCallRingAlert();
       logAfwCall('agora_finish', { callId: callIdRef.current, reason });
       await stopActiveCallForeground();
+      await releaseAgoraDmPreviewSession('finish_call');
       useAgoraDmCallUiStore.getState().clearSession();
       const status =
         reason === 'missed' ? 'missed' : reason === 'declined' ? 'declined' : reason === 'failed' ? 'failed' : 'completed';
@@ -285,6 +332,7 @@ export function DirectCallAgoraScreen() {
     mediaEnabledRef.current = false;
     setMediaEnabled(false);
     await leaveAgora();
+    disableCallKeepAwake({ callId: callIdRef.current, reason: 'missed_no_answer' });
     await stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
     await stopEveryCallRingAlert();
@@ -339,6 +387,13 @@ export function DirectCallAgoraScreen() {
     setCameraFlipNonce((n) => n + 1);
   }, []);
 
+  const flipCameraTick = useAgoraDmCallUiStore((s) => s.flipCameraTick);
+  useEffect(() => {
+    if (flipCameraTick > 0) {
+      setCameraFlipNonce((n) => n + 1);
+    }
+  }, [flipCameraTick]);
+
   useEffect(() => {
     if (callState !== 'connecting' && callState !== 'connected' && callState !== 'ended') return;
     void stopOutgoingRingRef.current?.();
@@ -386,6 +441,9 @@ export function DirectCallAgoraScreen() {
           await finishCallRef.current('failed');
           return;
         }
+        if (startedAsVideo) {
+          await startAgoraMediaTracks();
+        }
         if (shouldStartNativeInCallBeforeAgora(role)) {
           await startNativeCallAudioSession(startedAsVideo, true, { outgoingRingback: true });
         }
@@ -417,10 +475,6 @@ export function DirectCallAgoraScreen() {
             setErrorMsg('Connexion indisponible. Réessayez.');
             await finishCallRef.current('failed');
             return;
-          }
-          setInviteSent(true);
-          if (startedAsVideo) {
-            await startAgoraMediaTracks();
           }
           ringTimeoutRef.current = setTimeout(() => {
             if (callStateRef.current === 'ringing') {
@@ -512,18 +566,13 @@ export function DirectCallAgoraScreen() {
     startedAsVideo,
   ]);
 
-  const statusLine = (() => {
-    if (callState === 'connected') {
-      return formatWhatsAppCallStatus({ callState, durationSeconds: duration, role, errorMsg: null });
-    }
-    if (errorMsg) return errorMsg;
-    if (callState === 'connecting') return 'Connexion média…';
-    if (callState === 'ringing') {
-      if (role === 'receiver') return 'Appel entrant…';
-      return inviteSent ? 'Appel en cours…' : 'Appel';
-    }
-    return 'Appel';
-  })();
+  const statusLine = formatAgoraDmCallStatus({
+    callState: endingReason ? 'ended' : callState,
+    durationSeconds: duration,
+    role,
+    errorMsg,
+    endReason: endingReason,
+  });
 
   const handleToggleMute = useCallback(() => {
     setMuted((v) => !v);
@@ -556,10 +605,15 @@ export function DirectCallAgoraScreen() {
     [otherUserId, myUserId],
   );
 
+  useEffect(() => {
+    if (!joined || !isVideoCall || Platform.OS !== 'android') return;
+    void prepareVideoCallSystemPip({ title: name, silent: true });
+  }, [isVideoCall, joined, name]);
+
   const handleMinimize = useCallback(async () => {
     if (callState === 'ended') return;
     if (isVideoCall && joined) {
-      await tryEnterPictureInPicture();
+      await tryEnterPictureInPicture({ silent: true, title: name });
     }
     useAgoraDmCallUiStore.getState().setMinimized(true);
     await openDmThreadFromCall({ otherUserId, peerName: name, peerAvatar: avatar });
@@ -658,6 +712,7 @@ export function DirectCallAgoraScreen() {
 
   const showVideoStage = shouldShowAgoraVideoStage({
     joined,
+    previewActive,
     isVideoCall,
     mediaEnabled,
     localScreenSharing,
@@ -666,16 +721,31 @@ export function DirectCallAgoraScreen() {
   const showLocalFull = shouldShowLocalVideoFullscreen({
     isVideoCall,
     mediaEnabled,
-    remoteJoined,
+    remoteEverJoined,
   });
   const showRemoteFull = shouldShowRemoteVideoFullscreen({ isVideoCall, remoteJoined });
-  const showSideRail = shouldShowVideoSideRail({ isVideoCall, mediaEnabled, remoteJoined });
-  const showCameraPip = shouldShowAgoraLocalCameraPip({
+  const showSideRail = shouldShowVideoSideRail({ isVideoCall, mediaEnabled, remoteEverJoined });
+  const localPreviewLayout = resolveAgoraDmLocalPreviewLayout({
     isVideoCall,
+    videoPublished,
+    joined,
     camOn,
     localScreenSharing,
     remoteJoined,
+    remoteEverJoined,
+    mediaEnabled,
   });
+
+  useLayoutEffect(() => {
+    if (showMissedPanel || (callState === 'ended' && !endingReason)) {
+      useAgoraDmCallUiStore.getState().setLocalPreview(agoraDmEmptyLocalPreview);
+      return;
+    }
+    if (localPreviewLayout.mountSurface) {
+      useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
+    }
+    useAgoraDmCallUiStore.getState().setLocalPreview(localPreviewLayout);
+  }, [callState, endingReason, localPreviewLayout, showMissedPanel]);
   const isMuted = muted;
 
   if (showMissedPanel) {
@@ -763,18 +833,6 @@ export function DirectCallAgoraScreen() {
           {showRemoteFull ? (
             <>
               <RemoteView style={styles.videoFill} />
-              {showCameraPip ? (
-                <View style={styles.pip}>
-                  <LocalView style={styles.videoFill} />
-                  <TouchableOpacity
-                    style={styles.pipFlipBtn}
-                    onPress={flipCamera}
-                    accessibilityLabel="Retourner la caméra"
-                  >
-                    <Ionicons name="camera-reverse-outline" size={20} color="#FFF" />
-                  </TouchableOpacity>
-                </View>
-              ) : null}
               <TouchableOpacity
                 style={[styles.videoChatFab, { top: insets.top + 56 }]}
                 onPress={handleOpenChat}
@@ -785,13 +843,6 @@ export function DirectCallAgoraScreen() {
             </>
           ) : showLocalFull ? (
             <>
-              {camOn ? (
-                <LocalView style={styles.videoFill} />
-              ) : (
-                <View style={styles.videoFill}>
-                  <Image source={{ uri: peerAvatarUri }} style={styles.localPreviewFallback} />
-                </View>
-              )}
               {showSideRail ? (
                 <View style={[styles.videoSideRail, { top: insets.top + 72 }]}>
                   <TouchableOpacity
@@ -828,6 +879,11 @@ export function DirectCallAgoraScreen() {
               ) : null}
             </>
           )}
+          {localPreviewLayout.showFullAvatarFallback && showLocalFull ? (
+            <View style={styles.localPreviewFallbackOverlay} pointerEvents="none">
+              <Image source={{ uri: peerAvatarUri }} style={styles.localPreviewFallback} />
+            </View>
+          ) : null}
           {(peerScreenSharing || localScreenSharing) ? (
             <View style={[styles.screenShareBanner, { top: insets.top + 12 }]}>
               <Text style={styles.screenShareBannerText}>
@@ -1015,6 +1071,30 @@ const styles = StyleSheet.create({
   },
   videoWaitingText: { color: 'rgba(255,255,255,0.85)', fontSize: 15 },
   videoFill: { flex: 1, width: '100%', height: '100%' },
+  localPreviewFullscreen: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+  },
+  localPreviewHidden: {
+    position: 'absolute',
+    bottom: 108,
+    right: 16,
+    width: 110,
+    height: 156,
+    opacity: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  localPreviewInvisible: {
+    opacity: 0,
+  },
+  localPreviewFallbackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0b141a',
+    zIndex: 2,
+  },
   pip: {
     position: 'absolute',
     bottom: 108,

@@ -5,6 +5,8 @@ alwaysApply: true
 
 # ⛔ Appels audio/vidéo — signalisation WebRTC VERROUILLÉE
 
+> **Natif DM (juin 2026)** : le **média** passe par **Agora** (`call-dm-agora-locked.mdc`). Cette règle couvre la **signalisation SDP/ICE WebRTC** (Expo web, fallback natif si `dmCallsAgora=false`, PWA).
+
 La connexion appel a **cassé en prod web** (juin 2026) : appelant bloqué sans `sdp_remote`, receveur connecté. **Ne pas modifier** la signalisation SDP/socket **sans demande explicite** utilisateur ou ticket + tests terrain.
 
 ## Fichiers concernés

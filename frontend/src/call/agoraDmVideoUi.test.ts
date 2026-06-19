@@ -13,7 +13,7 @@ describe('agoraDmVideoUi WhatsApp', () => {
       shouldShowLocalVideoFullscreen({
         isVideoCall: true,
         mediaEnabled: true,
-        remoteJoined: false,
+        remoteEverJoined: false,
       }),
     ).toBe(true);
     expect(
@@ -29,8 +29,7 @@ describe('agoraDmVideoUi WhatsApp', () => {
       shouldShowAgoraLocalCameraPip({
         isVideoCall: true,
         camOn: true,
-        localScreenSharing: false,
-        remoteJoined: true,
+        remoteEverJoined: true,
       }),
     ).toBe(true);
   });
@@ -49,8 +48,7 @@ describe('agoraDmVideoUi WhatsApp', () => {
       shouldShowAgoraLocalCameraPip({
         isVideoCall: true,
         camOn: false,
-        localScreenSharing: false,
-        remoteJoined: true,
+        remoteEverJoined: true,
       }),
     ).toBe(false);
   });
@@ -60,7 +58,7 @@ describe('agoraDmVideoUi WhatsApp', () => {
       shouldShowVideoSideRail({
         isVideoCall: true,
         mediaEnabled: true,
-        remoteJoined: false,
+        remoteEverJoined: false,
       }),
     ).toBe(true);
   });

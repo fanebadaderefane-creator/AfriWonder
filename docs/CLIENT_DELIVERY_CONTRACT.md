@@ -10,7 +10,7 @@ Une demande est **terminée** seulement si **toutes** les conditions applicables
 |--------|-----------|
 | Code | Les changements sont **dans le dépôt** (fichiers suivis), pas seulement décrits dans le chat. |
 | Périmètre | Le comportement demandé est **implémenté** ; ce qui est volontairement exclu est **nommé** (ex. « non fait : déplacement massif des `.md` »). |
-| Régression | Les zones **verrouillées** (player `VideoCard`, règles feed Firefox / like-scroll-son) n’ont pas été modifiées **sans** instruction explicite. |
+| Régression | Les zones **verrouillées** (player `VideoCard`, règles feed Firefox / like-scroll-son, **appels DM** `call-dm-agora-locked` / `call-signaling-locked`) n’ont pas été modifiées **sans** instruction explicite. |
 | Vérification | Les commandes ci-dessous passent **ou** l’écart est documenté (test flaky, env manquant). |
 
 ## 2. Commandes de preuve (à lancer avant de dire « c’est bon »)
@@ -46,6 +46,14 @@ Pour une modification **backend** :
 ```bash
 npm run test:smoke --prefix backend
 ```
+
+Pour une modification **appels DM vocal/vidéo** (mobile) :
+
+```bash
+cd frontend && npm run verify:dm-calls
+```
+
+Voir aussi [`docs/DM_CALLS_RUNBOOK.md`](DM_CALLS_RUNBOOK.md).
 
 Pour une passe complète (plus long) :
 

@@ -81,6 +81,15 @@ function checkFrontendWiring() {
     pass('Appel entrant → écran receveur Agora', 'overlay OK');
   } else warn('Appel entrant', 'vérifier IncomingCallOverlay');
 
+  if (fs.existsSync(path.join(ROOT, 'src/call/DirectCallAgoraScreen.web.tsx'))
+    && /return null/.test(read('src/call/DirectCallAgoraScreen.web.tsx'))) {
+    pass('Stub web DirectCallAgoraScreen', 'return null — pas Agora sur web');
+  } else fail('Stub web DirectCallAgoraScreen', 'manquant ou incomplet');
+
+  if (!fs.existsSync(path.join(ROOT, 'src/hooks/useDirectCallAgoraRtc.ts'))) {
+    pass('Pas de barrel useDirectCallAgoraRtc.ts', 'Metro web safe');
+  } else fail('Barrel useDirectCallAgoraRtc.ts', 'risque import Agora sur web');
+
   if (/"react-native-agora"/.test(pkg)) {
     pass('Dépendance react-native-agora', 'package.json');
   } else fail('react-native-agora', 'absent de package.json');
@@ -205,7 +214,7 @@ function runBackendAgoraTests() {
 function runFrontendAgoraTests() {
   try {
     execSync(
-      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/openNativeCallScreen.test.ts',
+      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/openNativeCallScreen.test.ts',
       { cwd: ROOT, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
     );
     pass('Tests frontend Agora DM', 'dmCallMediaEngine + session + UI');

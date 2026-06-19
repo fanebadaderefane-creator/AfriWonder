@@ -52,6 +52,12 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: DM calls regression gate
+        working-directory: frontend
+        run: npm run verify:dm-calls
+        env:
+          SKIP_AGORA_PROD: '1'
+
       - name: Alias mobile-afriwonder (scripts → frontend)
         working-directory: mobile-afriwonder
         run: npm run typecheck

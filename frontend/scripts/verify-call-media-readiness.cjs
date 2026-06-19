@@ -143,6 +143,10 @@ const agoraDmChecks = [
   ['useDirectCallAgoraRtc.native — enableLocalVideo (appel vidéo)', /enableLocalVideo\(true\)/],
   ['useDirectCallAgoraRtc.native — muteAllRemoteVideoStreams', /muteAllRemoteVideoStreams\(false\)/],
   ['DirectCallAgoraScreen — vidéo distante indépendante caméra locale', /shouldShowAgoraVideoStage/],
+  ['DirectCallAgoraScreen — statuts Agora WhatsApp (formatAgoraDmCallStatus)', /formatAgoraDmCallStatus/],
+  ['DirectCallAgoraScreen — sync localPreview vers overlay root', /setLocalPreview|agoraDmEmptyLocalPreview/],
+  ['AgoraLocalPreviewSurface — RtcSurfaceView stable uid 0', () => /AgoraLocalPreviewSurface/.test(read('src/call/agoraLocalPreviewSurface.native.tsx'))],
+  ['AgoraDmLocalPreviewOverlay — surface unique root', () => fs.existsSync(path.join(FRONTEND, 'src/components/call/AgoraDmLocalPreviewOverlay.native.tsx'))],
   ['DirectCallAgoraScreen — bootstrap une seule fois', /bootstrapDoneRef/],
   ['DirectCallAgoraScreen — call:invite:ack', /call:invite:ack/],
   ['openNativeCallScreen — pas de downgrade vidéo receveur', () => {

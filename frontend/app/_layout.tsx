@@ -18,6 +18,7 @@ import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { ToastProvider } from '../src/components/common/ToastProvider';
 import { IncomingCallOverlay } from '../src/components/call/IncomingCallOverlay';
 import { InCallFloatingBar } from '../src/components/call/InCallFloatingBar';
+import { AgoraDmLocalPreviewOverlay } from '../src/components/call/AgoraDmLocalPreviewOverlay';
 import socketService from '../src/services/socketService';
 import { ThemeProvider, useAppTheme } from '../src/theme/ThemeContext';
 import { View, StyleSheet, Platform, AppState } from 'react-native';
@@ -439,6 +440,7 @@ function RootLayoutContent() {
             <AppUpdatePrompt />
             <IncomingCallOverlay />
             <InCallFloatingBar />
+            <AgoraDmLocalPreviewOverlay />
             <MobileNavigationStability />
             <Stack
               screenOptions={{
