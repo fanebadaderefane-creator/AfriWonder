@@ -20,7 +20,16 @@ import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
 import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import { AgoraRemoteVideoSurface } from '../call/agoraRemoteVideoSurface.native';
 import { useAgoraDmCallUiStore } from '../call/agoraDmCallUiStore';
-import { consumeAgoraDmPreviewEngine, releaseAgoraDmPreviewSession } from '../call/agoraDmPreviewSession';
+import {
+  agoraVideoEngineUnavailableMessage,
+  shouldBlockSecondAgoraVideoEngine,
+} from '../call/agoraDmVideoEnginePolicy';
+import {
+  clearAgoraDmPreviewEngineAlive,
+  consumeAgoraDmPreviewEngine,
+  ensureAgoraDmPreviewSession,
+  releaseAgoraDmPreviewSession,
+} from '../call/agoraDmPreviewSession';
 import type { ConnectionQualityDisplay } from '../call/webrtcConnectionQuality';
 import type { DirectCallAgoraRtcOptions, DirectCallAgoraRtcResult } from './useDirectCallAgoraRtc.d';
 
@@ -143,8 +152,9 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     setRemoteJoined(false);
     setRemoteEverJoined(false);
     setPreviewActive(false);
+    if (callId) clearAgoraDmPreviewEngineAlive(callId, 'rtc_leave');
     await releaseAgoraDmPreviewSession('rtc_leave');
-  }, []);
+  }, [callId]);
 
   const toggleMic = useCallback(() => {
     const engine = engineRef.current;
@@ -270,7 +280,19 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         const mod = await import('react-native-agora');
         const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, AudioScenarioType } = mod;
 
-        const adoptedEngine = consumeAgoraDmPreviewEngine(callId);
+        let adoptedEngine = consumeAgoraDmPreviewEngine(callId);
+        if (!adoptedEngine && !audioOnly) {
+          await ensureAgoraDmPreviewSession(callId);
+          if (cancelled) return;
+          adoptedEngine = consumeAgoraDmPreviewEngine(callId);
+        }
+        if (shouldBlockSecondAgoraVideoEngine(audioOnly, adoptedEngine)) {
+          const msg = agoraVideoEngineUnavailableMessage();
+          setError(msg);
+          logAfwCall('agora_video_engine_missing', { callId });
+          onErrorRef.current?.(msg);
+          return;
+        }
         const adoptedPreview = adoptedEngine != null;
 
         const engine = adoptedEngine ?? createAgoraRtcEngine();

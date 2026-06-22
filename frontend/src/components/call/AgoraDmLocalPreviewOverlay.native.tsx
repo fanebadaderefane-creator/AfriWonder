@@ -8,15 +8,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgoraLocalPreviewSurface } from '../../call/agoraLocalPreviewSurface.native';
 import { agoraDmLocalPreviewStyles } from '../../call/agoraDmLocalPreviewStyles';
-import { useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
+import { agoraDmEmptyLocalPreview, useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
+import { shouldMountAgoraDmLocalPreviewOverlay } from '../../call/agoraDmLocalPreviewOverlayGuard';
 
 export function AgoraDmLocalPreviewOverlay() {
   const insets = useSafeAreaInsets();
-  const active = useAgoraDmCallUiStore((s) => s.active);
   const callState = useAgoraDmCallUiStore((s) => s.callState);
   const isVideoCall = useAgoraDmCallUiStore((s) => s.isVideoCall);
   const minimized = useAgoraDmCallUiStore((s) => s.minimized);
   const localPreviewPinned = useAgoraDmCallUiStore((s) => s.localPreviewPinned);
+  const localPreviewEngineReady = useAgoraDmCallUiStore((s) => s.localPreviewEngineReady);
   const localPreview = useAgoraDmCallUiStore((s) => s.localPreview);
   const requestFlipCamera = useAgoraDmCallUiStore((s) => s.requestFlipCamera);
   const requestLocalPreviewRefresh = useAgoraDmCallUiStore((s) => s.requestLocalPreviewRefresh);
@@ -35,19 +36,22 @@ export function AgoraDmLocalPreviewOverlay() {
     requestFlipCamera();
   }, [requestFlipCamera]);
 
-  if ((!active && !localPreviewPinned) || callState === 'ended' || !isVideoCall) {
+  const layout = localPreview ?? agoraDmEmptyLocalPreview;
+  const mountSurface = layout.mountSurface;
+
+  if (
+    !shouldMountAgoraDmLocalPreviewOverlay({
+      callState,
+      isVideoCall,
+      localPreviewPinned,
+      localPreviewEngineReady,
+      mountSurface,
+    })
+  ) {
     return null;
   }
 
-  const layout = localPreview ?? {
-    mountSurface: true,
-    containerStyle: 'full' as const,
-    showVideo: true,
-    showPipFlip: false,
-    showFullAvatarFallback: false,
-  };
-
-  const styleKey = layout.mountSurface ? layout.containerStyle : 'hidden';
+  const styleKey = layout.containerStyle;
   const baseStyle =
     styleKey === 'pip'
       ? agoraDmLocalPreviewStyles.pip

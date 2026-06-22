@@ -100,12 +100,12 @@ function checkStaticManifest() {
   const owner = appJson.expo?.owner;
   const pid = appJson.expo?.extra?.eas?.projectId;
   const slug = appJson.expo?.slug;
-  if (owner === 'global-production') pass('manifest', 'EAS owner = global-production');
-  else fail('manifest', `EAS owner = "${owner || ''}" (attendu global-production — pas FBF/fanebadaderefane)`);
+  if (owner === 'abdoulayefane-afriwonder-production') pass('manifest', 'EAS owner = abdoulayefane-afriwonder-production');
+  else fail('manifest', `EAS owner = "${owner || ''}" (attendu abdoulayefane-afriwonder-production — pas global-production/fanebadaderefane)`);
   if (slug === 'afriwonder-production') pass('manifest', 'EAS slug = afriwonder-production');
   else fail('manifest', `EAS slug = "${slug || ''}"`);
-  if (pid === 'fca8d6ba-0ea4-4918-8e31-3264d31de669') pass('manifest', 'EAS projectId AfriWonder-Production');
-  else fail('manifest', `EAS projectId = "${pid || ''}" (quota FBF si ancien ID)`);
+  if (pid === '54406371-5aa5-4bf1-8f80-b64b9f1e72fc') pass('manifest', 'EAS projectId AfriWonder-Production');
+  else fail('manifest', `EAS projectId = "${pid || ''}" (quota épuisé si ancien ID global-production)`);
 }
 
 function checkStaticModulesAndFiles() {

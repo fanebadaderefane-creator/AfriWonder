@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import {
-  ensureAgoraDmPreviewSession,
+  activateAgoraDmVideoPreview,
   isAgoraDmPreviewHandoffPending,
   releaseAgoraDmPreviewSession,
   setAgoraDmPreviewVideoEnabled,
@@ -33,7 +33,7 @@ export function useIncomingCallVideoPreview(opts: { callId: string; enabled: boo
     }
     let cancelled = false;
     void (async () => {
-      const ok = await ensureAgoraDmPreviewSession(callId);
+      const ok = await activateAgoraDmVideoPreview(callId);
       if (!cancelled) {
         setReady(ok);
         if (ok) logAfwCall('incoming_preview_started', { callId });

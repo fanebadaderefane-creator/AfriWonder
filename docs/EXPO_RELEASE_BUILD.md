@@ -24,16 +24,39 @@ npm run verify
 
 ## EAS Build (recommandé)
 
-**Organisation** : `global-production` — **Projet** : `@global-production/afriwonder-production`  
-**Project ID** : `fca8d6ba-0ea4-4918-8e31-3264d31de669` (dans `app.json` → `extra.eas.projectId`)
+**Organisation** : `abdoulayefane-afriwonder-production` — **Projet** : `@abdoulayefane-afriwonder-production/afriwonder-production`  
+**Project ID** : `54406371-5aa5-4bf1-8f80-b64b9f1e72fc` (dans `app.json` → `extra.eas.projectId`)
 
 1. Installer EAS CLI : `npm i -g eas-cli`
-2. `cd frontend && eas login` (accès org **global-production**)
+2. `cd frontend && eas login` (accès org **abdoulayefane-afriwonder-production**)
 3. Vérifier : `npm run verify:eas-org`
 4. Définir les secrets dans le projet EAS pour `EXPO_PUBLIC_BACKEND_URL`, etc.
 5. Builds typiques :
    - `npm run eas:android:callDiagnostic` — APK tests appels
    - `npm run eas:android:production` — AAB Play Store
+
+## Signature Android (Google Play)
+
+**Certificat prod obligatoire pour tous les AAB** — FANE ABDOULAYE / FBF-GLOBAL, RSA 4096, SHA384withRSA :
+
+| | Empreinte |
+|---|-----------|
+| **SHA-1** | `85:A5:AF:29:52:74:2F:0E:AE:D9:22:77:16:FB:29:CB:4A:AF:A8:CF` |
+| **SHA-256** | `D5:E0:38:36:22:57:3F:9F:A6:A0:5B:30:2F:2E:29:B6:28:B0:F0:BF:77:92:33:D4:1E:0B:BF:85:E8:1B:09:16` |
+
+→ Firebase, Google Cloud OAuth Android, signature AAB Play Console.
+
+**Interdit** (clé EAS auto-générée) : SHA-1 `E9:26:B0:F2:…`
+
+Avant `eas:android:production` :
+
+```bash
+cd frontend
+node scripts/install-android-prod-keystore.cjs --jks "CHEMIN/vers/prod.jks" --alias ALIAS --storepass MDP
+npm run verify:android-signing   # doit afficher OK FBF-GLOBAL 85:A5:AF…
+```
+
+Politique : `frontend/scripts/androidSigningPolicy.cjs`
 
 Les profils (`eas.json`) doivent injecter les `env` ou utiliser les secrets EAS pour les `EXPO_PUBLIC_*`.
 

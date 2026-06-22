@@ -11,12 +11,60 @@ export const AGORA_LOCAL_PREVIEW_SURFACE_KEY = 'agora-dm-local-preview-surface';
 export const AGORA_DM_LOCAL_PIP_WIDTH = 110;
 export const AGORA_DM_LOCAL_PIP_HEIGHT = 156;
 
+const FALLBACK_PREVIEW_STYLE: ViewStyle = { flex: 1, backgroundColor: '#0a0a0a' };
+
+function renderNativePreviewSurface(
+  layoutMode: 'pip' | 'fill',
+  style: StyleProp<ViewStyle> | undefined,
+): React.ReactNode {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('react-native-agora') as typeof import('react-native-agora') & {
+      RtcSurfaceView?: React.ComponentType<{
+        style?: StyleProp<ViewStyle>;
+        canvas?: { uid?: number; renderMode?: number; mirrorMode?: number };
+        zOrderMediaOverlay?: boolean;
+      }>;
+      RenderModeType?: { RenderModeFit?: number };
+      VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
+    };
+
+    const { RtcSurfaceView } = mod;
+    if (!RtcSurfaceView) {
+      logAfwCall('LOCAL_RENDERER_FALLBACK', { reason: 'RtcSurfaceView_missing' });
+      return <View style={[style, FALLBACK_PREVIEW_STYLE]} />;
+    }
+
+    const pipSizedStyle: StyleProp<ViewStyle> =
+      layoutMode === 'pip'
+        ? { width: AGORA_DM_LOCAL_PIP_WIDTH, height: AGORA_DM_LOCAL_PIP_HEIGHT }
+        : style;
+
+    const canvas = {
+      uid: 0,
+      renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
+      mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
+    };
+
+    return (
+      <RtcSurfaceView
+        key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
+        style={pipSizedStyle}
+        canvas={canvas}
+        zOrderMediaOverlay
+      />
+    );
+  } catch (e) {
+    logAfwCall('LOCAL_RENDERER_FALLBACK', { reason: 'RtcSurfaceView_throw', error: String(e) });
+    return <View style={[style, FALLBACK_PREVIEW_STYLE]} />;
+  }
+}
+
 export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
   style,
   layoutMode = 'fill',
 }: {
   style?: StyleProp<ViewStyle>;
-  /** pip = taille fixe (évite re-bind Agora au resize full→pip). */
   layoutMode?: 'pip' | 'fill';
 }) {
   useEffect(() => {
@@ -38,47 +86,5 @@ export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
     return <View style={style} />;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('react-native-agora') as typeof import('react-native-agora') & {
-    RtcTextureView?: React.ComponentType<{
-      style?: StyleProp<ViewStyle>;
-      canvas?: { uid?: number; renderMode?: number; mirrorMode?: number };
-      zOrderMediaOverlay?: boolean;
-    }>;
-    RenderModeType?: { RenderModeFit?: number };
-    VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
-  };
-
-  const pipSizedStyle: StyleProp<ViewStyle> =
-    layoutMode === 'pip'
-      ? { width: AGORA_DM_LOCAL_PIP_WIDTH, height: AGORA_DM_LOCAL_PIP_HEIGHT }
-      : style;
-
-  const canvas = {
-    uid: 0,
-    renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
-    mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
-  };
-
-  if (Platform.OS === 'android') {
-    const { RtcSurfaceView } = mod;
-    return (
-      <RtcSurfaceView
-        key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
-        style={pipSizedStyle}
-        canvas={canvas}
-        zOrderMediaOverlay
-      />
-    );
-  }
-
-  const { RtcSurfaceView } = mod;
-  return (
-    <RtcSurfaceView
-      key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
-      style={pipSizedStyle}
-      canvas={canvas}
-      zOrderMediaOverlay
-    />
-  );
+  return renderNativePreviewSurface(layoutMode, style);
 });

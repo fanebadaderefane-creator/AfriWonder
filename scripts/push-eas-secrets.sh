@@ -4,7 +4,7 @@
 #
 # Prerequis :
 #   npm install -g eas-cli
-#   eas login       # compte membre de l’org « global-production »
+#   eas login       # compte membre de l’org « abdoulayefane-afriwonder-production »
 #
 # Lance depuis la racine du depot :
 #   bash scripts/push-eas-secrets.sh
@@ -19,7 +19,7 @@ cd "$(dirname "$0")/../frontend"
 # Valeurs PUBLIQUES (prefixees EXPO_PUBLIC_, embarquees dans le bundle mobile)
 BACKEND_URL="${EXPO_PUBLIC_BACKEND_URL:-https://afriwonder-api.onrender.com}"
 SOCKET_URL="${EXPO_PUBLIC_SOCKET_URL:-wss://afriwonder-api.onrender.com}"
-EAS_PROJECT_ID="${EXPO_PUBLIC_EAS_PROJECT_ID:-fca8d6ba-0ea4-4918-8e31-3264d31de669}"
+EAS_PROJECT_ID="${EXPO_PUBLIC_EAS_PROJECT_ID:-54406371-5aa5-4bf1-8f80-b64b9f1e72fc}"
 
 # Valeurs optionnelles : renseigner avant execution
 SENTRY_DSN="${EXPO_PUBLIC_SENTRY_DSN:-}"

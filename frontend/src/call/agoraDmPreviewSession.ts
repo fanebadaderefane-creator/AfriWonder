@@ -1,6 +1,9 @@
 export {
+  activateAgoraDmVideoPreview,
   ensureAgoraDmPreviewSession,
   peekAgoraDmPreviewSession,
+  isAgoraDmPreviewEngineAlive,
+  clearAgoraDmPreviewEngineAlive,
   markAgoraDmPreviewHandoff,
   isAgoraDmPreviewHandoffPending,
   consumeAgoraDmPreviewEngine,

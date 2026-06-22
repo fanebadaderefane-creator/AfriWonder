@@ -38,7 +38,7 @@ import {
 } from './callNativeMedia';
 import { tryEnterPictureInPicture, prepareVideoCallSystemPip } from '../live/liveNativeExtras';
 import { syncAgoraDmCallUiStore, useAgoraDmCallUiStore, agoraDmEmptyLocalPreview } from './agoraDmCallUiStore';
-import { ensureAgoraDmPreviewSession, releaseAgoraDmPreviewSession } from './agoraDmPreviewSession';
+import { activateAgoraDmVideoPreview, releaseAgoraDmPreviewSession } from './agoraDmPreviewSession';
 import { openDmThreadFromCall } from './openDmThreadFromCall';
 import { enableCallKeepAwake, disableCallKeepAwake } from './agoraCallKeepAwake';
 import { startActiveCallForeground, stopActiveCallForeground } from '../services/incomingCallService';
@@ -131,35 +131,60 @@ export function DirectCallAgoraScreen() {
     logAfwCall('agora_screen_mount', { callId, role, platform: Platform.OS });
   }, [callId, role]);
 
-  /** Appel vidéo sortant — caméra front + aperçu immédiat (avant réponse du correspondant). */
+  const videoPreviewStartedRef = useRef(false);
+  const [videoPreviewReady, setVideoPreviewReady] = useState(false);
+
+  const pinLocalPreviewFull = useCallback(() => {
+    useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(true);
+    useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
+    useAgoraDmCallUiStore.getState().setLocalPreview({
+      mountSurface: true,
+      containerStyle: 'full',
+      showVideo: true,
+      showPipFlip: false,
+      showFullAvatarFallback: false,
+    });
+    syncAgoraDmCallUiStore({
+      active: true,
+      isVideoCall: true,
+      localPreviewEngineReady: true,
+      callState: callStateRef.current,
+      callId: callIdRef.current,
+    });
+  }, []);
+
+  const resetLocalPreviewUi = useCallback(() => {
+    useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(false);
+    useAgoraDmCallUiStore.getState().setLocalPreviewPinned(false);
+    useAgoraDmCallUiStore.getState().setLocalPreview(agoraDmEmptyLocalPreview);
+  }, []);
+
+  /** Un seul moteur Agora preview — bootstrap + hook consomment ensuite via consume(). */
+  const activateVideoPreview = useCallback(async (): Promise<boolean> => {
+    if (videoPreviewStartedRef.current && mediaEnabledRef.current) return true;
+    const ok = await activateAgoraDmVideoPreview(callIdRef.current);
+    if (!ok) {
+      resetLocalPreviewUi();
+      logAfwCall('video_preview_activate_failed', { callId: callIdRef.current, role });
+      return false;
+    }
+    videoPreviewStartedRef.current = true;
+    await stopOutgoingRingRef.current?.();
+    stopOutgoingRingRef.current = null;
+    await stopEveryCallRingAlert();
+    mediaEnabledRef.current = true;
+    setMediaEnabled(true);
+    setVideoPreviewReady(true);
+    pinLocalPreviewFull();
+    logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
+    return true;
+  }, [pinLocalPreviewFull, resetLocalPreviewUi, role]);
+
+  /** Appel vidéo — caméra front + aperçu dès l’ouverture (parité WhatsApp). */
   useLayoutEffect(() => {
     if (!startedAsVideo || callState === 'ended' || Platform.OS === 'web') return;
-    let cancelled = false;
-    void (async () => {
-      const ok = await ensureAgoraDmPreviewSession(callIdRef.current);
-      if (!ok || cancelled) return;
-      mediaEnabledRef.current = true;
-      setMediaEnabled(true);
-      useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
-      useAgoraDmCallUiStore.getState().setLocalPreview({
-        mountSurface: true,
-        containerStyle: 'full',
-        showVideo: true,
-        showPipFlip: false,
-        showFullAvatarFallback: false,
-      });
-      syncAgoraDmCallUiStore({
-        active: true,
-        isVideoCall: true,
-        callState: callStateRef.current,
-        callId: callIdRef.current,
-      });
-      logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [callState, role, startedAsVideo]);
+    void activateVideoPreview();
+  }, [activateVideoPreview, callState, startedAsVideo]);
 
   const finishCallRef = useRef<
     (reason?: 'completed' | 'failed' | 'missed' | 'declined') => Promise<void>
@@ -176,9 +201,18 @@ export function DirectCallAgoraScreen() {
   }, [role]);
 
   const beginAgoraMedia = useCallback(async () => {
-    await startAgoraMediaTracks();
+    if (startedAsVideo && !mediaEnabledRef.current) {
+      const ok = await activateVideoPreview();
+      if (!ok) {
+        setErrorMsg('Caméra indisponible.');
+        await finishCallRef.current('failed');
+        return;
+      }
+    } else if (!mediaEnabledRef.current) {
+      await startAgoraMediaTracks();
+    }
     setCallState('connecting');
-  }, [startAgoraMediaTracks]);
+  }, [activateVideoPreview, startAgoraMediaTracks, startedAsVideo]);
 
   const handleRemoteJoined = useCallback(() => {
     setCallState('connected');
@@ -256,7 +290,8 @@ export function DirectCallAgoraScreen() {
       otherUserId,
       peerName: name,
       peerAvatar: avatar,
-      isVideoCall,
+      /** Vidéo dans le store overlay seulement après moteur prêt (anti crash RtcView). */
+      isVideoCall: startedAsVideo ? videoPreviewReady : isVideoCall,
       role,
       callState,
       durationSeconds: duration,
@@ -266,7 +301,7 @@ export function DirectCallAgoraScreen() {
         useAgoraDmCallUiStore.getState().clearSession();
       }
     };
-  }, [avatar, callId, callState, duration, isVideoCall, name, otherUserId, role]);
+  }, [avatar, callId, callState, duration, isVideoCall, name, otherUserId, role, startedAsVideo, videoPreviewReady]);
 
   useEffect(() => {
     syncAgoraDmCallUiStore({ durationSeconds: duration });
@@ -442,6 +477,13 @@ export function DirectCallAgoraScreen() {
           return;
         }
         if (startedAsVideo) {
+          const previewOk = await activateVideoPreview();
+          if (!previewOk) {
+            setErrorMsg('Microphone ou caméra non autorisé.');
+            await finishCallRef.current('failed');
+            return;
+          }
+        } else {
           await startAgoraMediaTracks();
         }
         if (shouldStartNativeInCallBeforeAgora(role)) {
@@ -554,6 +596,7 @@ export function DirectCallAgoraScreen() {
       void stopEveryCallRingAlert();
     };
   }, [
+    activateVideoPreview,
     beginAgoraMedia,
     callId,
     handleMissedNoAnswer,

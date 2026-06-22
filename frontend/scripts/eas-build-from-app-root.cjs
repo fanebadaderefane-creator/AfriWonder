@@ -58,17 +58,37 @@ if (platform === 'android') {
   }
 }
 
+console.log('[eas] Vérification organisation Expo (quota builds gratuits)…');
+const orgCheck = runNodeScript('verify-eas-org.cjs');
+if (orgCheck.status !== 0) {
+  process.exit(orgCheck.status === null ? 1 : orgCheck.status);
+}
+
 if (platform === 'android' && profileUsesLocalAndroidCredentials(profile)) {
+  if (profile === 'production' && fs.existsSync(path.join(appRoot, 'android', 'app', 'keystore.properties'))) {
+    console.log('[eas] Sync credentials.json depuis android/app/keystore.properties…');
+    const install = runNodeScript('install-play-upload-from-local.cjs');
+    if (install.status !== 0) {
+      console.error('[eas] install-play-upload-from-local a échoué — vérifiez android/app/keystore.properties');
+      process.exit(install.status === null ? 1 : install.status);
+    }
+  }
   const { resolveKeystorePath } = require('./check-android-keystore.cjs');
   const keystoreCheck = resolveKeystorePath();
   if (!keystoreCheck.ok) {
+    if (profile === 'production') {
+      console.error('\n[eas] Production : keystore prod manquante.');
+      console.error('      Placez android-keystore.jks upload Play (SHA-1 FA:AC:66…) + credentials.json');
+      console.error('      NE PAS npm run sync:android-keystore — télécharge la mauvaise clé EAS.');
+      process.exit(1);
+    }
     console.log('[eas] Keystore locale absente — téléchargement depuis EAS…');
     const sync = runNodeScript('sync-android-keystore-from-eas.cjs');
     if (sync.status !== 0) {
       process.exit(sync.status === null ? 1 : sync.status);
     }
   }
-  const check = runNodeScript('check-android-keystore.cjs');
+  const check = runNodeScript('check-android-keystore.cjs', profile === 'production' ? ['--production'] : []);
   if (check.status !== 0) {
     process.exit(check.status === null ? 1 : check.status);
   }

@@ -25,6 +25,8 @@ export type AgoraDmCallUiSnapshot = {
   flipCameraTick: number;
   /** Garde l’overlay local monté jusqu’à clearSession (évite démontage React). */
   localPreviewPinned: boolean;
+  /** Moteur Agora preview démarré — RtcView autorisé (anti crash 1re frame). */
+  localPreviewEngineReady: boolean;
 };
 
 type AgoraDmCallUiState = AgoraDmCallUiSnapshot & {
@@ -34,6 +36,7 @@ type AgoraDmCallUiState = AgoraDmCallUiSnapshot & {
   setDuration: (durationSeconds: number) => void;
   setLocalPreview: (localPreview: AgoraDmLocalPreviewLayout) => void;
   setLocalPreviewPinned: (localPreviewPinned: boolean) => void;
+  setLocalPreviewEngineReady: (localPreviewEngineReady: boolean) => void;
   registerLocalPreviewRefresh: (handler: ((reason: string) => void) | null) => void;
   requestLocalPreviewRefresh: (reason: string) => void;
   requestFlipCamera: () => void;
@@ -54,6 +57,7 @@ const INITIAL: AgoraDmCallUiSnapshot = {
   localPreview: EMPTY_PREVIEW,
   flipCameraTick: 0,
   localPreviewPinned: false,
+  localPreviewEngineReady: false,
 };
 
 export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
@@ -64,12 +68,14 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
   setDuration: (durationSeconds) => set({ durationSeconds }),
   setLocalPreview: (localPreview) => set({ localPreview }),
   setLocalPreviewPinned: (localPreviewPinned) => set({ localPreviewPinned }),
+  setLocalPreviewEngineReady: (localPreviewEngineReady) => set({ localPreviewEngineReady }),
   registerLocalPreviewRefresh: (handler) => set({ localPreviewRefreshHandler: handler }),
   requestLocalPreviewRefresh: (reason) => {
     get().localPreviewRefreshHandler?.(reason);
   },
   requestFlipCamera: () => set((s) => ({ flipCameraTick: s.flipCameraTick + 1 })),
-  clearSession: () => set({ ...INITIAL, localPreviewRefreshHandler: null, localPreviewPinned: false }),
+  clearSession: () =>
+    set({ ...INITIAL, localPreviewRefreshHandler: null, localPreviewPinned: false, localPreviewEngineReady: false }),
 }));
 
 export function syncAgoraDmCallUiStore(patch: Partial<AgoraDmCallUiSnapshot>): void {

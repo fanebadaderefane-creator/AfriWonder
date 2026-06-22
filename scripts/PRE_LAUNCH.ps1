@@ -96,7 +96,7 @@ function Invoke-PreLaunchEasSecrets {
 
     $backend = if ($env:EXPO_PUBLIC_BACKEND_URL) { $env:EXPO_PUBLIC_BACKEND_URL } else { "https://afriwonder-api.onrender.com" }
     $socket  = if ($env:EXPO_PUBLIC_SOCKET_URL)  { $env:EXPO_PUBLIC_SOCKET_URL }  else { "wss://afriwonder-api.onrender.com" }
-    $project = if ($env:EXPO_PUBLIC_EAS_PROJECT_ID) { $env:EXPO_PUBLIC_EAS_PROJECT_ID } else { "fca8d6ba-0ea4-4918-8e31-3264d31de669" }
+    $project = if ($env:EXPO_PUBLIC_EAS_PROJECT_ID) { $env:EXPO_PUBLIC_EAS_PROJECT_ID } else { "54406371-5aa5-4bf1-8f80-b64b9f1e72fc" }
     $sentry  = if ($env:EXPO_PUBLIC_SENTRY_DSN)  { $env:EXPO_PUBLIC_SENTRY_DSN }  else { "" }
     $publicOrigin = if ($env:EXPO_PUBLIC_PUBLIC_WEB_ORIGIN) { $env:EXPO_PUBLIC_PUBLIC_WEB_ORIGIN } else { "https://afri-wonder.vercel.app" }
     $fbId = if ($env:EXPO_PUBLIC_FACEBOOK_APP_ID) { $env:EXPO_PUBLIC_FACEBOOK_APP_ID } else { "" }

@@ -13,8 +13,9 @@ const jksPath = path.join(appRoot, 'android-keystore.jks');
 const packageName = 'com.afriwonder.app';
 
 const PROJECT_CANDIDATES = [
-  { account: 'fanebadaderefane', projectName: 'afriwonder-production', label: 'ancien (fanebadaderefane)' },
-  { account: 'global-production', projectName: 'afriwonder-production', label: 'nouveau (global-production)' },
+  { account: 'global-production', projectName: 'afriwonder-production', label: 'global-production (keystore prod historique)' },
+  { account: 'fanebadaderefane', projectName: 'afriwonder-production', label: 'fanebadaderefane (legacy)' },
+  { account: 'abdoulayefane-afriwonder-production', projectName: 'afriwonder-production', label: 'abdoulayefane-afriwonder-production (nouvelle org)' },
 ];
 
 function resolveEasCliRoot() {
@@ -78,7 +79,7 @@ async function fetchKeystoreFromProject(graphqlClient, eas, candidate) {
     return null;
   }
   console.log(`[sync-keystore]   → keystore trouvée (alias ${keystore.keyAlias})`);
-  return keystore;
+  return { candidate, keystore };
 }
 
 function writeLocalKeystore(keystore) {
@@ -100,6 +101,8 @@ function writeLocalKeystore(keystore) {
 }
 
 async function main() {
+  const { inspectKeystoreBuffer, scoreKeystoreForProduction, formatProductionHint } = require('./androidKeystoreInspect.cjs');
+
   const sessionSecret = process.env.EXPO_TOKEN ? null : readExpoSessionSecret();
   const eas = loadEasModules();
   const graphqlClient = eas.createGraphqlClient({
@@ -107,24 +110,44 @@ async function main() {
     sessionSecret,
   });
 
-  let keystore = null;
+  const found = [];
   for (const candidate of PROJECT_CANDIDATES) {
     try {
-      keystore = await fetchKeystoreFromProject(graphqlClient, eas, candidate);
-      if (keystore) break;
+      const row = await fetchKeystoreFromProject(graphqlClient, eas, candidate);
+      if (!row) continue;
+      let inspection = null;
+      try {
+        inspection = inspectKeystoreBuffer(row.keystore.keystore, row.keystore);
+        console.log(`[sync-keystore]   → SHA-1 ${inspection.sha1} (${inspection.classification.label || inspection.classification.kind})`);
+      } catch (err) {
+        console.warn(`[sync-keystore]   → empreinte illisible: ${err?.message || err}`);
+      }
+      found.push({ ...row, inspection, score: scoreKeystoreForProduction(inspection) });
     } catch (err) {
       const msg = err?.message || String(err);
       console.warn(`[sync-keystore]   → erreur ${candidate.label}: ${msg}`);
     }
   }
 
-  if (!keystore) {
-    console.error('\n[sync-keystore] ÉCHEC — keystore absente sur EAS (ancien et nouveau projet).');
-    console.error('              Connectez-vous avec accès Owner sur fanebadaderefane ou global-production.');
+  found.sort((a, b) => b.score - a.score);
+  const best = found.find((row) => row.score > 0) || found[0];
+
+  if (!best?.keystore) {
+    console.error('\n[sync-keystore] ÉCHEC — keystore absente sur EAS (tous projets).');
+    console.error('              Placez manuellement android-keystore.jks (prod FBF-GLOBAL) + credentials.json');
     process.exit(1);
   }
 
-  writeLocalKeystore(keystore);
+  if (best.score <= 0) {
+    console.error('\n[sync-keystore] ÉCHEC — aucune keystore prod / Play upload trouvée sur EAS.');
+    console.error('              Les keystores distantes sont des clés auto-générées (rejet Play).');
+    console.error('              Copiez votre .jks prod localement ou uploadez via: eas credentials -p android');
+    process.exit(1);
+  }
+
+  console.log(`[sync-keystore] Sélection : @${best.candidate.account}/${best.candidate.projectName}`);
+  console.log(`[sync-keystore] ${formatProductionHint(best.inspection.sha1)}`);
+  writeLocalKeystore(best.keystore);
 }
 
 main().catch((err) => {

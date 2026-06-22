@@ -4886,7 +4886,11 @@ function CallScreenInner() {
 
 export default function CallScreen() {
   if (Platform.OS !== 'web' && shouldUseAgoraDmCalls()) {
-    return <DirectCallAgoraScreen />;
+    return (
+      <CallScreenErrorBoundary>
+        <DirectCallAgoraScreen />
+      </CallScreenErrorBoundary>
+    );
   }
   return (
     <CallScreenErrorBoundary>

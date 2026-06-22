@@ -1,9 +1,21 @@
+export async function activateAgoraDmVideoPreview(_callId: string): Promise<boolean> {
+  return false;
+}
+
 export async function ensureAgoraDmPreviewSession(_callId: string): Promise<boolean> {
   return false;
 }
 
 export function peekAgoraDmPreviewSession(_callId: string): boolean {
   return false;
+}
+
+export function isAgoraDmPreviewEngineAlive(_callId: string): boolean {
+  return false;
+}
+
+export function clearAgoraDmPreviewEngineAlive(_callId: string, _reason: string): void {
+  /* noop */
 }
 
 export function markAgoraDmPreviewHandoff(_callId: string): boolean {

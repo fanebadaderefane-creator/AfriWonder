@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Vérifie que les builds EAS ciblent GLOBAL PRODUCTION / AfriWonder-Production
- * (pas l’ancien compte FBF / fanebadaderefane dont le quota gratuit est épuisé).
+ * Vérifie que les builds EAS ciblent ABDOULAYEFANE AFRIWONDER PRODUCTION / AfriWonder-Production
+ * (pas global-production ni fanebadaderefane dont les quotas gratuits sont épuisés).
  *
  * Usage: cd frontend && node scripts/verify-eas-org.cjs
  */
@@ -14,19 +14,20 @@ const { spawnSync } = require('child_process');
 const FRONTEND_ROOT = path.resolve(__dirname, '..');
 
 const EXPECTED = {
-  owner: 'global-production',
+  owner: 'abdoulayefane-afriwonder-production',
   slug: 'afriwonder-production',
-  projectId: 'fca8d6ba-0ea4-4918-8e31-3264d31de669',
-  expoAccount: 'global-production',
+  projectId: '54406371-5aa5-4bf1-8f80-b64b9f1e72fc',
+  expoAccount: 'abdoulayefane-afriwonder-production',
 };
 
-/** Anciens projets Expo — quota FBF épuisé, ne plus utiliser pour eas build. */
+/** Anciens projets Expo — quota épuisé, ne plus utiliser pour eas build. */
 const BLOCKED_PROJECT_IDS = [
   '5d875c26-f610-4105-a241-1dc03c4edcc8',
   'f4715a6b-9779-4ec1-841a-9dd7cb73e2b3',
+  'fca8d6ba-0ea4-4918-8e31-3264d31de669',
 ];
 
-const BLOCKED_OWNERS = ['fanebadaderefane', 'fbf-global', 'fbf_global'];
+const BLOCKED_OWNERS = ['fanebadaderefane', 'fbf-global', 'fbf_global', 'global-production'];
 
 const failures = [];
 const passes = [];
@@ -145,7 +146,7 @@ function checkEasCliLinked() {
   else if (id) fail(`EAS CLI project ID = ${id} (attendu ${EXPECTED.projectId})`);
 }
 
-console.log('\n📦 Vérification org EAS — GLOBAL PRODUCTION / AfriWonder-Production\n');
+console.log('\n📦 Vérification org EAS — ABDOULAYEFANE AFRIWONDER PRODUCTION / AfriWonder-Production\n');
 console.log('━━ Fichiers locaux ━━');
 checkAppJson();
 checkEasJson();
@@ -158,7 +159,7 @@ console.log('\n═════════════════════�
 console.log(`  OK: ${passes.length}  |  Échecs: ${failures.length}`);
 if (failures.length) {
   console.log('\n  Les builds `eas build` iraient vers le mauvais projet ou échoueraient (quota FBF).');
-  console.log('  Corrigez app.json / eas.json puis : eas init --id fca8d6ba-0ea4-4918-8e31-3264d31de669');
+  console.log('  Corrigez app.json / eas.json puis : eas init --id 54406371-5aa5-4bf1-8f80-b64b9f1e72fc');
   process.exit(1);
 }
 console.log('\n  Prêt pour : npm run eas:android:callDiagnostic');

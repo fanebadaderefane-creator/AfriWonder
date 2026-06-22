@@ -19,12 +19,15 @@ android/.gradle/
 android/build/
 android/app/build/
 
-# Secrets locaux (mode sans Git — ne jamais envoyer à EAS)
+# Secrets locaux — .env jamais sur EAS
 .env
 .env.*
 !.env.example
-credentials.json
+
+# Keystores : exclure les backups ; inclure android-keystore.jks pour credentialsSource: local
 *.jks
+!android-keystore.jks
+# credentials.json requis sur EAS quand android.credentialsSource = local (sinon clé E9:26:B0…)
 
 # Tests / CI locaux (inutiles pour compiler l’APK)
 e2e/

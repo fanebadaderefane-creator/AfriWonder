@@ -7,6 +7,7 @@ import apiClient from '../api/client';
 import {
   ensureAgoraFrontCamera,
   logLocalStreamAttached,
+  rebindAgoraLocalPreview,
 } from './agoraCallVideoBind.native';
 import {
   canConsumePreviewEngine,
@@ -27,6 +28,13 @@ type PreviewSession = {
 let activeSession: PreviewSession | null = null;
 /** Empêche release overlay quand l’utilisateur accepte (moteur repris par l’écran d’appel). */
 let handoffCallId: string | null = null;
+/** Une seule création moteur à la fois — évite 2× createAgoraRtcEngine (crash vidéo). */
+let ensureInFlight: Promise<boolean> | null = null;
+let ensureInFlightCallId: string | null = null;
+/** Idempotent — plusieurs appels activate en parallèle (layout + bootstrap). */
+let activateVideoPreviewInFlight: Promise<boolean> | null = null;
+/** Moteur créé ou adopté par le hook — RtcView autorisé tant que non release. */
+let engineAliveForCallId: string | null = null;
 
 async function fetchAgoraAppId(callId: string): Promise<string | null> {
   const res = await apiClient.get(`/calls/${encodeURIComponent(callId)}/agora-token`);
@@ -39,11 +47,28 @@ export function peekAgoraDmPreviewSession(callId: string): boolean {
   return activeSession?.callId === callId && activeSession.previewActive;
 }
 
-export async function ensureAgoraDmPreviewSession(callId: string): Promise<boolean> {
+export function isAgoraDmPreviewEngineAlive(callId: string): boolean {
+  return !!callId && engineAliveForCallId === callId;
+}
+
+export function clearAgoraDmPreviewEngineAlive(callId: string, reason: string): void {
+  if (engineAliveForCallId !== callId) return;
+  engineAliveForCallId = null;
+  logAfwCall('agora_preview_engine_alive_cleared', { callId, reason });
+}
+
+/** Point d’entrée unique preview vidéo — dedupe ensure + activate parallèles. */
+export async function activateAgoraDmVideoPreview(callId: string): Promise<boolean> {
   if (!callId) return false;
-  if (activeSession?.callId === callId && activeSession.previewActive) {
-    return true;
-  }
+  if (peekAgoraDmPreviewSession(callId) || isAgoraDmPreviewEngineAlive(callId)) return true;
+  if (activateVideoPreviewInFlight) return activateVideoPreviewInFlight;
+  activateVideoPreviewInFlight = ensureAgoraDmPreviewSession(callId).finally(() => {
+    activateVideoPreviewInFlight = null;
+  });
+  return activateVideoPreviewInFlight;
+}
+
+async function createPreviewSession(callId: string): Promise<boolean> {
   await releaseAgoraDmPreviewSession('replace');
   const permitted = await requestNativeCallPermissions(true);
   if (!permitted) {
@@ -63,6 +88,7 @@ export async function ensureAgoraDmPreviewSession(callId: string): Promise<boole
     engine.enableLocalVideo(true);
     ensureAgoraFrontCamera(engine, { callId, phase: 'preview_session' });
     engine.startPreview();
+    rebindAgoraLocalPreview(engine, { callId, reason: 'preview_session' });
     logLocalStreamAttached({ callId, phase: 'preview_session' });
     activeSession = {
       callId,
@@ -71,12 +97,29 @@ export async function ensureAgoraDmPreviewSession(callId: string): Promise<boole
       previewActive: true,
       cameraFacing: 'front',
     };
+    engineAliveForCallId = callId;
     logAfwCall('agora_preview_session_started', { callId });
     return true;
   } catch (e) {
     logAfwCall('agora_preview_session_failed', { callId, error: String(e) });
     return false;
   }
+}
+
+export async function ensureAgoraDmPreviewSession(callId: string): Promise<boolean> {
+  if (!callId) return false;
+  if (activeSession?.callId === callId && activeSession.previewActive) {
+    return true;
+  }
+  if (ensureInFlight && ensureInFlightCallId === callId) {
+    return ensureInFlight;
+  }
+  ensureInFlightCallId = callId;
+  ensureInFlight = createPreviewSession(callId).finally(() => {
+    ensureInFlight = null;
+    ensureInFlightCallId = null;
+  });
+  return ensureInFlight;
 }
 
 export function isAgoraDmPreviewHandoffPending(callId: string): boolean {
@@ -95,6 +138,7 @@ export function consumeAgoraDmPreviewEngine(callId: string): IRtcEngine | null {
   if (!canConsumePreviewEngine(callId, activeSession?.callId ?? null) || !activeSession) return null;
   const engine = activeSession.engine;
   activeSession = null;
+  engineAliveForCallId = callId;
   if (handoffCallId === callId) handoffCallId = null;
   logAfwCall('agora_preview_engine_consumed', { callId });
   return engine;
@@ -125,6 +169,7 @@ export async function releaseAgoraDmPreviewSession(reason: string): Promise<void
   }
   const { callId, engine } = activeSession;
   activeSession = null;
+  if (engineAliveForCallId === callId) engineAliveForCallId = null;
   try {
     engine.stopPreview();
     engine.release();

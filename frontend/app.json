@@ -35,7 +35,7 @@
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 32,
+      "versionCode": 35,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -151,7 +151,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "fca8d6ba-0ea4-4918-8e31-3264d31de669"
+        "projectId": "54406371-5aa5-4bf1-8f80-b64b9f1e72fc"
       }
     },
     "experiments": {
@@ -160,6 +160,6 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "owner": "global-production"
+    "owner": "abdoulayefane-afriwonder-production"
   }
 }
