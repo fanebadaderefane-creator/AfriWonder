@@ -66,9 +66,9 @@ export function formatAgoraDmCallStatus(input: {
   if (input.callState === 'connecting') return 'Connexion média…';
   if (input.callState === 'ringing') {
     if (input.role === 'receiver') return 'Sonnerie…';
-    return 'Appel en cours…';
+    return 'Sonnerie…';
   }
-  return 'Appel en cours…';
+  return 'Appel';
 }
 
 export function formatCallStatusLine(input: {

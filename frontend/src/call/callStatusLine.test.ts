@@ -33,7 +33,7 @@ describe('formatAgoraDmCallStatus', () => {
         role: 'caller',
         errorMsg: null,
       }),
-    ).toBe('Appel en cours…');
+    ).toBe('Sonnerie…');
     expect(
       formatAgoraDmCallStatus({
         callState: 'ringing',

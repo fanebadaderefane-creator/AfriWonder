@@ -1,7 +1,8 @@
 import { AppState, BackHandler, Platform } from 'react-native';
-import { useCallback, useEffect, useRef } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useEffect, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { trimMobileAppCaches } from '../lib/mobileMemoryMaintenance';
+import { removeNativeSubscription } from './callNativeSubscription';
 import {
   logAndroidBackPressed,
   logAppStateChange,
@@ -12,17 +13,6 @@ import {
   logVideoScreenMount,
   logVideoScreenUnmount,
 } from './callUiLifecycleLog';
-
-function removeNativeSubscription(sub: { remove?: () => void } | (() => void) | null | undefined): void {
-  if (!sub) return;
-  if (typeof sub === 'function') {
-    sub();
-    return;
-  }
-  if (typeof sub.remove === 'function') {
-    sub.remove();
-  }
-}
 
 /**
  * Libère de la RAM avant d’ouvrir WebRTC (micro/caméra + PeerConnection).
@@ -54,6 +44,9 @@ export type CallScreenLifecycleGuardInput = {
 export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInput): void {
   const inputRef = useRef(input);
   inputRef.current = input;
+  const navigation = useNavigation();
+  const navigationRef = useRef(navigation);
+  navigationRef.current = navigation;
 
   useEffect(() => {
     const meta = {
@@ -71,8 +64,17 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
     };
   }, [input.callId, input.engine, input.isVideoCall, input.role]);
 
-  useFocusEffect(
-    useCallback(() => {
+  /**
+   * Pas de useFocusEffect ici : sa dépendance `navigation` peut changer après
+   * `agora_join_ok` et rappeler `navigation.isFocused()` / `addListener` undefined.
+   */
+  useEffect(() => {
+    const nav = navigationRef.current as {
+      isFocused?: () => boolean;
+      addListener?: (event: string, cb: () => void) => (() => void) | { remove?: () => void };
+    } | null;
+
+    const logFocus = () => {
       const meta = {
         engine: inputRef.current.engine,
         callId: inputRef.current.callId,
@@ -80,11 +82,32 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
       };
       logNavigationFocus(meta);
       logCallUiVisible(meta);
-      return () => {
-        logNavigationBlur(meta);
-      };
-    }, []),
-  );
+    };
+    const logBlur = () => {
+      logNavigationBlur({
+        engine: inputRef.current.engine,
+        callId: inputRef.current.callId,
+        role: inputRef.current.role,
+      });
+    };
+
+    if (typeof nav?.isFocused !== 'function' || typeof nav?.addListener !== 'function') {
+      logFocus();
+      return;
+    }
+
+    if (nav.isFocused()) {
+      logFocus();
+    }
+
+    const unsubFocus = nav.addListener('focus', logFocus);
+    const unsubBlur = nav.addListener('blur', logBlur);
+
+    return () => {
+      removeNativeSubscription(unsubFocus);
+      removeNativeSubscription(unsubBlur);
+    };
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {

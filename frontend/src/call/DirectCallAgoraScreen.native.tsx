@@ -7,6 +7,7 @@ import {
   Animated,
   Image,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,7 +15,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import apiClient from '../api/client';
 import { buildCallAcceptPayload } from './callSignalingPayload';
@@ -23,6 +23,7 @@ import { ALLOWED_CALL_REACTIONS } from './callDmMenuConstants';
 import { formatAgoraDmCallStatus, CALL_END_STATUS_DISPLAY_MS } from './callStatusLine';
 import type { CallEndReasonUi } from './callStatusLine';
 import { resolveAgoraDmCallId, shouldStartNativeInCallBeforeAgora } from './agoraDmCallSession';
+import { shouldEnableAgoraChannelJoin, shouldStartAgoraCallTimer } from './agoraDmChannelReady';
 import { resolveAgoraDmLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
 import {
   shouldShowAgoraVideoStage,
@@ -38,7 +39,7 @@ import {
 } from './callNativeMedia';
 import { tryEnterPictureInPicture, prepareVideoCallSystemPip } from '../live/liveNativeExtras';
 import { syncAgoraDmCallUiStore, useAgoraDmCallUiStore, agoraDmEmptyLocalPreview } from './agoraDmCallUiStore';
-import { activateAgoraDmVideoPreview, releaseAgoraDmPreviewSession } from './agoraDmPreviewSession';
+import { activateAgoraDmVideoPreview, releaseAgoraDmPreviewSession, isAgoraDmPreviewEngineAlive } from './agoraDmPreviewSession';
 import { openDmThreadFromCall } from './openDmThreadFromCall';
 import { enableCallKeepAwake, disableCallKeepAwake } from './agoraCallKeepAwake';
 import { startActiveCallForeground, stopActiveCallForeground } from '../services/incomingCallService';
@@ -56,7 +57,16 @@ import {
 import { CallFloatingReactions } from '../components/call/CallFloatingReactions';
 import { CallMissedWhatsAppPanel } from '../components/call/CallMissedWhatsAppPanel';
 import { useCallScreenLifecycleGuards } from './callSessionStability';
-import { logLocalStreamCreated, logLocalStreamDestroyed, logRemoteStreamAdded } from './callUiLifecycleLog';
+import { removeNativeSubscription } from './callNativeSubscription';
+import { logLocalStreamCreated, logLocalStreamDestroyed, logRemoteStreamAdded, logCallNav } from './callUiLifecycleLog';
+import {
+  logCallControlsHidden,
+  logCallControlsMounted,
+  logCallControlsUnmounted,
+  logCallControlsVisible,
+} from './callControlsLifecycleLog';
+import { AgoraLocalPreviewSurface } from './agoraLocalPreviewSurface.native';
+import { useCallVideoControlsOverlay } from './useCallVideoControlsOverlay';
 
 const CALL_RING_MS = 30_000;
 
@@ -97,6 +107,9 @@ export function DirectCallAgoraScreen() {
   const [callState, setCallState] = useState<'ringing' | 'connecting' | 'connected' | 'ended'>(
     role === 'caller' ? 'ringing' : 'connecting',
   );
+  const [peerAccepted, setPeerAccepted] = useState(role === 'receiver');
+  const peerAcceptedRef = useRef(role === 'receiver');
+  const onBackWhileInCallRef = useRef<() => void>(() => {});
   const callStateRef = useRef(callState);
   const [duration, setDuration] = useState(0);
   const durationRef = useRef(0);
@@ -132,6 +145,10 @@ export function DirectCallAgoraScreen() {
 
   useEffect(() => {
     logAfwCall('agora_screen_mount', { callId, role, platform: Platform.OS });
+    logCallNav('messages/call', { action: 'mount', callId, role, engine: 'agora' });
+    return () => {
+      logCallNav('messages/call', { action: 'unmount', callId, role, engine: 'agora' });
+    };
   }, [callId, role]);
 
   useCallScreenLifecycleGuards({
@@ -140,7 +157,18 @@ export function DirectCallAgoraScreen() {
     role,
     isVideoCall: startedAsVideo,
     blockAndroidBack: callState !== 'ended' && !minimized,
+    onAndroidBackWhileBlocked: () => onBackWhileInCallRef.current(),
   });
+
+  useEffect(() => {
+    const meta = { callId, role, isVideoCall: startedAsVideo, platform: Platform.OS };
+    logCallControlsMounted(meta);
+    logCallControlsVisible(meta);
+    return () => {
+      logCallControlsHidden(meta);
+      logCallControlsUnmounted(meta);
+    };
+  }, [callId, role, startedAsVideo]);
 
   const videoPreviewStartedRef = useRef(false);
   const [videoPreviewReady, setVideoPreviewReady] = useState(false);
@@ -223,8 +251,13 @@ export function DirectCallAgoraScreen() {
     } else if (!mediaEnabledRef.current) {
       await startAgoraMediaTracks();
     }
+    if (role === 'receiver') {
+      await startNativeCallAudioSession(startedAsVideo, true);
+    }
+    peerAcceptedRef.current = true;
+    setPeerAccepted(true);
     setCallState('connecting');
-  }, [activateVideoPreview, startAgoraMediaTracks, startedAsVideo]);
+  }, [activateVideoPreview, role, startAgoraMediaTracks, startedAsVideo]);
 
   const handleRemoteJoined = useCallback(() => {
     setCallState('connected');
@@ -252,7 +285,13 @@ export function DirectCallAgoraScreen() {
     previewActive,
   } = useDirectCallAgoraRtc({
     callId,
-    enabled: mediaEnabled && callState !== 'ended',
+    enabled:
+      shouldEnableAgoraChannelJoin({
+        role,
+        peerAccepted,
+        callEnded: callState === 'ended',
+        mediaEnabled,
+      }) && callState !== 'ended',
     audioOnly: !startedAsVideo,
     muted,
     cameraFlipNonce,
@@ -263,6 +302,9 @@ export function DirectCallAgoraScreen() {
     },
     onError: (msg) => setErrorMsg(msg),
   });
+
+  const upgradeToVideoRef = useRef(upgradeToVideo);
+  upgradeToVideoRef.current = upgradeToVideo;
 
   useEffect(() => {
     if (rtcError) setErrorMsg(rtcError);
@@ -289,11 +331,9 @@ export function DirectCallAgoraScreen() {
     }
   }, [camOn, initialCamOn, isVideoCall, joined, toggleCam]);
 
-  useFocusEffect(
-    useCallback(() => {
-      useAgoraDmCallUiStore.getState().setMinimized(false);
-    }, []),
-  );
+  useEffect(() => {
+    useAgoraDmCallUiStore.getState().setMinimized(false);
+  }, []);
 
   useEffect(() => {
     if (callState === 'ended') return;
@@ -376,6 +416,7 @@ export function DirectCallAgoraScreen() {
         durationSec: durationRef.current,
       });
       if (!options?.skipNavigation) {
+        logCallNav('messages', { action: 'finish_navigate_back', callId: callIdRef.current, reason });
         safeRouterBack('/messages');
       }
     },
@@ -384,10 +425,18 @@ export function DirectCallAgoraScreen() {
 
   finishCallRef.current = finishCall;
 
-  /** Sortie navigation sans raccrocher — évite moteur Agora + overlay root orphelins. */
+  /** Sortie navigation sans raccrocher — sauf fermeture réelle de l'écran (pas réduction). */
   useEffect(() => {
     return () => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
+      if (useAgoraDmCallUiStore.getState().minimized) {
+        logCallNav('messages/call', {
+          action: 'unmount_while_minimized',
+          callId: callIdRef.current,
+          role,
+        });
+        return;
+      }
       const state = callStateRef.current;
       const reason =
         role === 'caller' && state === 'ringing'
@@ -395,6 +444,7 @@ export function DirectCallAgoraScreen() {
           : state === 'connected'
             ? 'completed'
             : 'declined';
+      logCallNav('messages/call', { action: 'unmount_finish_call', callId: callIdRef.current, reason });
       void finishCallRef.current(reason, { skipNavigation: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -481,12 +531,12 @@ export function DirectCallAgoraScreen() {
   }, [callState]);
 
   useEffect(() => {
-    if (callState !== 'connected') return;
+    if (!shouldStartAgoraCallTimer({ callState, peerAccepted })) return;
     timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [callState]);
+  }, [callState, peerAccepted]);
 
   useEffect(() => {
     if (callState !== 'ringing') return;
@@ -497,7 +547,11 @@ export function DirectCallAgoraScreen() {
       ]),
     );
     loop.start();
-    return () => loop.stop();
+    return () => {
+      if (typeof loop.stop === 'function') {
+        loop.stop();
+      }
+    };
   }, [callState, pulseAnim]);
 
   useEffect(() => {
@@ -599,6 +653,8 @@ export function DirectCallAgoraScreen() {
         clearTimeout(ringTimeoutRef.current);
         ringTimeoutRef.current = null;
       }
+      peerAcceptedRef.current = true;
+      setPeerAccepted(true);
       if (mediaEnabledRef.current) {
         setCallState('connecting');
       } else {
@@ -630,11 +686,11 @@ export function DirectCallAgoraScreen() {
 
     return () => {
       cancelled = true;
-      offAccept();
-      offEnd();
-      offDecline();
-      offMissed();
-      offInviteAck();
+      removeNativeSubscription(offAccept);
+      removeNativeSubscription(offEnd);
+      removeNativeSubscription(offDecline);
+      removeNativeSubscription(offMissed);
+      removeNativeSubscription(offInviteAck);
       void stopOutgoingRingRef.current?.();
       stopOutgoingRingRef.current = null;
       void stopEveryCallRingAlert();
@@ -699,12 +755,17 @@ export function DirectCallAgoraScreen() {
 
   const handleMinimize = useCallback(async () => {
     if (callState === 'ended') return;
+    logCallNav('messages/[id]', { action: 'minimize_to_chat', callId: callIdRef.current });
     if (isVideoCall && joined) {
       await tryEnterPictureInPicture({ silent: true, title: name });
     }
     useAgoraDmCallUiStore.getState().setMinimized(true);
     await openDmThreadFromCall({ otherUserId, peerName: name, peerAvatar: avatar });
   }, [avatar, callState, isVideoCall, joined, name, otherUserId]);
+
+  onBackWhileInCallRef.current = () => {
+    void handleMinimize();
+  };
 
   const handleOpenChat = useCallback(() => {
     void handleMinimize();
@@ -771,15 +832,15 @@ export function DirectCallAgoraScreen() {
       (p: { callId?: string; fromUserId?: string; active?: boolean }) => {
         if (p?.callId !== callIdRef.current || p.fromUserId !== otherUserId || !p.active) return;
         setIsVideoCall(true);
-        void upgradeToVideo();
+        void upgradeToVideoRef.current();
       },
     );
     return () => {
-      offR();
-      offS();
-      offU();
+      removeNativeSubscription(offR);
+      removeNativeSubscription(offS);
+      removeNativeSubscription(offU);
     };
-  }, [otherUserId, myUserId, pushFloatingReaction, upgradeToVideo]);
+  }, [otherUserId, myUserId, pushFloatingReaction]);
 
   const handleShareScreen = useCallback(async () => {
     if (screenShareLoading) return;
@@ -801,16 +862,20 @@ export function DirectCallAgoraScreen() {
     joined,
     previewActive,
     isVideoCall,
-    mediaEnabled,
+    mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),
     localScreenSharing,
     peerScreenSharing,
   });
   const showLocalFull = shouldShowLocalVideoFullscreen({
     isVideoCall,
-    mediaEnabled,
+    mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),
     remoteEverJoined,
   });
-  const showRemoteFull = shouldShowRemoteVideoFullscreen({ isVideoCall, remoteJoined });
+  const showRemoteFull = shouldShowRemoteVideoFullscreen({
+    isVideoCall,
+    remoteJoined,
+    remoteEverJoined,
+  });
   const showSideRail = shouldShowVideoSideRail({ isVideoCall, mediaEnabled, remoteEverJoined });
   const localPreviewLayout = useMemo(
     () =>
@@ -848,6 +913,25 @@ export function DirectCallAgoraScreen() {
   }, [callState, endingReason, localPreviewLayout, showMissedPanel]);
   const isMuted = muted;
 
+  const callEnded = callState === 'ended';
+  const {
+    chromeOpacity,
+    chromePointerEvents,
+    showPinnedHangup,
+    tapOverlayActive,
+    showControls,
+    bumpControlsActivity,
+  } = useCallVideoControlsOverlay({
+    isVideoStage: showVideoStage,
+    callEnded,
+    minimized,
+    moreMenuOpen,
+    messageModalOpen,
+    callId,
+    role,
+  });
+  const chromeFadeStyle = { opacity: chromeOpacity };
+
   if (showMissedPanel) {
     return (
       <CallMissedWhatsAppPanel
@@ -868,8 +952,9 @@ export function DirectCallAgoraScreen() {
       style={[
         topBarOverlay ? styles.topBarOverlay : styles.topBar,
         topBarOverlay ? { paddingTop: insets.top + 4 } : null,
+        showVideoStage ? chromeFadeStyle : null,
       ]}
-      pointerEvents="box-none"
+      pointerEvents={showVideoStage ? chromePointerEvents : 'box-none'}
     >
       {showRemoteFull || !showVideoStage ? (
         <TouchableOpacity
@@ -934,34 +1019,62 @@ export function DirectCallAgoraScreen() {
             <>
               <RemoteView style={styles.videoFill} />
               <TouchableOpacity
-                style={[styles.videoChatFab, { top: insets.top + 56 }]}
-                onPress={handleOpenChat}
+                style={[
+                  styles.videoChatFab,
+                  { top: insets.top + 56 },
+                  chromeFadeStyle,
+                ]}
+                onPress={() => {
+                  bumpControlsActivity();
+                  handleOpenChat();
+                }}
                 accessibilityLabel="Message"
+                disabled={chromePointerEvents === 'none'}
               >
                 <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
               </TouchableOpacity>
             </>
           ) : showLocalFull ? (
             <>
+              {(localPreviewLayout.mountSurface && localPreviewLayout.containerStyle === 'full') ||
+              isAgoraDmPreviewEngineAlive(callId) ? (
+                <AgoraLocalPreviewSurface layoutMode="fill" style={styles.videoFill} />
+              ) : null}
               {showSideRail ? (
-                <View style={[styles.videoSideRail, { top: insets.top + 72 }]}>
+                <View
+                  style={[
+                    styles.videoSideRail,
+                    { top: insets.top + 72 },
+                    chromeFadeStyle,
+                  ]}
+                  pointerEvents={chromePointerEvents}
+                >
                   <TouchableOpacity
                     style={styles.sideToolBtn}
-                    onPress={openAddPeople}
+                    onPress={() => {
+                      bumpControlsActivity();
+                      openAddPeople();
+                    }}
                     accessibilityLabel="Ajouter un participant"
                   >
                     <Ionicons name="person-add-outline" size={22} color="#FFF" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.sideToolBtn}
-                    onPress={handleOpenChat}
+                    onPress={() => {
+                      bumpControlsActivity();
+                      handleOpenChat();
+                    }}
                     accessibilityLabel="Message"
                   >
                     <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.sideToolBtn}
-                    onPress={flipCamera}
+                    onPress={() => {
+                      bumpControlsActivity();
+                      flipCamera();
+                    }}
                     accessibilityLabel="Retourner la caméra"
                   >
                     <Ionicons name="camera-reverse-outline" size={22} color="#FFF" />
@@ -985,11 +1098,19 @@ export function DirectCallAgoraScreen() {
             </View>
           ) : null}
           {(peerScreenSharing || localScreenSharing) ? (
-            <View style={[styles.screenShareBanner, { top: insets.top + 12 }]}>
+            <View style={[styles.screenShareBanner, { top: insets.top + 12 }, chromeFadeStyle]}>
               <Text style={styles.screenShareBannerText}>
                 {localScreenSharing ? 'Vous partagez votre écran' : `${name} partage son écran`}
               </Text>
             </View>
+          ) : null}
+          {tapOverlayActive ? (
+            <Pressable
+              style={styles.tapToShowOverlay}
+              onPress={showControls}
+              accessibilityLabel="Afficher les contrôles d'appel"
+              accessibilityRole="button"
+            />
           ) : null}
         </View>
       ) : (
@@ -1009,11 +1130,21 @@ export function DirectCallAgoraScreen() {
 
       <CallFloatingReactions items={floatingReactions} />
 
-      <View style={[styles.dockWrap, showVideoStage ? { paddingBottom: insets.bottom + 12 } : null]}>
+      <View
+        style={[
+          styles.dockWrap,
+          showVideoStage ? { paddingBottom: insets.bottom + 12 } : null,
+          showVideoStage ? chromeFadeStyle : null,
+        ]}
+        pointerEvents={showVideoStage ? chromePointerEvents : 'auto'}
+      >
         <View style={styles.dock}>
           <TouchableOpacity
             style={styles.dockBtn}
-            onPress={() => setMoreMenuOpen(true)}
+            onPress={() => {
+              bumpControlsActivity();
+              setMoreMenuOpen(true);
+            }}
             accessibilityLabel="Options"
           >
             <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
@@ -1021,7 +1152,10 @@ export function DirectCallAgoraScreen() {
           {isVideoCall ? (
             <TouchableOpacity
               style={[styles.dockBtn, camOn ? styles.dockBtnActive : null]}
-              onPress={() => toggleCam()}
+              onPress={() => {
+                bumpControlsActivity();
+                toggleCam();
+              }}
               accessibilityLabel="Caméra"
             >
               <Ionicons
@@ -1033,7 +1167,10 @@ export function DirectCallAgoraScreen() {
           ) : (
             <TouchableOpacity
               style={[styles.dockBtn, videoUpgradeLoading ? styles.dockBtnDisabled : null]}
-              onPress={() => void handleUpgradeToVideo()}
+              onPress={() => {
+                bumpControlsActivity();
+                void handleUpgradeToVideo();
+              }}
               disabled={videoUpgradeLoading || callState !== 'connected'}
               accessibilityLabel="Passer en vidéo"
             >
@@ -1042,22 +1179,54 @@ export function DirectCallAgoraScreen() {
           )}
           <TouchableOpacity
             style={[styles.dockBtn, speakerOn ? styles.dockBtnActive : null]}
-            onPress={handleToggleSpeaker}
+            onPress={() => {
+              bumpControlsActivity();
+              handleToggleSpeaker();
+            }}
             accessibilityLabel="Haut-parleur"
           >
             <Ionicons name="volume-high" size={24} color={speakerOn ? '#111B21' : '#FFF'} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.dockBtn} onPress={handleToggleMute} accessibilityLabel="Micro">
+          <TouchableOpacity
+            style={styles.dockBtn}
+            onPress={() => {
+              bumpControlsActivity();
+              handleToggleMute();
+            }}
+            accessibilityLabel="Micro"
+          >
             <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={24} color="#FFF" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.dockBtn, styles.hangup]}
-            onPress={handleHangup}
+            onPress={() => {
+              bumpControlsActivity();
+              handleHangup();
+            }}
             accessibilityLabel="Raccrocher"
           >
             <Ionicons name="call" size={26} color="#FFF" style={styles.hangupIcon} />
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View
+        style={[
+          styles.pinnedHangupWrap,
+          { paddingBottom: insets.bottom + 20, opacity: showPinnedHangup ? 1 : 0 },
+        ]}
+        pointerEvents={showPinnedHangup ? 'box-none' : 'none'}
+      >
+        <TouchableOpacity
+          style={[styles.dockBtn, styles.hangup, styles.pinnedHangupBtn]}
+          onPress={() => {
+            bumpControlsActivity();
+            handleHangup();
+          }}
+          accessibilityLabel="Raccrocher"
+        >
+          <Ionicons name="call" size={26} color="#FFF" style={styles.hangupIcon} />
+        </TouchableOpacity>
       </View>
 
       <CallMoreOptionsSheet
@@ -1106,15 +1275,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     minHeight: 56,
-    zIndex: 20,
-    elevation: 20,
+    zIndex: 100,
+    elevation: 100,
   },
   topBarOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
-    zIndex: 20,
-    elevation: 20,
+    zIndex: 100,
+    elevation: 100,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 12,
@@ -1140,6 +1309,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A3942',
   },
   videoStage: { flex: 1, position: 'relative', backgroundColor: '#101822', zIndex: 1 },
+  tapToShowOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 90,
+    elevation: 90,
+  },
   localPreviewFallback: { width: '100%', height: '100%', resizeMode: 'cover' },
   videoSideRail: {
     position: 'absolute',
@@ -1232,7 +1406,22 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   screenShareBannerText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  dockWrap: { paddingHorizontal: 16, paddingBottom: 16, zIndex: 20, elevation: 20 },
+  dockWrap: { paddingHorizontal: 16, paddingBottom: 16, zIndex: 100, elevation: 100 },
+  pinnedHangupWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    zIndex: 110,
+    elevation: 110,
+  },
+  pinnedHangupBtn: {
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',

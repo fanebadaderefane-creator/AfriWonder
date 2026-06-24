@@ -14,8 +14,12 @@ import {
   rebindAgoraLocalPreview,
 } from '../call/agoraCallVideoBind.native';
 import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
+import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
 import { logAfwCall } from '../call/callDiagnosticLog';
-import { requestNativeCallPermissions } from '../call/callNativeMedia';
+import { logRemoteStreamRemoved } from '../call/callUiLifecycleLog';
+import { shouldPromoteAgoraRemoteToConnected } from '../call/agoraDmChannelReady';
+import { shouldRunRtcChannelTeardown, shouldReleaseAgoraPreviewSession } from '../call/agoraRtcLifecycle';
+import { requestNativeCallPermissions, applyNativeCallSpeakerRoute, stopNativeOutgoingRingback } from '../call/callNativeMedia';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
 import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import { AgoraRemoteVideoSurface } from '../call/agoraRemoteVideoSurface.native';
@@ -57,6 +61,7 @@ function noteRemotePeer(
   uid: number,
   callId: string,
   source: string,
+  audioOnly: boolean,
   remoteUidRef: React.MutableRefObject<number | null>,
   remoteNotifiedRef: React.MutableRefObject<boolean>,
   setRemoteUid: (uid: number) => void,
@@ -64,16 +69,18 @@ function noteRemotePeer(
   setRemoteEverJoined: (v: boolean) => void,
   onRemoteJoinedRef: React.MutableRefObject<(() => void) | undefined>,
 ) {
-  if (remoteUidRef.current === uid && remoteNotifiedRef.current) return;
-  remoteUidRef.current = uid;
-  setRemoteUid(uid);
-  setRemoteJoined(true);
-  setRemoteEverJoined(true);
-  if (!remoteNotifiedRef.current) {
-    remoteNotifiedRef.current = true;
-    logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
-    onRemoteJoinedRef.current?.();
+  if (uid != null && uid > 0) {
+    remoteUidRef.current = uid;
+    setRemoteUid(uid);
+    setRemoteJoined(true);
+    setRemoteEverJoined(true);
   }
+  const promoteConnected = shouldPromoteAgoraRemoteToConnected({ audioOnly, eventSource: source });
+  if (!promoteConnected) return;
+  if (remoteNotifiedRef.current) return;
+  remoteNotifiedRef.current = true;
+  logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
+  onRemoteJoinedRef.current?.();
 }
 
 export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCallAgoraRtcResult {
@@ -92,6 +99,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const engineRef = useRef<IRtcEngine | null>(null);
   const handlerRef = useRef<IRtcEngineEventHandler | null>(null);
   const remoteUidRef = useRef<number | null>(null);
+  const lastRemoteUidRef = useRef<number | null>(null);
   const remoteNotifiedRef = useRef(false);
   const onRemoteJoinedRef = useRef(onRemoteJoined);
   const onRemoteLeftRef = useRef(onRemoteLeft);
@@ -100,6 +108,8 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
 
   const [joined, setJoined] = useState(false);
+  const joinedRef = useRef(false);
+  joinedRef.current = joined;
   const [remoteJoined, setRemoteJoined] = useState(false);
   const [remoteEverJoined, setRemoteEverJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,45 +132,67 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     onErrorRef.current = onError;
   }, [onRemoteJoined, onRemoteLeft, onError]);
 
-  const leave = useCallback(async () => {
-    const engine = engineRef.current;
-    const handler = handlerRef.current;
-    engineRef.current = null;
-    handlerRef.current = null;
-    remoteUidRef.current = null;
-    remoteNotifiedRef.current = false;
-    setRemoteUid(null);
-    if (engine) {
-      try {
-        if (screenSharingRef.current) {
-          try {
-            engine.stopScreenCapture();
-          } catch {
-            /* ignore */
+  const leave = useCallback(
+    async (options?: { releasePreview?: boolean; reason?: string }) => {
+      const hadChannelEngine = engineRef.current != null;
+      const engine = engineRef.current;
+      const handler = handlerRef.current;
+      engineRef.current = null;
+      handlerRef.current = null;
+      remoteUidRef.current = null;
+      remoteNotifiedRef.current = false;
+      setRemoteUid(null);
+      if (engine) {
+        try {
+          if (screenSharingRef.current) {
+            try {
+              engine.stopScreenCapture();
+            } catch {
+              /* ignore */
+            }
+            screenSharingRef.current = false;
+            setScreenSharing(false);
           }
-          screenSharingRef.current = false;
-          setScreenSharing(false);
-        }
-        if (handler) {
-          const unregister = (engine as { unregisterEventHandler?: (h: typeof handler) => void })
-            .unregisterEventHandler;
-          if (typeof unregister === 'function') {
-            unregister(handler);
+          if (handler) {
+            const unregister = (engine as { unregisterEventHandler?: (h: typeof handler) => void })
+              .unregisterEventHandler;
+            if (typeof unregister === 'function') {
+              unregister(handler);
+            }
           }
+          await engine.leaveChannel();
+          engine.release();
+        } catch {
+          /* ignore */
         }
-        await engine.leaveChannel();
-        engine.release();
-      } catch {
-        /* ignore */
       }
-    }
-    setJoined(false);
-    setRemoteJoined(false);
-    setRemoteEverJoined(false);
-    setPreviewActive(false);
-    if (callId) clearAgoraDmPreviewEngineAlive(callId, 'rtc_leave');
-    await releaseAgoraDmPreviewSession('rtc_leave');
-  }, [callId]);
+      setJoined(false);
+      setRemoteJoined(false);
+      setRemoteEverJoined(false);
+      setPreviewActive(false);
+
+      const releasePreview =
+        options?.releasePreview ??
+        shouldReleaseAgoraPreviewSession({
+          callEnded: options?.reason === 'finish_call',
+          hadChannelEngine,
+          previewOnlyRinging: !hadChannelEngine,
+        });
+
+      if (releasePreview) {
+        if (callId) clearAgoraDmPreviewEngineAlive(callId, options?.reason ?? 'rtc_leave');
+        await releaseAgoraDmPreviewSession(options?.reason ?? 'rtc_leave');
+        logAfwCall('agora_preview_released', { callId, reason: options?.reason ?? 'rtc_leave' });
+      } else {
+        logAfwCall('agora_preview_preserved', {
+          callId,
+          reason: options?.reason ?? 'rtc_leave_skipped',
+          hadChannelEngine,
+        });
+      }
+    },
+    [callId],
+  );
 
   const toggleMic = useCallback(() => {
     const engine = engineRef.current;
@@ -190,7 +222,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
   const upgradeToVideo = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
     const engine = engineRef.current;
-    if (!engine || !joined) {
+    if (!engine || !joinedRef.current) {
       return { ok: false, message: 'Attendez que l’appel soit connecté.' };
     }
     if (videoPublishedRef.current) return { ok: true };
@@ -239,7 +271,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     } catch (e) {
       return { ok: false, message: (e as Error)?.message || 'Impossible de passer en vidéo.' };
     }
-  }, [callId, joined]);
+  }, [callId]);
 
   const toggleScreenShare = useCallback(async () => {
     const engine = engineRef.current;
@@ -263,8 +295,20 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   }, [videoPublished]);
 
   useEffect(() => {
-    if (!enabled || !callId || Platform.OS === 'web') {
-      void leave();
+    if (!callId || Platform.OS === 'web') {
+      return;
+    }
+    const hasChannelEngine = engineRef.current != null;
+    if (
+      !shouldRunRtcChannelTeardown({
+        enabled,
+        hasChannelEngine,
+      })
+    ) {
+      return;
+    }
+    if (!enabled) {
+      void leave({ releasePreview: false, reason: 'channel_disabled' });
       return;
     }
     let cancelled = false;
@@ -353,6 +397,8 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
                 engine.muteAllRemoteVideoStreams(false);
                 rebindAgoraLocalPreview(engine, { callId, reason: 'join_ok' });
               }
+              void stopNativeOutgoingRingback();
+              void applyNativeCallSpeakerRoute(speakerOn);
             } catch {
               /* ignore */
             }
@@ -371,6 +417,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               uid,
               callId,
               'onUserJoined',
+              audioOnly,
               remoteUidRef,
               remoteNotifiedRef,
               setRemoteUid,
@@ -385,6 +432,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               uid,
               callId,
               'onFirstRemoteVideoDecoded',
+              audioOnly,
               remoteUidRef,
               remoteNotifiedRef,
               setRemoteUid,
@@ -401,6 +449,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
                 uid,
                 callId,
                 'onRemoteAudioStateChanged',
+                audioOnly,
                 remoteUidRef,
                 remoteNotifiedRef,
                 setRemoteUid,
@@ -414,10 +463,9 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
             if (cancelled) return;
             if (remoteUidRef.current === uid) {
               remoteUidRef.current = null;
-              remoteNotifiedRef.current = false;
-              setRemoteUid(null);
               setRemoteJoined(false);
               logAfwCall('agora_remote_left', { callId, remoteUid: uid });
+              logRemoteStreamRemoved({ callId, engine: 'agora', remoteUid: uid });
               onRemoteLeftRef.current?.();
             }
           },
@@ -448,38 +496,26 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
     return () => {
       cancelled = true;
-      void leave();
+      void leave({ releasePreview: false, reason: 'channel_effect_cleanup' });
     };
   }, [audioOnly, callId, enabled, leave]);
 
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !joined || audioOnly) return;
-    try {
-      engine.muteLocalVideoStream(!camOn);
-    } catch {
-      /* ignore */
-    }
+    invokeAgoraEngine(engine, 'muteLocalVideoStream', !camOn);
   }, [audioOnly, camOn, joined]);
 
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !joined) return;
-    try {
-      engine.muteLocalAudioStream(!!muted);
-    } catch {
-      /* ignore */
-    }
+    invokeAgoraEngine(engine, 'muteLocalAudioStream', !!muted);
   }, [joined, muted]);
 
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !joined) return;
-    try {
-      engine.setEnableSpeakerphone(!!speakerOn);
-    } catch {
-      /* ignore */
-    }
+    invokeAgoraEngine(engine, 'setEnableSpeakerphone', !!speakerOn);
   }, [joined, speakerOn]);
 
   useEffect(() => {
@@ -535,10 +571,19 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
   const RemoteView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {
-      if (Platform.OS === 'web' || remoteUid == null) return <View style={style} />;
-      return <AgoraRemoteVideoSurface remoteUid={remoteUid} style={style} />;
+      if (remoteUid != null) {
+        lastRemoteUidRef.current = remoteUid;
+      }
+      const renderUid = remoteUid ?? lastRemoteUidRef.current;
+      if (Platform.OS === 'web' || renderUid == null) return <View style={style} />;
+      return <AgoraRemoteVideoSurface remoteUid={renderUid} style={style} />;
     },
     [remoteUid],
+  );
+
+  const leaveForCallEnd = useCallback(
+    () => leave({ releasePreview: true, reason: 'finish_call' }),
+    [leave],
   );
 
   return {
@@ -556,7 +601,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     toggleCam,
     toggleScreenShare,
     upgradeToVideo,
-    leave,
+    leave: leaveForCallEnd,
     refreshLocalPreview,
     LocalView,
     RemoteView,

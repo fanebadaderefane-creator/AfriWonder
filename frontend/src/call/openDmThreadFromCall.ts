@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import apiClient from '../api/client';
+import { logCallNav } from './callUiLifecycleLog';
 import { getAlertMessageForCaughtError } from '../utils/userFacingError';
 import { Alert } from 'react-native';
 
@@ -15,6 +16,7 @@ export async function openDmThreadFromCall(input: {
     const res = await apiClient.get(`/messages/conversation/${encodeURIComponent(otherUserId)}`);
     const conv = res.data?.data;
     const conversationId = conv?.id ? String(conv.id) : otherUserId;
+    logCallNav('messages/[id]', { action: 'push', otherUserId });
     router.push({
       pathname: '/messages/[id]',
       params: {

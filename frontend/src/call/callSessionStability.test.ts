@@ -1,7 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('@react-navigation/native', () => ({
-  useFocusEffect: vi.fn(),
+  useNavigation: vi.fn(() => ({
+    isFocused: () => true,
+    addListener: vi.fn(() => vi.fn()),
+  })),
 }));
 
 vi.mock('react-native', () => ({

@@ -16,7 +16,6 @@ export const agoraDmLocalPreviewStyles = StyleSheet.create({
   },
   full: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 3,
   },
   hidden: {
     position: 'absolute',

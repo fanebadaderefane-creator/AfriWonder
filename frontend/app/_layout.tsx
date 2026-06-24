@@ -440,7 +440,6 @@ function RootLayoutContent() {
             <AppUpdatePrompt />
             <IncomingCallOverlay />
             <InCallFloatingBar />
-            <AgoraDmLocalPreviewOverlay />
             <MobileNavigationStability />
             <Stack
               screenOptions={{
@@ -509,6 +508,7 @@ function RootLayoutContent() {
             <Stack.Screen name="leaderboard" />
             <Stack.Screen name="gamification-hub" />
           </Stack>
+            <AgoraDmLocalPreviewOverlay />
           </View>
         </ToastProvider>
       </QueryClientProvider>

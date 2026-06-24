@@ -77,6 +77,105 @@ function checkFrontendWiring() {
     pass('DirectCallAgoraScreen — démarrage média Agora', 'OK');
   } else fail('DirectCallAgoraScreen — média', 'manquant');
 
+  if (!/useFocusEffect/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — pas de useFocusEffect', 'évite crash post agora_join_ok');
+  } else fail('DirectCallAgoraScreen — useFocusEffect', 'risque undefined is not a function après joined');
+
+  if (/joinedRef\.current/.test(hook) && /upgradeToVideo[\s\S]*\}, \[callId\]\)/.test(hook)) {
+    pass('Hook Agora — upgradeToVideo stable (joinedRef)', 'pas de resubscribe socket sur joined');
+  } else if (/joinedRef/.test(hook)) {
+    pass('Hook Agora — joinedRef présent', 'OK');
+  } else {
+    fail('Hook Agora — joinedRef', 'manquant — resubscribe socket sur joined');
+  }
+
+  if (/invokeAgoraEngine/.test(hook)) {
+    pass('Hook Agora — invokeAgoraEngine', 'méthodes SDK optionnelles sécurisées');
+  } else fail('Hook Agora — invokeAgoraEngine', 'manquant');
+
+  if (/removeNativeSubscription/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — removeNativeSubscription', 'cleanup socket sécurisé');
+  } else fail('DirectCallAgoraScreen — removeNativeSubscription', 'manquant');
+
+  const stability = read('src/call/callSessionStability.ts');
+  if (!/useFocusEffect\s*\(/.test(stability) && /removeNativeSubscription/.test(stability)) {
+    pass('callSessionStability — navigation sans useFocusEffect', 'OK');
+  } else fail('callSessionStability', 'useFocusEffect actif ou removeNativeSubscription manquant');
+
+  if (/prepareVideoCallSystemPip/.test(agoraScreen) && /callState !== 'connected'/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — PiP système après connected', 'pas pendant sonnerie');
+  } else {
+    warn('DirectCallAgoraScreen — PiP', 'vérifier prepareVideoCallSystemPip lié à callState connected');
+  }
+
+  if (/AgoraLocalPreviewSurface/.test(agoraScreen) && /showLocalFull/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — preview plein écran in-screen', 'sous le dock (pas overlay root)');
+  } else {
+    fail('DirectCallAgoraScreen — preview in-screen', 'manquant — risque contrôles masqués');
+  }
+
+  const guard = read('src/call/agoraDmLocalPreviewOverlayGuard.ts');
+  if (/containerStyle === 'full'/.test(guard) && /return false/.test(guard)) {
+    pass('Overlay guard — plein écran hors root', 'OK');
+  } else {
+    fail('Overlay guard — plein écran', 'root overlay peut recouvrir les contrôles');
+  }
+
+  if (/logCallControlsMounted/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — logs CALL_CONTROLS', 'diagnostic UI');
+  } else {
+    warn('DirectCallAgoraScreen — logs CALL_CONTROLS', 'manquants');
+  }
+
+  if (/useCallVideoControlsOverlay/.test(agoraScreen) && /tapToShowOverlay/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — overlay tap + auto-masque', 'style WhatsApp');
+  } else {
+    fail('DirectCallAgoraScreen — overlay contrôles vidéo', 'manquant');
+  }
+
+  if (/pinnedHangupWrap/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — raccrocher épinglé', 'toujours dispo si dock masqué');
+  } else {
+    fail('DirectCallAgoraScreen — raccrocher épinglé', 'manquant');
+  }
+
+  const overlayModule = read('src/call/callVideoControlsOverlay.ts');
+  if (/CALL_VIDEO_CONTROLS_AUTO_HIDE_MS = 5_000/.test(overlayModule)) {
+    pass('callVideoControlsOverlay — auto-masque 5s', 'OK');
+  } else {
+    fail('callVideoControlsOverlay — délai auto-masque', 'incorrect');
+  }
+
+  if (/shouldEnableAgoraChannelJoin/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — join canal après acceptation', 'aperçu preview sans join précoce');
+  } else {
+    fail('DirectCallAgoraScreen — gate join canal', 'risque sonnerie + join Agora trop tôt');
+  }
+
+  if (/onAndroidBackWhileBlocked/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — retour Android → réduire', 'pas UI perdue');
+  } else {
+    warn('DirectCallAgoraScreen — retour Android', 'BackHandler sans action');
+  }
+
+  if (/shouldRunRtcChannelTeardown/.test(read('src/hooks/useDirectCallAgoraRtc.native.tsx'))) {
+    pass('Hook Agora — preview préservé si join canal différé', 'anti écran noir sonnerie');
+  } else {
+    fail('Hook Agora — lifecycle preview', 'leave() peut tuer la caméra en sonnerie');
+  }
+
+  if (/unmount_while_minimized/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — unmount minimisé sans raccrocher', 'OK');
+  } else {
+    warn('DirectCallAgoraScreen — unmount minimisé', 'risque finishCall au retour Android');
+  }
+
+  if (/\[CALL_SCREEN\]/.test(read('src/call/callUiLifecycleLog.ts'))) {
+    pass('Logs CALL_SCREEN / CALL_NAV', 'diagnostic cycle de vie');
+  } else {
+    warn('Logs CALL_SCREEN', 'manquants');
+  }
+
   if (/IncomingCallOverlay/.test(read('app/_layout.tsx')) && /navigateToReceiverCallScreen/.test(read('src/components/call/IncomingCallOverlay.native.tsx'))) {
     pass('Appel entrant → écran receveur Agora', 'overlay OK');
   } else warn('Appel entrant', 'vérifier IncomingCallOverlay');
@@ -214,7 +313,7 @@ function runBackendAgoraTests() {
 function runFrontendAgoraTests() {
   try {
     execSync(
-      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/openNativeCallScreen.test.ts',
+      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/callNativeSubscription.test.ts src/call/agoraEngineInvoke.test.ts src/call/openNativeCallScreen.test.ts',
       { cwd: ROOT, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
     );
     pass('Tests frontend Agora DM', 'dmCallMediaEngine + session + UI');

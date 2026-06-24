@@ -50,12 +50,12 @@ function renderNativePreviewSurface(
       mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
     };
 
-    /** Android PiP : TextureView évite SurfaceView vide par-dessus flux distant. */
-    if (layoutMode === 'pip' && Platform.OS === 'android' && mod.RtcTextureView) {
+    /** Android : TextureView respecte le z-order React (SurfaceView recouvre le dock). */
+    if (Platform.OS === 'android' && mod.RtcTextureView) {
       const { RtcTextureView } = mod;
       return (
         <RtcTextureView
-          key={`${AGORA_LOCAL_PREVIEW_SURFACE_KEY}-pip`}
+          key={`${AGORA_LOCAL_PREVIEW_SURFACE_KEY}-${layoutMode}`}
           style={pipSizedStyle}
           canvas={canvas}
         />
@@ -67,7 +67,7 @@ function renderNativePreviewSurface(
         key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
         style={pipSizedStyle}
         canvas={canvas}
-        zOrderMediaOverlay
+        zOrderMediaOverlay={layoutMode === 'pip'}
       />
     );
   } catch (e) {

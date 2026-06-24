@@ -39,6 +39,7 @@ export function AgoraDmLocalPreviewOverlay() {
 
   const layout = localPreview ?? agoraDmEmptyLocalPreview;
   const mountSurface = layout.mountSurface;
+  const styleKey = layout.containerStyle;
 
   if (
     !shouldMountAgoraDmLocalPreviewOverlay({
@@ -47,12 +48,12 @@ export function AgoraDmLocalPreviewOverlay() {
       localPreviewPinned,
       localPreviewEngineReady,
       mountSurface,
+      containerStyle: styleKey,
     })
   ) {
     return null;
   }
 
-  const styleKey = layout.containerStyle;
   const baseStyle =
     styleKey === 'pip'
       ? agoraDmLocalPreviewStyles.pip

@@ -9,10 +9,16 @@ function serialize(meta?: Record<string, unknown>): string {
 
 export function logVideoScreenMount(meta?: Record<string, unknown>): void {
   console.error('[VIDEO_SCREEN_MOUNT]', serialize(meta));
+  console.error('[CALL_SCREEN]', 'mounted', serialize(meta));
 }
 
 export function logVideoScreenUnmount(meta?: Record<string, unknown>): void {
   console.error('[VIDEO_SCREEN_UNMOUNT]', serialize(meta));
+  console.error('[CALL_SCREEN]', 'unmounted', serialize(meta));
+}
+
+export function logCallNav(routeName: string, meta?: Record<string, unknown>): void {
+  console.error('[CALL_NAV]', routeName, serialize(meta));
 }
 
 export function logCallUiVisible(meta?: Record<string, unknown>): void {
