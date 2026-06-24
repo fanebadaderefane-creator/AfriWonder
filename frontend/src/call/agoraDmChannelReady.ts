@@ -1,5 +1,6 @@
 /**
- * Join canal Agora — l’aperçu caméra (preview) ne doit pas rejoindre le canal avant acceptation.
+ * Join canal Agora — vidéo : preview sans join avant acceptation.
+ * Audio vocal : join immédiat appelant (régression « Connexion média… » bloquée).
  */
 
 export function shouldEnableAgoraChannelJoin(input: {
@@ -7,9 +8,12 @@ export function shouldEnableAgoraChannelJoin(input: {
   peerAccepted: boolean;
   callEnded: boolean;
   mediaEnabled: boolean;
+  /** Vocal — l'appelant rejoint le canal pendant la sonnerie (comportement historique). */
+  audioOnly?: boolean;
 }): boolean {
   if (!input.mediaEnabled || input.callEnded) return false;
   if (input.role === 'receiver') return input.peerAccepted;
+  if (input.audioOnly) return true;
   return input.peerAccepted;
 }
 
@@ -33,5 +37,14 @@ export function shouldPromoteAgoraRemoteToConnected(input: {
       input.eventSource === 'onRemoteAudioStateChanged'
     );
   }
+  return input.eventSource === 'onFirstRemoteVideoDecoded';
+}
+
+/** Sticky « correspondant vu » — vidéo : première frame distante seulement (pas l’audio seul). */
+export function shouldMarkAgoraRemoteEverJoined(input: {
+  audioOnly: boolean;
+  eventSource: string;
+}): boolean {
+  if (input.audioOnly) return true;
   return input.eventSource === 'onFirstRemoteVideoDecoded';
 }

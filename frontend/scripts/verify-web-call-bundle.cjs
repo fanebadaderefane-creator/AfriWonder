@@ -68,6 +68,27 @@ if (exists('src/hooks/useDirectCallAgoraRtc.ts')) {
   ok('Pas de barrel useDirectCallAgoraRtc.ts');
 }
 
+if (exists('src/call/agoraDmForceHangup.ts')) {
+  fail('agoraDmForceHangup.ts présent — réexporte .native et casse Expo web');
+} else {
+  ok('Pas de barrel agoraDmForceHangup.ts');
+}
+
+if (exists('src/call/agoraDmForceHangup.web.ts') && exists('src/call/agoraDmForceHangup.native.ts')) {
+  ok('Paire agoraDmForceHangup.web / .native');
+} else {
+  fail('agoraDmForceHangup — paire .web/.native manquante');
+}
+
+noAgoraImport('agoraDmForceHangup.web', 'src/call/agoraDmForceHangup.web.ts');
+
+const errorBoundary = read('src/components/call/CallScreenErrorBoundary.tsx');
+if (/from\s+['"].*agoraDmForceHangup['"]/.test(errorBoundary)) {
+  ok('CallScreenErrorBoundary — import agoraDmForceHangup (résolution .web)');
+} else {
+  fail('CallScreenErrorBoundary — import agoraDmForceHangup manquant');
+}
+
 const webStub = read('src/call/DirectCallAgoraScreen.web.tsx');
 if (/return null/.test(webStub)) {
   ok('DirectCallAgoraScreen.web — stub return null');

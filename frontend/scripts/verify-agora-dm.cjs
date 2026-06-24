@@ -133,6 +133,46 @@ function checkFrontendWiring() {
     fail('DirectCallAgoraScreen — overlay contrôles vidéo', 'manquant');
   }
 
+  const callRoute = read('app/messages/call.tsx');
+  if (/CallScreenErrorBoundary key=\{callSessionKey\}/.test(callRoute)) {
+    pass('call.tsx — ErrorBoundary par callId', 'nouvel appel après crash');
+  } else {
+    warn('call.tsx — ErrorBoundary key', 'risque écran bloqué post-crash');
+  }
+
+  if (/shouldFlushAgoraDmConnected/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — safety net connected', 'audio/vidéo après join+remote');
+  } else {
+    warn('DirectCallAgoraScreen — shouldFlushAgoraDmConnected', 'risque Connexion média… bloquée');
+  }
+
+  if (/registerAgoraDmCallHangup/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — hangup registry', 'ErrorBoundary peut raccrocher');
+  } else {
+    warn('DirectCallAgoraScreen — hangup registry', 'Retour sans raccrocher');
+  }
+
+  const errorBoundary = read('src/components/call/CallScreenErrorBoundary.tsx');
+  if (/requestAgoraDmCallHangup/.test(errorBoundary) && /forceAgoraDmCallHangup/.test(errorBoundary)) {
+    pass('CallScreenErrorBoundary — raccroche avant retour', 'OK');
+  } else {
+    fail('CallScreenErrorBoundary', 'Retour messages sans hangup Agora');
+  }
+
+  const remoteReady = read('src/call/agoraDmRemoteReady.ts');
+  if (/shouldLogAgoraRemoteReady/.test(read('src/hooks/useDirectCallAgoraRtc.native.tsx'))) {
+    pass('useDirectCallAgoraRtc — remote ready relay', 'pas de blocage remoteNotifiedRef');
+  } else {
+    fail('useDirectCallAgoraRtc — noteRemotePeer', 'risque jamais connecté');
+  }
+
+  const controlsHook = read('src/call/useCallVideoControlsOverlay.ts');
+  if (/removeNativeSubscription/.test(controlsHook) && !/useNavigation/.test(controlsHook)) {
+    pass('useCallVideoControlsOverlay — removeNativeSubscription', 'évite crash AppState cleanup');
+  } else {
+    fail('useCallVideoControlsOverlay — AppState cleanup', 'sub.remove() ou useNavigation risqué');
+  }
+
   if (/pinnedHangupWrap/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — raccrocher épinglé', 'toujours dispo si dock masqué');
   } else {
@@ -156,6 +196,12 @@ function checkFrontendWiring() {
     pass('DirectCallAgoraScreen — retour Android → réduire', 'pas UI perdue');
   } else {
     warn('DirectCallAgoraScreen — retour Android', 'BackHandler sans action');
+  }
+
+  if (/audioOnly/.test(read('src/call/agoraDmChannelReady.ts'))) {
+    pass('agoraDmChannelReady — join vocal immédiat', 'audioOnly appelant');
+  } else {
+    warn('agoraDmChannelReady — audioOnly', 'vérifier join vocal');
   }
 
   if (/shouldRunRtcChannelTeardown/.test(read('src/hooks/useDirectCallAgoraRtc.native.tsx'))) {

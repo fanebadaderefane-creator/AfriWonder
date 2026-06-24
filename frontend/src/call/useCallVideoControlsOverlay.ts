@@ -1,5 +1,4 @@
 import { AppState } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { removeNativeSubscription } from './callNativeSubscription';
 import {
@@ -112,23 +111,8 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
         showControls();
       }
     });
-    return () => sub.remove();
+    return () => removeNativeSubscription(sub);
   }, [showControls]);
-
-  const navigation = useNavigation();
-  useEffect(() => {
-    const nav = navigation as {
-      addListener?: (event: string, cb: () => void) => (() => void) | { remove?: () => void };
-    };
-    if (typeof nav?.addListener !== 'function') return;
-    const unsub = nav.addListener('focus', () => {
-      const cur = inputRef.current;
-      if (cur.isVideoStage && !cur.callEnded) {
-        showControls();
-      }
-    });
-    return () => removeNativeSubscription(unsub);
-  }, [navigation, showControls]);
 
   const overlayInput = {
     mode: chromeMode,

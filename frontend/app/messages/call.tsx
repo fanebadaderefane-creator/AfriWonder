@@ -4894,15 +4894,19 @@ function CallScreenInner() {
 }
 
 export default function CallScreen() {
+  const params = useLocalSearchParams<{ callId?: string; peerId?: string }>();
+  /** Nouvel appel = boundary neuve (évite écran bloqué après VIDEO_SCREEN_CRASH). */
+  const callSessionKey = String(params.callId ?? params.peerId ?? 'call');
+
   if (Platform.OS !== 'web' && shouldUseAgoraDmCalls()) {
     return (
-      <CallScreenErrorBoundary>
+      <CallScreenErrorBoundary key={callSessionKey}>
         <DirectCallAgoraScreen />
       </CallScreenErrorBoundary>
     );
   }
   return (
-    <CallScreenErrorBoundary>
+    <CallScreenErrorBoundary key={callSessionKey}>
       <CallScreenInner />
     </CallScreenErrorBoundary>
   );

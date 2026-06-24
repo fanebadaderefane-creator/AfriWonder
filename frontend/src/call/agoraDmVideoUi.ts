@@ -27,8 +27,8 @@ export function shouldShowRemoteVideoFullscreen(input: {
   remoteJoined: boolean;
   remoteEverJoined?: boolean;
 }): boolean {
-  const remoteVisible = input.remoteEverJoined ?? input.remoteJoined;
-  return input.isVideoCall && remoteVisible;
+  if (!input.isVideoCall) return false;
+  return !!input.remoteEverJoined;
 }
 
 /**
@@ -51,4 +51,4 @@ export function shouldShowVideoSideRail(input: {
 }): boolean {
   return input.isVideoCall && input.mediaEnabled && !input.remoteEverJoined;
 }
-
+

@@ -17,7 +17,11 @@ import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
 import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
 import { logAfwCall } from '../call/callDiagnosticLog';
 import { logRemoteStreamRemoved } from '../call/callUiLifecycleLog';
-import { shouldPromoteAgoraRemoteToConnected } from '../call/agoraDmChannelReady';
+import {
+  shouldMarkAgoraRemoteEverJoined,
+  shouldPromoteAgoraRemoteToConnected,
+} from '../call/agoraDmChannelReady';
+import { shouldLogAgoraRemoteReady } from '../call/agoraDmRemoteReady';
 import { shouldRunRtcChannelTeardown, shouldReleaseAgoraPreviewSession } from '../call/agoraRtcLifecycle';
 import { requestNativeCallPermissions, applyNativeCallSpeakerRoute, stopNativeOutgoingRingback } from '../call/callNativeMedia';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
@@ -73,13 +77,16 @@ function noteRemotePeer(
     remoteUidRef.current = uid;
     setRemoteUid(uid);
     setRemoteJoined(true);
-    setRemoteEverJoined(true);
+    if (shouldMarkAgoraRemoteEverJoined({ audioOnly, eventSource: source })) {
+      setRemoteEverJoined(true);
+    }
   }
   const promoteConnected = shouldPromoteAgoraRemoteToConnected({ audioOnly, eventSource: source });
   if (!promoteConnected) return;
-  if (remoteNotifiedRef.current) return;
-  remoteNotifiedRef.current = true;
-  logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
+  if (shouldLogAgoraRemoteReady(remoteNotifiedRef.current)) {
+    remoteNotifiedRef.current = true;
+    logAfwCall('agora_remote_ready', { callId, remoteUid: uid, source });
+  }
   onRemoteJoinedRef.current?.();
 }
 
