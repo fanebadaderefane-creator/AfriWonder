@@ -235,6 +235,17 @@ export const liveGiftSchema = z.object({
   amount: z.coerce.number().nonnegative(),
   quantity: z.coerce.number().int().positive().max(999).optional().default(1),
   message: z.string().max(500).optional(),
+  battle_side: z.enum(['challenger', 'opponent']).optional(),
+});
+
+export const liveBattleChallengeSchema = z.object({
+  opponent_live_id: z.string().min(1).max(80),
+  duration_sec: z.coerce.number().int().min(60).max(600).optional(),
+});
+
+export const liveGuestRespondSchema = z.object({
+  user_id: z.string().min(1).max(80),
+  accept: z.boolean(),
 });
 
 export const liveReactionSchema = z.object({
@@ -246,6 +257,11 @@ export const liveRaiseHandSchema = z.object({
 });
 
 export const liveRaiseHandRespondSchema = z.object({
+  userId: z.string().min(1).max(80),
+  accept: z.boolean(),
+});
+
+export const liveJoinRequestRespondSchema = z.object({
   userId: z.string().min(1).max(80),
   accept: z.boolean(),
 });

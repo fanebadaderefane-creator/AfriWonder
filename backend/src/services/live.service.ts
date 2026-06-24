@@ -17,6 +17,14 @@ import { COMMISSION_VERTICALS } from '../config/commissions.js';
 import { generateThumbnailForLiveStreamId, pickLiveReplaySrc } from './videoThumbnail.service.js';
 import { maskProfanityFr } from '../utils/liveProfanityMask.js';
 import { transcribeLiveAudioWhisper } from './liveStt.service.js';
+import {
+  canViewerAccessLive,
+  joinAccessErrorCode,
+  resolveViewerJoinAccess,
+  type ViewerJoinAccess,
+} from '../utils/liveJoinAccess.js';
+import { getCreatorSubscribeStatusPure } from '../utils/liveCreatorSubscribeStatus.js';
+
 // Cadeaux live : 50% partagé (25% créateur, 25% plateforme) — modèle AfriWonder
 const VIEWER_INACTIVE_SEC = 60;
 const GIFT_RATE_LIMIT_COUNT = 5;
@@ -75,6 +83,8 @@ function parseLiveMaxAgeDays(): number {
 const giftRateLimitMap = new Map<string, number[]>();
 const raiseHandCooldown = new Map<string, number>();
 const RAISE_HAND_MIN_MS = 2000;
+const joinRequestCooldown = new Map<string, number>();
+const JOIN_REQUEST_MIN_MS = 3000;
 /** CDC spectateur : 1 clic = 1 animation — anti-spam réactions côté serveur. */
 const liveReactionCooldown = new Map<string, number>();
 const LIVE_REACTION_MIN_MS = 900;
@@ -347,6 +357,9 @@ class LiveService {
       });
       if (!cohost || cohost.status !== 'accepted') throw new Error('Unauthorized');
     }
+    if (role === 'audience') {
+      await this.assertViewerJoinAccess(streamId, userId);
+    }
     try {
       const agora = await this.getAgoraToken(stream.room_id, userId, role);
       if (agora) return { ...agora, streamId };
@@ -375,7 +388,168 @@ class LiveService {
       where: { live_id_cohost_id: { live_id: streamId, cohost_id: userId } },
     });
     if (co?.status === 'accepted') return { role: 'host' };
+    const guest = await prisma.liveGuestSlot.findUnique({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+    });
+    if (guest?.status === 'active') return { role: 'host' };
     return { role: 'audience' };
+  }
+
+  private async getViewerJoinAccess(streamId: string, userId: string): Promise<ViewerJoinAccess> {
+    const stream = await prisma.liveStream.findUnique({
+      where: { id: streamId },
+      select: { creator_id: true, private_mode: true },
+    });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.creator_id === userId) return 'allowed';
+    if (!stream.private_mode) return 'allowed';
+    const row = await prisma.liveJoinRequest.findUnique({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+      select: { status: true },
+    });
+    return resolveViewerJoinAccess({
+      isCreator: false,
+      privateMode: true,
+      requestStatus: row?.status,
+    });
+  }
+
+  private throwJoinAccessDenied(access: ViewerJoinAccess): never {
+    const err: any = new Error(
+      access === 'pending'
+        ? 'Votre demande d’accès est en attente d’approbation du créateur.'
+        : access === 'rejected'
+          ? 'Le créateur a refusé votre accès à ce live.'
+          : 'Ce live est privé. Envoyez une demande d’accès au créateur.',
+    );
+    err.statusCode = 403;
+    err.isOperational = true;
+    err.code = joinAccessErrorCode(access);
+    throw err;
+  }
+
+  private async assertViewerJoinAccess(streamId: string, userId: string): Promise<void> {
+    const access = await this.getViewerJoinAccess(streamId, userId);
+    if (!canViewerAccessLive(access)) this.throwJoinAccessDenied(access);
+  }
+
+  /** Spectateur — demande d'accès (live `private_mode`). */
+  async requestJoinAccess(streamId: string, userId: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+    if (stream.creator_id === userId) throw new Error('Le créateur a déjà accès au live.');
+    if (!stream.private_mode) {
+      return { ok: true, status: 'allowed' as const, already_public: true as const };
+    }
+
+    const key = `${streamId}:${userId}`;
+    const now = Date.now();
+    const last = joinRequestCooldown.get(key) ?? 0;
+    if (now - last < JOIN_REQUEST_MIN_MS) {
+      throw new Error('Attendez quelques secondes avant de renvoyer une demande.');
+    }
+    joinRequestCooldown.set(key, now);
+
+    const existing = await prisma.liveJoinRequest.findUnique({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+    });
+    if (existing?.status === 'accepted') {
+      return { ok: true, status: 'accepted' as const };
+    }
+    if (existing?.status === 'pending') {
+      return { ok: true, status: 'pending' as const, already_pending: true as const };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, full_name: true, profile_image: true },
+    });
+    const username = (user?.full_name || user?.username || 'Spectateur').trim().slice(0, 80) || 'Spectateur';
+
+    await prisma.liveJoinRequest.upsert({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+      create: { live_id: streamId, user_id: userId, status: 'pending', requested_at: new Date() },
+      update: { status: 'pending', requested_at: new Date(), responded_at: null },
+    });
+
+    const io = getIO();
+    const payload = {
+      userId,
+      username,
+      avatar: user?.profile_image || null,
+      at: now,
+      streamId,
+    };
+    if (io) {
+      io.to(`user:${stream.creator_id}`).emit('live:join-request', payload);
+      io.to(`stream:${streamId}`).emit('live:join-request', payload);
+    }
+    logger.info('Live join-request', { streamId, userId });
+    return { ok: true, status: 'pending' as const };
+  }
+
+  /** Créateur — liste des demandes d'accès en attente. */
+  async listPendingJoinRequests(streamId: string, creatorId: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    const rows = await prisma.liveJoinRequest.findMany({
+      where: { live_id: streamId, status: 'pending' },
+      orderBy: { requested_at: 'asc' },
+      take: 50,
+      include: {
+        user: { select: { id: true, username: true, full_name: true, profile_image: true } },
+      },
+    });
+    return rows.map((r) => ({
+      userId: r.user_id,
+      username: (r.user.full_name || r.user.username || 'Spectateur').trim().slice(0, 80),
+      avatar: r.user.profile_image,
+      requested_at: r.requested_at,
+    }));
+  }
+
+  /** Créateur — accepte ou refuse une demande d'accès. */
+  async respondJoinRequest(streamId: string, creatorId: string, targetUserId: string, accept: boolean) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+    if (targetUserId === creatorId) throw new Error('Invalid target');
+
+    const row = await prisma.liveJoinRequest.findUnique({
+      where: { live_id_user_id: { live_id: streamId, user_id: targetUserId } },
+    });
+    if (!row) throw new Error('Demande introuvable.');
+
+    const nextStatus = accept ? 'accepted' : 'rejected';
+    await prisma.liveJoinRequest.update({
+      where: { live_id_user_id: { live_id: streamId, user_id: targetUserId } },
+      data: { status: nextStatus, responded_at: new Date() },
+    });
+
+    const io = getIO();
+    const resolved = { streamId, accepted: accept, userId: targetUserId };
+    if (io) {
+      io.to(`user:${targetUserId}`).emit('live:join-request:resolved', resolved);
+      io.to(`stream:${streamId}`).emit('live:join-request:resolved', resolved);
+    }
+    logger.info('Live join-request respond', { streamId, targetUserId, accept });
+    return { ok: true, accept, userId: targetUserId };
+  }
+
+  /** Statut d'accès du spectateur connecté (live privé). */
+  async getJoinAccessStatus(streamId: string, userId: string) {
+    const stream = await prisma.liveStream.findUnique({
+      where: { id: streamId },
+      select: { private_mode: true, creator_id: true, status: true },
+    });
+    if (!stream) throw new Error('Stream not found');
+    const access = await this.getViewerJoinAccess(streamId, userId);
+    return {
+      private_mode: stream.private_mode,
+      status: access,
+      can_join: canViewerAccessLive(access),
+    };
   }
 
   /** Spectateur / co-host : main levée (socket `live:raise-hand`). Pas pour le créateur du live. */
@@ -568,6 +742,8 @@ class LiveService {
       }
     }
 
+    await this.assertViewerJoinAccess(streamId, userId);
+
     await prisma.liveViewer.upsert({
       where: {
         live_id_user_id_session_id: { live_id: streamId, user_id: userId, session_id: sessionId },
@@ -710,6 +886,11 @@ class LiveService {
       viewer_live_bell_subscribed = !!bell;
     }
 
+    let viewer_join_access: ViewerJoinAccess | undefined;
+    if (readerUserId && stream.status === 'live') {
+      viewer_join_access = await this.getViewerJoinAccess(streamId, readerUserId);
+    }
+
     return {
       ...stream,
       chat_messages: chatWithBadges,
@@ -718,6 +899,7 @@ class LiveService {
       viewer_age_acknowledged,
       needs_age_ack_for_viewer,
       viewer_live_bell_subscribed,
+      viewer_join_access,
     };
   }
 
@@ -1171,6 +1353,7 @@ class LiveService {
     amount: number;
     quantity: number;
     message?: string;
+    battle_side?: 'challenger' | 'opponent';
   }) {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
@@ -1340,6 +1523,16 @@ class LiveService {
     }
 
     logger.info('Live gift sent', { streamId, senderId, giftId: result.id, totalAmountFcfa, totalCoins, combo });
+
+    if (data.battle_side === 'challenger' || data.battle_side === 'opponent') {
+      try {
+        const { liveBattleService } = await import('./liveBattle.service.js');
+        await liveBattleService.applyGiftScore(streamId, data.battle_side, totalAmountFcfa);
+      } catch {
+        /* battle best-effort */
+      }
+    }
+
     return { ...result, combo };
   }
 
@@ -2341,6 +2534,14 @@ class LiveService {
       data: { status: 'cancelled' },
     });
     return { ok: true };
+  }
+
+  async getCreatorSubscribeStatus(subscriberId: string, creatorId: string) {
+    const row = await prisma.liveCreatorSubscription.findUnique({
+      where: { creator_id_subscriber_id: { creator_id: creatorId, subscriber_id: subscriberId } },
+      select: { status: true, amount_fcfa: true, next_billing_at: true },
+    });
+    return getCreatorSubscribeStatusPure(row);
   }
 
   /** Créer un sondage pendant le live */

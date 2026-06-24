@@ -118,7 +118,7 @@ const adapter = new PrismaPg(pool);
 
 // Avec `adapter`, Prisma 7 peut inférer un PrismaClient partiel (TS perd certains modèles : pushSubscription, champs récents).
 // Le runtime expose bien toutes les déléguées — on aligne le typage sur PrismaClient complet.
-const prisma =
+const prisma: PrismaClient =
   g.__AFW_PRISMA__ ??
   (new PrismaClient({
     adapter,

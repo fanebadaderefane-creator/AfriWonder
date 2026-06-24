@@ -113,6 +113,10 @@ model User {
   likes                        Like[]
   live_cohosts_as_guest        LiveCoHost[]              @relation("LiveCoHostGuest")
   live_cohosts_as_creator      LiveCoHost[]              @relation("LiveCoHostCreator")
+  live_battles_as_challenger   LiveBattle[]              @relation("LiveBattleChallenger")
+  live_battles_as_opponent     LiveBattle[]              @relation("LiveBattleOpponent")
+  live_guest_queue             LiveGuestQueue[]
+  live_guest_slots             LiveGuestSlot[]
   live_subscriptions_created   LiveCreatorSubscription[] @relation("LiveSubscriptionsCreated")
   live_subscriptions_given     LiveCreatorSubscription[] @relation("LiveSubscriptionsGiven")
   live_likes                   LiveLike[]
@@ -245,6 +249,7 @@ model User {
   live_age_acknowledgments    LiveAgeAcknowledgment[]
   live_bell_subscriptions     LiveCreatorBellSubscriber[] @relation("LiveBellSubscriber")
   live_bell_watchers          LiveCreatorBellSubscriber[] @relation("LiveBellCreator")
+  live_join_requests          LiveJoinRequest[]
   tontines_created            Tontine[]                   @relation("TontineCreator")
   tontine_memberships         TontineMember[]             @relation("TontineMemberUser")
   tontine_cycles_received     TontineCycle[]              @relation("TontineCycleBeneficiary")
@@ -1615,7 +1620,12 @@ model LiveStream {
   top_donors            LiveTopDonor[]
   viewers               LiveViewer[]
   age_acknowledgments   LiveAgeAcknowledgment[]
+  join_requests         LiveJoinRequest[]
   pinned_products       LivePinnedProduct[]
+  battles_as_challenger LiveBattle[]         @relation("LiveBattleChallengerLive")
+  battles_as_opponent   LiveBattle[]         @relation("LiveBattleOpponentLive")
+  guest_queue           LiveGuestQueue[]
+  guest_slots           LiveGuestSlot[]
 
   @@index([creator_id])
   @@index([status])
@@ -1650,6 +1660,22 @@ model LiveCreatorBellSubscriber {
 
   @@unique([subscriber_id, creator_id])
   @@index([creator_id])
+}
+
+/// Live privé (`private_mode`) — spectateur demande l'accès ; le créateur accepte ou refuse.
+model LiveJoinRequest {
+  id           String     @id @default(uuid())
+  live_id      String
+  user_id      String
+  status       String     @default("pending")
+  requested_at DateTime   @default(now())
+  responded_at DateTime?
+  live_stream  LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, user_id])
+  @@index([live_id, status])
+  @@index([user_id])
 }
 
 model LiveViewer {
@@ -1912,6 +1938,69 @@ model LiveCoHost {
   @@index([creator_id])
   @@index([cohost_id])
   @@index([status])
+}
+
+/// Live Battle 1v1 TikTok — score cadeaux, deux lives liés.
+model LiveBattle {
+  id                 String     @id @default(uuid())
+  challenger_id      String
+  opponent_id        String
+  challenger_live_id String
+  opponent_live_id   String
+  status             String     @default("pending")
+  duration_sec       Int        @default(180)
+  challenger_score   Float      @default(0)
+  opponent_score     Float      @default(0)
+  winner_id          String?
+  started_at         DateTime?
+  ended_at           DateTime?
+  created_at         DateTime   @default(now())
+  challenger         User       @relation("LiveBattleChallenger", fields: [challenger_id], references: [id], onDelete: Cascade)
+  opponent           User       @relation("LiveBattleOpponent", fields: [opponent_id], references: [id], onDelete: Cascade)
+  challenger_live    LiveStream @relation("LiveBattleChallengerLive", fields: [challenger_live_id], references: [id], onDelete: Cascade)
+  opponent_live      LiveStream @relation("LiveBattleOpponentLive", fields: [opponent_live_id], references: [id], onDelete: Cascade)
+
+  @@index([challenger_live_id])
+  @@index([opponent_live_id])
+  @@index([status])
+  @@index([challenger_id])
+  @@index([opponent_id])
+}
+
+/// File d'attente multi-guest TikTok (demande « monter à l'antenne »).
+model LiveGuestQueue {
+  id           String     @id @default(uuid())
+  live_id      String
+  user_id      String
+  username     String?
+  avatar_url   String?
+  status       String     @default("pending")
+  position     Int        @default(0)
+  requested_at DateTime   @default(now())
+  responded_at DateTime?
+  live_stream  LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, user_id])
+  @@index([live_id, status])
+  @@index([user_id])
+}
+
+/// Places à l'écran (max 8 invités vidéo en grille).
+model LiveGuestSlot {
+  id          String     @id @default(uuid())
+  live_id     String
+  user_id     String
+  slot_index  Int
+  status      String     @default("active")
+  joined_at   DateTime   @default(now())
+  live_stream LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, user_id])
+  @@unique([live_id, slot_index])
+  @@index([live_id])
+  @@index([user_id])
 }
 
 /// Packs d'achat de coins (Phase 9) — éditables en admin.

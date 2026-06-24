@@ -1,5 +1,16 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
+import { isSkippableMomentMediaUrl, momentRowIsDisplayable } from '../utils/momentFeedMedia.js';
+
+const E2E_USER_EMAIL_FILTER = {
+  email: { not: { endsWith: '@example.com', mode: 'insensitive' as const } },
+};
+
+function applyPublicMomentsUserFilter(where: Record<string, unknown>, userId?: string) {
+  if (userId) return;
+  const prev = Array.isArray(where.AND) ? where.AND : [];
+  where.AND = [...prev, { user: E2E_USER_EMAIL_FILTER }];
+}
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -16,7 +27,11 @@ function buildMomentsPhotoVideoWhere(opts: { userId?: string; viewerId?: string 
     OR: [{ scheduled_at: null }, { scheduled_at: { lte: now } }],
   };
   if (!opts.userId) {
-    return { ...base, visibility: 'public' };
+    return {
+      ...base,
+      visibility: 'public',
+      creator: E2E_USER_EMAIL_FILTER,
+    };
   }
   const w: Prisma.VideoWhereInput = { ...base, creator_id: opts.userId };
   if (opts.viewerId && opts.userId && opts.viewerId !== opts.userId) {
@@ -42,8 +57,9 @@ function mapPhotoVideoToMomentRow(v: {
   updated_at: Date;
   creator: { id: string; username: string | null; full_name: string | null; profile_image: string | null };
 }): Record<string, unknown> {
-  const img =
+  const imgRaw =
     (typeof v.thumbnail_url === 'string' && v.thumbnail_url.trim()) || String(v.video_url || '').trim();
+  const img = isSkippableMomentMediaUrl(imgRaw) ? '' : imgRaw;
   const textParts = [v.title, v.description].map((x) => String(x || '').trim()).filter(Boolean);
   return {
     id: v.id,
@@ -184,6 +200,8 @@ export async function listPosts(options: {
     delete where.OR;
   }
 
+  applyPublicMomentsUserFilter(where, options.userId);
+
   const mergePhotoMoments =
     !options.includeScheduled &&
     options.visibility !== 'archived' &&
@@ -206,7 +224,7 @@ export async function listPosts(options: {
       prisma.post.count({ where }),
     ]);
 
-    const posts = await Promise.all(
+    const posts = (await Promise.all(
       rows.map(async (post) => {
         const p = post as any;
         if (p.poll && p.poll.id) {
@@ -221,7 +239,7 @@ export async function listPosts(options: {
         }
         return p;
       })
-    );
+    )).filter((row) => momentRowIsDisplayable(row as Record<string, unknown>));
     return { posts, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
@@ -257,8 +275,12 @@ export async function listPosts(options: {
     prisma.video.count({ where: photoWhere }),
   ]);
 
-  const synthetic = photoVideos.map((v) => mapPhotoVideoToMomentRow(v as any));
-  const combined = [...postRows, ...synthetic].sort((a, b) => {
+  const synthetic = photoVideos
+    .map((v) => mapPhotoVideoToMomentRow(v as any))
+    .filter((row) => momentRowIsDisplayable(row));
+  const combined = [...postRows, ...synthetic]
+    .filter((row) => momentRowIsDisplayable(row as Record<string, unknown>))
+    .sort((a, b) => {
     const ap = (a as { is_pinned?: boolean }).is_pinned ? 1 : 0;
     const bp = (b as { is_pinned?: boolean }).is_pinned ? 1 : 0;
     if (ap !== bp) return bp - ap;
@@ -267,7 +289,7 @@ export async function listPosts(options: {
   });
   const paged = combined.slice(skip, skip + limit);
 
-  const posts = await Promise.all(
+  const posts = (await Promise.all(
     paged.map(async (row) => {
       if ((row as { moment_from_video?: boolean }).moment_from_video) {
         return row;
@@ -285,7 +307,7 @@ export async function listPosts(options: {
       }
       return p;
     })
-  );
+  )).filter((row) => momentRowIsDisplayable(row as Record<string, unknown>));
 
   const total = postTotal + videoPhotoTotal;
   return { posts, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };

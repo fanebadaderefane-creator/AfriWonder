@@ -27,10 +27,15 @@ import {
   liveWalletMockOrangeConfirmSchema,
   liveRaiseHandSchema,
   liveRaiseHandRespondSchema,
+  liveJoinRequestRespondSchema,
   liveAgeAckSchema,
   liveBellSubscribeSchema,
   liveCaptionBroadcastSchema,
+  liveBattleChallengeSchema,
+  liveGuestRespondSchema,
 } from '../schemas/highRiskBodies.js';
+import liveBattleService from '../services/liveBattle.service.js';
+import liveGuestService from '../services/liveGuest.service.js';
 
 const router = Router();
 
@@ -57,6 +62,15 @@ const raiseHandLimiter = rateLimit({
   max: 45,
   message: { success: false, error: 'Trop de requêtes. Réessayez dans une minute.' },
   keyGenerator: (req: any) => (req.user?.id || req.ip) + ':' + (req.params?.id || ''),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const joinRequestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 12,
+  message: { success: false, error: 'Trop de demandes d’accès. Réessayez dans une minute.' },
+  keyGenerator: (req: any) => (req.user?.id || req.ip) + ':join-req:' + (req.params?.id || ''),
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -323,6 +337,16 @@ router.delete('/creator/:creatorId/subscribe', authenticate, async (req: AuthReq
   }
 });
 
+// GET /api/live/creator/:creatorId/subscribe — statut abonnement don récurrent (mobile badge chat)
+router.get('/creator/:creatorId/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const status = await liveService.getCreatorSubscribeStatus(req.user!.id, param(req, 'creatorId'));
+    res.json({ success: true, data: status });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/live/creator-level/:userId - Niveau créateur
 router.get('/creator-level/:userId', async (req, res, next) => {
   try {
@@ -452,6 +476,52 @@ router.post('/:id/join', authenticate, validateBody(liveSessionBodySchema), asyn
     const city = req.body.city;
     const result = await liveService.joinViewer(param(req, 'id'), req.user!.id, String(sessionId), { country, city });
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/join-request — spectateur demande l'accès (live privé)
+router.post('/:id/join-request', authenticate, joinRequestLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.requestJoinAccess(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/join-requests — créateur : demandes en attente
+router.get('/:id/join-requests', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.listPendingJoinRequests(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/join-request/respond — créateur accepte / refuse
+router.post(
+  '/:id/join-request/respond',
+  authenticate,
+  validateBody(liveJoinRequestRespondSchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { userId, accept } = req.body as { userId: string; accept: boolean };
+      const data = await liveService.respondJoinRequest(param(req, 'id'), req.user!.id, userId, accept === true);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      next(error);
+    }
+  },
+);
+
+// GET /api/live/:id/join-request/status — statut d'accès du spectateur
+router.get('/:id/join-request/status', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.getJoinAccessStatus(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
@@ -987,6 +1057,112 @@ router.post('/:id/cohost/remove', authenticate, validateBody(jsonObjectBodySchem
     }
     await liveService.removeCoHost(streamId, req.user!.id, userId);
     res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// --- Live Battle 1v1 (TikTok PK) ---
+router.get('/:id/battle/current', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveBattleService.getCurrentForLive(param(req, 'id'));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/battle/challenge', authenticate, validateBody(liveBattleChallengeSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveBattleService.challenge(
+      req.user!.id,
+      param(req, 'id'),
+      String(req.body.opponent_live_id),
+      Number(req.body.duration_sec) || 180,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/battle/accept', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveBattleService.acceptBattle(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/battle/decline', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveBattleService.declineBattle(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/battle/end', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveBattleService.endBattleForLive(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// --- Multi-guest TikTok (8 places) ---
+router.get('/:id/guests', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveGuestService.listGuests(param(req, 'id'));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/guests/request', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveGuestService.requestGuestSlot(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/guests/respond', authenticate, validateBody(liveGuestRespondSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveGuestService.respondGuestRequest(
+      param(req, 'id'),
+      req.user!.id,
+      String(req.body.user_id),
+      Boolean(req.body.accept),
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/guests/leave', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveGuestService.leaveGuestSlot(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.post('/:id/guests/remove', authenticate, validateBody(liveGuestRespondSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveGuestService.removeGuestSlot(
+      param(req, 'id'),
+      req.user!.id,
+      String(req.body.user_id),
+    );
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
