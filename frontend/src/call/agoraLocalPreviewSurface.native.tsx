@@ -25,6 +25,10 @@ function renderNativePreviewSurface(
         canvas?: { uid?: number; renderMode?: number; mirrorMode?: number };
         zOrderMediaOverlay?: boolean;
       }>;
+      RtcTextureView?: React.ComponentType<{
+        style?: StyleProp<ViewStyle>;
+        canvas?: { uid?: number; renderMode?: number; mirrorMode?: number };
+      }>;
       RenderModeType?: { RenderModeFit?: number };
       VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
     };
@@ -45,6 +49,18 @@ function renderNativePreviewSurface(
       renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
       mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
     };
+
+    /** Android PiP : TextureView évite SurfaceView vide par-dessus flux distant. */
+    if (layoutMode === 'pip' && Platform.OS === 'android' && mod.RtcTextureView) {
+      const { RtcTextureView } = mod;
+      return (
+        <RtcTextureView
+          key={`${AGORA_LOCAL_PREVIEW_SURFACE_KEY}-pip`}
+          style={pipSizedStyle}
+          canvas={canvas}
+        />
+      );
+    }
 
     return (
       <RtcSurfaceView

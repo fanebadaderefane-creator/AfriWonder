@@ -1,11 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, View, StyleProp, ViewStyle, Dimensions } from 'react-native';
+import { Platform, View, StyleProp, ViewStyle } from 'react-native';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import type { IRtcEngine, IRtcEngineEventHandler } from 'react-native-agora';
 import agoraLiveService from '../services/agoraLiveService';
 import type { LiveVideoQuality } from '../live/liveVideoQuality';
 import { getLiveEncoderDimensions } from '../live/liveVideoQuality';
 import { networkTierFromNetInfo, resolveEffectiveLiveQuality } from '../live/netInfoLiveQuality';
+import { rebindAgoraLocalPreview } from '../call/agoraCallVideoBind.native';
+import { setAgoraLiveCameraFacing, startAgoraLiveHostPreview } from '../live/agoraLiveCamera.native';
+import {
+  AgoraLiveLocalSurface,
+  AgoraLiveRemoteGridSurface,
+  AgoraLiveRemoteSurface,
+} from '../live/agoraLiveRtcSurfaces.native';
 
 export type AgoraLiveRole = 'host' | 'audience';
 
@@ -28,10 +35,22 @@ export function useAgoraLiveRtc(opts: {
   videoQuality?: LiveVideoQuality;
   /** CDC 6.2 — Beauté / lissage visage (SDK vidéo si l’appareil le supporte). */
   beautyEnabled?: boolean;
+  /** Aligné sur PreviewCamera setup — front par défaut (parité Inbox / WhatsApp). */
+  initialCameraFront?: boolean;
 }) {
-  const { liveId, role, enabled, muted = false, cameraFlipNonce = 0, videoQuality = 'auto', beautyEnabled = false } = opts;
+  const {
+    liveId,
+    role,
+    enabled,
+    muted = false,
+    cameraFlipNonce = 0,
+    videoQuality = 'auto',
+    beautyEnabled = false,
+    initialCameraFront = true,
+  } = opts;
   const [agoraError, setAgoraError] = useState<string | null>(null);
   const [agoraJoined, setAgoraJoined] = useState(false);
+  const [agoraPreviewReady, setAgoraPreviewReady] = useState(false);
   const [remoteUids, setRemoteUids] = useState<number[]>([]);
   const [netState, setNetState] = useState<NetInfoState | null>(null);
   const engineRef = useRef<IRtcEngine | null>(null);
@@ -60,12 +79,15 @@ export function useAgoraLiveRtc(opts: {
   useEffect(() => {
     if (!enabled || !liveId || Platform.OS === 'web') {
       setAgoraJoined(false);
+      setAgoraPreviewReady(false);
       setRemoteUids([]);
       setAgoraError(null);
       return;
     }
 
     let cancelled = false;
+    const joinLiveId = liveId;
+    const joinRole = role;
 
     void (async () => {
       try {
@@ -73,12 +95,14 @@ export function useAgoraLiveRtc(opts: {
         const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType } = mod;
 
         const joinPayload =
-          role === 'host' ? await agoraLiveService.joinAsHost(liveId) : await agoraLiveService.joinAsViewer(liveId);
+          joinRole === 'host'
+            ? await agoraLiveService.joinAsHost(joinLiveId)
+            : await agoraLiveService.joinAsViewer(joinLiveId);
 
         if (cancelled) return;
         if (!joinPayload) {
           setAgoraError(
-            'La diffusion vidéo n’est pas disponible. Réessayez ou vérifiez votre connexion.',
+            'La diffusion vidéo n’est pas disponible. Vérifiez AGORA_APP_ID sur le serveur ou réessayez.',
           );
           return;
         }
@@ -91,9 +115,17 @@ export function useAgoraLiveRtc(opts: {
         engine.enableVideo();
         engine.setDefaultAudioRouteToSpeakerphone(true);
 
-        const isHost = role === 'host';
+        const isHost = joinRole === 'host';
         if (isHost) {
-          engine.startPreview();
+          setAgoraLiveCameraFacing(engine, initialCameraFront ? 'front' : 'back');
+          const previewOk = startAgoraLiveHostPreview(engine);
+          if (previewOk) {
+            rebindAgoraLocalPreview(engine, { context: 'live_host' });
+            if (!cancelled) setAgoraPreviewReady(true);
+          } else if (!cancelled) {
+            setAgoraError('Impossible d’ouvrir la caméra pour le live. Réessayez.');
+            return;
+          }
         }
 
         const eventHandler: IRtcEngineEventHandler = {
@@ -102,6 +134,10 @@ export function useAgoraLiveRtc(opts: {
             setAgoraJoined(true);
             setAgoraError(null);
             setRemoteUids([]);
+            if (isHost) {
+              rebindAgoraLocalPreview(engine, { context: 'live_host_joined' });
+              setAgoraPreviewReady(true);
+            }
           },
           onError() {
             if (cancelled) return;
@@ -117,6 +153,18 @@ export function useAgoraLiveRtc(opts: {
           onFirstRemoteVideoDecoded(_connection, uid) {
             if (cancelled || uid == null) return;
             setRemoteUids((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+          },
+          onTokenPrivilegeWillExpire() {
+            if (cancelled) return;
+            void (async () => {
+              try {
+                const nextToken = await agoraLiveService.renewToken(joinLiveId, joinRole);
+                if (cancelled || !nextToken) return;
+                engine.renewToken(nextToken);
+              } catch {
+                /* renouvellement best-effort */
+              }
+            })();
           },
         };
 
@@ -135,6 +183,7 @@ export function useAgoraLiveRtc(opts: {
         engine.joinChannel(joinPayload.token, joinPayload.channel, joinPayload.uid, options);
       } catch (e) {
         if (!cancelled) {
+          setAgoraPreviewReady(false);
           setAgoraError(
             (e as Error)?.message?.includes('Agora') || (e as Error)?.message?.includes('agora')
               ? 'Module de diffusion vidéo indisponible sur cet appareil.'
@@ -165,9 +214,10 @@ export function useAgoraLiveRtc(opts: {
       handlerRef.current = null;
       screenShareOnRef.current = false;
       setAgoraJoined(false);
+      setAgoraPreviewReady(false);
       setRemoteUids([]);
     };
-  }, [enabled, liveId, role]);
+  }, [enabled, liveId, role, initialCameraFront]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -260,26 +310,19 @@ export function useAgoraLiveRtc(opts: {
   }, [beautyEnabled, agoraJoined, role]);
 
   const AgoraLocalView = useCallback(
-    ({ style }: { style?: StyleProp<ViewStyle> }) => {
-      if (Platform.OS === 'web' || role !== 'host') return null;
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
-      return <RtcSurfaceView style={style} canvas={{ uid: 0 }} />;
-    },
-    [role]
+    ({ style }: { style?: StyleProp<ViewStyle> }) => (
+      <AgoraLiveLocalSurface style={style} role={role} previewReady={agoraPreviewReady} />
+    ),
+    [role, agoraPreviewReady]
   );
 
   const primaryRemote = remoteUids[0] ?? null;
 
   const AgoraRemoteView = useCallback(
-    ({ style }: { style?: StyleProp<ViewStyle> }) => {
-      if (Platform.OS === 'web') return <View style={style as ViewStyle} />;
-      if (primaryRemote == null) return <View style={style as ViewStyle} />;
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
-      return <RtcSurfaceView style={style} canvas={{ uid: primaryRemote }} />;
-    },
-    [primaryRemote]
+    ({ style }: { style?: StyleProp<ViewStyle> }) => (
+      <AgoraLiveRemoteSurface style={style} uid={primaryRemote} joined={agoraJoined} />
+    ),
+    [primaryRemote, agoraJoined]
   );
 
   /**
@@ -387,43 +430,25 @@ export function useAgoraLiveRtc(opts: {
   }, [agoraJoined, role]);
 
   const AgoraRemoteGrid = useCallback(
-    ({ style, uids, maxCells = 5 }: AgoraRemoteGridProps) => {
-      const list = (uids ?? remoteUids).slice(0, Math.max(1, Math.min(6, maxCells)));
-      if (Platform.OS === 'web' || list.length === 0) return null;
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { RtcSurfaceView } = require('react-native-agora') as typeof import('react-native-agora');
-      const w = Dimensions.get('window').width;
-      const gap = 6;
-      const pad = 8;
-      const inner = w - pad * 2;
-      /** 1 invité : tuile large type 1+1 ; 2+ : grille 2×2 (CDC TikTok-like). */
-      const cellW = list.length === 1 ? inner : (inner - gap) / 2;
-      const cellH = Math.round(list.length === 1 ? inner * 0.52 : cellW * 1.12);
-      return (
-        <View
-          style={[
-            {
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap,
-              justifyContent: 'center',
-              paddingHorizontal: pad,
-            },
-            style as ViewStyle,
-          ]}
-        >
-          {list.map((uid) => (
-            <RtcSurfaceView
-              key={uid}
-              style={{ width: cellW, height: cellH, borderRadius: 10, overflow: 'hidden' }}
-              canvas={{ uid }}
-            />
-          ))}
-        </View>
-      );
-    },
-    [remoteUids]
+    ({ style, uids, maxCells = 5 }: AgoraRemoteGridProps) => (
+      <AgoraLiveRemoteGridSurface
+        style={style}
+        uids={uids ?? remoteUids}
+        maxCells={maxCells}
+        joined={agoraJoined}
+      />
+    ),
+    [remoteUids, agoraJoined]
   );
 
-  return { agoraJoined, agoraError, remoteUids, AgoraLocalView, AgoraRemoteView, AgoraRemoteGrid, toggleScreenShare };
+  return {
+    agoraJoined,
+    agoraPreviewReady,
+    agoraError,
+    remoteUids,
+    AgoraLocalView,
+    AgoraRemoteView,
+    AgoraRemoteGrid,
+    toggleScreenShare,
+  };
 }

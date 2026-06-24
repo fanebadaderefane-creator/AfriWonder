@@ -26,6 +26,19 @@ export const LIVE_SOCKET_EVENTS = [
   /** Après accept/refus main levée — payload `{ userId, accepted? }` ou `{ streamId, accepted }` côté user. */
   'live:raise-hand:resolved',
   'live:raise-hand:rejected',
+  /** Demande d'accès live privé — payload `{ userId, username, avatar?, at, streamId }`. */
+  'live:join-request',
+  /** Réponse créateur — payload `{ streamId, accepted, userId }`. */
+  'live:join-request:resolved',
+  'battle:proposed',
+  'battle:started',
+  'battle:score-update',
+  'battle:ended',
+  'live:guest:requested',
+  'live:guest:accepted',
+  'live:guest:resolved',
+  'live:guest:updated',
+  'live:guest:left',
 ] as const;
 
 export type LiveSocketEventName = (typeof LIVE_SOCKET_EVENTS)[number];

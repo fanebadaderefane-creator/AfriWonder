@@ -146,9 +146,15 @@ export default function LiveFeedScreen() {
 
   const loadLives = useCallback(async () => {
     try {
-      const res = await apiClient.get('/live/discovery', { params: { page: 1, limit: 30 } });
+      const res = await apiClient.get('/live/discovery', { params: { type: 'trending', limit: 30 } });
       const data = res.data?.data ?? res.data;
-      const raw: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      const raw: any[] = Array.isArray(data?.streams)
+        ? data.streams
+        : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+            ? data
+            : [];
       const mapped: LiveFeedItem[] = raw
         .filter((r) => r && (r.status === 'live' || !r.status))
         .map((r) => {
@@ -248,6 +254,7 @@ export default function LiveFeedScreen() {
         testID="live-feed-back"
         style={[styles.backBtn, { top: insets.top + 8 }]}
         onPress={() => router.back()}
+        accessibilityLabel="Retour"
       >
         <Ionicons name="chevron-back" size={26} color="#FFF" />
       </TouchableOpacity>

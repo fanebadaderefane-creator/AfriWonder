@@ -35,7 +35,7 @@
     },
     "android": {
       "package": "com.afriwonder.app",
-      "versionCode": 35,
+      "versionCode": 36,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"

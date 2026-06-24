@@ -4,6 +4,7 @@ export default function LiveLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="feed" />
       <Stack.Screen name="start" />
       <Stack.Screen name="stream" />
       <Stack.Screen name="[id]" />

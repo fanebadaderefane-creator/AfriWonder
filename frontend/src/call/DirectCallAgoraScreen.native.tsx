@@ -55,6 +55,8 @@ import {
 } from '../components/call/CallMoreMenu';
 import { CallFloatingReactions } from '../components/call/CallFloatingReactions';
 import { CallMissedWhatsAppPanel } from '../components/call/CallMissedWhatsAppPanel';
+import { useCallScreenLifecycleGuards } from './callSessionStability';
+import { logLocalStreamCreated, logLocalStreamDestroyed, logRemoteStreamAdded } from './callUiLifecycleLog';
 
 const CALL_RING_MS = 30_000;
 
@@ -113,6 +115,7 @@ export function DirectCallAgoraScreen() {
   const [showMissedPanel, setShowMissedPanel] = useState(false);
   const [videoNoteBusy, setVideoNoteBusy] = useState(false);
   const [endingReason, setEndingReason] = useState<CallEndReasonUi>(null);
+  const minimized = useAgoraDmCallUiStore((s) => s.minimized);
   const finishingRef = useRef(false);
   const mediaEnabledRef = useRef(false);
   const stopOutgoingRingRef = useRef<(() => Promise<void>) | null>(null);
@@ -130,6 +133,30 @@ export function DirectCallAgoraScreen() {
   useEffect(() => {
     logAfwCall('agora_screen_mount', { callId, role, platform: Platform.OS });
   }, [callId, role]);
+
+  useCallScreenLifecycleGuards({
+    engine: 'agora',
+    callId,
+    role,
+    isVideoCall: startedAsVideo,
+    blockAndroidBack: callState !== 'ended' && !minimized,
+  });
+
+  /** Sortie navigation sans raccrocher — évite moteur Agora + overlay root orphelins. */
+  useEffect(() => {
+    return () => {
+      if (finishingRef.current || callStateRef.current === 'ended') return;
+      const state = callStateRef.current;
+      const reason =
+        role === 'caller' && state === 'ringing'
+          ? 'declined'
+          : state === 'connected'
+            ? 'completed'
+            : 'declined';
+      void finishCallRef.current(reason, { skipNavigation: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const videoPreviewStartedRef = useRef(false);
   const [videoPreviewReady, setVideoPreviewReady] = useState(false);
@@ -176,6 +203,7 @@ export function DirectCallAgoraScreen() {
     setMediaEnabled(true);
     setVideoPreviewReady(true);
     pinLocalPreviewFull();
+    logLocalStreamCreated({ callId: callIdRef.current, role, engine: 'agora', phase: 'preview' });
     logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
     return true;
   }, [pinLocalPreviewFull, resetLocalPreviewUi, role]);
@@ -187,7 +215,7 @@ export function DirectCallAgoraScreen() {
   }, [activateVideoPreview, callState, startedAsVideo]);
 
   const finishCallRef = useRef<
-    (reason?: 'completed' | 'failed' | 'missed' | 'declined') => Promise<void>
+  (reason?: 'completed' | 'failed' | 'missed' | 'declined', options?: { skipNavigation?: boolean }) => Promise<void>
   >(async () => {});
 
   const startAgoraMediaTracks = useCallback(async () => {
@@ -216,6 +244,7 @@ export function DirectCallAgoraScreen() {
 
   const handleRemoteJoined = useCallback(() => {
     setCallState('connected');
+    logRemoteStreamAdded({ callId: callIdRef.current, engine: 'agora' });
     void stopEveryCallRingAlert();
     void apiClient
       .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
@@ -308,7 +337,10 @@ export function DirectCallAgoraScreen() {
   }, [duration]);
 
   const finishCall = useCallback(
-    async (reason: 'completed' | 'failed' | 'missed' | 'declined' = 'completed') => {
+    async (
+      reason: 'completed' | 'failed' | 'missed' | 'declined' = 'completed',
+      options?: { skipNavigation?: boolean },
+    ) => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
       finishingRef.current = true;
       setEndingReason(reason);
@@ -320,12 +352,15 @@ export function DirectCallAgoraScreen() {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      await new Promise((resolve) => setTimeout(resolve, CALL_END_STATUS_DISPLAY_MS));
+      if (!options?.skipNavigation) {
+        await new Promise((resolve) => setTimeout(resolve, CALL_END_STATUS_DISPLAY_MS));
+      }
       setCallState('ended');
       setEndingReason(null);
       mediaEnabledRef.current = false;
       setMediaEnabled(false);
       await leaveAgora();
+      logLocalStreamDestroyed({ callId: callIdRef.current, engine: 'agora', reason: 'finish_call' });
       disableCallKeepAwake({ callId: callIdRef.current, reason: 'finish_call' });
       await stopOutgoingRingRef.current?.();
       stopOutgoingRingRef.current = null;
@@ -349,7 +384,9 @@ export function DirectCallAgoraScreen() {
         reason,
         durationSec: durationRef.current,
       });
-      safeRouterBack('/messages');
+      if (!options?.skipNavigation) {
+        safeRouterBack('/messages');
+      }
     },
     [leaveAgora, myUserId, otherUserId],
   );
@@ -1049,12 +1086,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     minHeight: 56,
+    zIndex: 20,
+    elevation: 20,
   },
   topBarOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
-    zIndex: 6,
+    zIndex: 20,
+    elevation: 20,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 12,
@@ -1079,7 +1119,7 @@ const styles = StyleSheet.create({
     borderRadius: 80,
     backgroundColor: '#2A3942',
   },
-  videoStage: { flex: 1, position: 'relative', backgroundColor: '#101822' },
+  videoStage: { flex: 1, position: 'relative', backgroundColor: '#101822', zIndex: 1 },
   localPreviewFallback: { width: '100%', height: '100%', resizeMode: 'cover' },
   videoSideRail: {
     position: 'absolute',
@@ -1172,7 +1212,7 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   screenShareBannerText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  dockWrap: { paddingHorizontal: 16, paddingBottom: 16 },
+  dockWrap: { paddingHorizontal: 16, paddingBottom: 16, zIndex: 20, elevation: 20 },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',

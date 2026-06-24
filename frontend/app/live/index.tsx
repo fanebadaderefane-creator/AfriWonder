@@ -55,6 +55,7 @@ export default function LiveHubScreen() {
   }, [params.creator_id]);
 
   const [activeLives, setActiveLives] = useState<any[]>([]);
+  const [discoveryLives, setDiscoveryLives] = useState<any[]>([]);
   const [scheduledLives, setScheduledLives] = useState<any[]>([]);
   const [replays, setReplays] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,10 +81,11 @@ export default function LiveHubScreen() {
         sortBy: 'recent',
       };
       if (creatorIdFromUrl) schedParams.creator_id = creatorIdFromUrl;
-      const [rLive, rReplay, rSched] = await Promise.allSettled([
+      const [rLive, rReplay, rSched, rDiscovery] = await Promise.allSettled([
         apiClient.get('/live', { params: liveParams }),
         apiClient.get('/live', { params: replayParams }),
         apiClient.get('/live', { params: schedParams }),
+        apiClient.get('/live/discovery', { params: { type: 'trending', limit: 12 } }),
       ]);
       const liveInner =
         rLive.status === 'fulfilled' ? rLive.value.data?.data || rLive.value.data : null;
@@ -91,9 +93,12 @@ export default function LiveHubScreen() {
         rReplay.status === 'fulfilled' ? rReplay.value.data?.data || rReplay.value.data : null;
       const schedInner =
         rSched.status === 'fulfilled' ? rSched.value.data?.data || rSched.value.data : null;
+      const discoveryInner =
+        rDiscovery.status === 'fulfilled' ? rDiscovery.value.data?.data || rDiscovery.value.data : null;
       const liveStreams = Array.isArray(liveInner?.streams) ? liveInner.streams.filter(isStrictActiveLive) : [];
       const endedStreams = replayInner?.streams || [];
       const schedStreams = schedInner?.streams || [];
+      const discoveryStreams = Array.isArray(discoveryInner?.streams) ? discoveryInner.streams : [];
       const thumbOf = (s: any) =>
         toAbsoluteMediaUrl(String(s.thumbnail_url || s.creator?.profile_image || '').trim());
       const mapLive = (s: any) => ({
@@ -116,11 +121,20 @@ export default function LiveHubScreen() {
       });
       const mapScheduled = (s: any) => ({
         id: s.id,
+        creator_id: s.creator_id,
         title: s.title,
         thumbnail_url: thumbOf(s),
         scheduled_at: s.scheduled_at as string | undefined,
       });
+      const mapDiscovery = (s: any) => ({
+        id: s.id,
+        title: s.title,
+        thumbnail_url: thumbOf(s),
+        viewer_count: s.viewers_count ?? 0,
+        likes: s.total_likes ?? 0,
+      });
       setActiveLives(Array.isArray(liveStreams) ? liveStreams.map(mapLive) : []);
+      setDiscoveryLives(Array.isArray(discoveryStreams) ? discoveryStreams.filter(isStrictActiveLive).map(mapDiscovery) : []);
       setScheduledLives(Array.isArray(schedStreams) ? schedStreams.map(mapScheduled) : []);
       setReplays(Array.isArray(endedStreams) ? endedStreams.map(mapReplay) : []);
     } catch {} finally {
@@ -171,6 +185,18 @@ export default function LiveHubScreen() {
   const formatDuration = (s: number) => { const h = Math.floor(s/3600); const m = Math.floor((s%3600)/60); return h > 0 ? `${h}h${m}m` : `${m}min`; };
   const formatViewers = (n: number) => n >= 1000 ? (n/1000).toFixed(1) + 'K' : String(n);
 
+  const startScheduledLive = (liveId: string) => {
+    Alert.alert('Démarrer le live', 'Lancer ce live programmé maintenant ?', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Démarrer',
+        onPress: () => {
+          router.push({ pathname: '/live/stream', params: { resume_live_id: liveId } } as never);
+        },
+      },
+    ]);
+  };
+
   if (loading) return <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={Colors.primary} /></View>;
 
   return (
@@ -185,10 +211,19 @@ export default function LiveHubScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Live & Replays</Text>
-        <TouchableOpacity testID="go-live-button" style={styles.goLiveBtn} onPress={() => router.push('/live/stream' as any)}>
-          <Ionicons name="radio" size={18} color="#FFF" />
-          <Text style={styles.goLiveBtnText}>Go Live</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <TouchableOpacity
+            style={styles.feedBtn}
+            onPress={() => router.push('/live/feed' as never)}
+            accessibilityLabel="Flux vertical des lives"
+          >
+            <Ionicons name="albums-outline" size={20} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity testID="go-live-button" style={styles.goLiveBtn} onPress={() => router.push('/live/stream' as any)}>
+            <Ionicons name="radio" size={18} color="#FFF" />
+            <Text style={styles.goLiveBtnText}>Go Live</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -226,6 +261,34 @@ export default function LiveHubScreen() {
           </>
         )}
 
+        {discoveryLives.length > 0 && !creatorIdFromUrl && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="sparkles" size={18} color={Colors.accent} />
+              <Text style={styles.sectionTitle}>Pour vous</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.liveScroll}>
+              {discoveryLives.map((live) => (
+                <TouchableOpacity
+                  key={`disc-${live.id}`}
+                  style={styles.liveCard}
+                  onPress={() => router.push({ pathname: '/live/[id]', params: { id: live.id } } as never)}
+                >
+                  <ImageOrPlaceholder uri={live.thumbnail_url} style={styles.liveImage} icon="videocam" iconSize={40} />
+                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.liveOverlay}>
+                    <View style={styles.liveBadge}><View style={styles.liveBadgeDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
+                    <Text style={styles.liveTitle} numberOfLines={1}>{live.title}</Text>
+                    <View style={styles.liveStats}>
+                      <Ionicons name="eye" size={12} color="#FFF" />
+                      <Text style={styles.liveStatText}>{formatViewers(live.viewer_count)}</Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
         {scheduledLives.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
@@ -234,23 +297,33 @@ export default function LiveHubScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.liveScroll}>
               {scheduledLives.map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.scheduledCard}
-                  onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } } as never)}
-                >
-                  <ImageOrPlaceholder uri={s.thumbnail_url} style={styles.scheduledImage} icon="calendar" iconSize={36} />
-                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.scheduledOverlay}>
-                    <View style={styles.scheduledBadge}>
-                      <Ionicons name="time-outline" size={12} color="#FFF" />
-                      <Text style={styles.scheduledBadgeText}>PROGRAMMÉ</Text>
-                    </View>
-                    <Text style={styles.scheduledTitle} numberOfLines={2}>
-                      {s.title}
-                    </Text>
-                    <Text style={styles.scheduledWhen}>{formatScheduledShort(s.scheduled_at)}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                <View key={s.id} style={styles.scheduledCard}>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } } as never)}
+                  >
+                    <ImageOrPlaceholder uri={s.thumbnail_url} style={styles.scheduledImage} icon="calendar" iconSize={36} />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.scheduledOverlay}>
+                      <View style={styles.scheduledBadge}>
+                        <Ionicons name="time-outline" size={12} color="#FFF" />
+                        <Text style={styles.scheduledBadgeText}>PROGRAMMÉ</Text>
+                      </View>
+                      <Text style={styles.scheduledTitle} numberOfLines={2}>
+                        {s.title}
+                      </Text>
+                      <Text style={styles.scheduledWhen}>{formatScheduledShort(s.scheduled_at)}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  {user?.id && s.creator_id === user.id ? (
+                    <TouchableOpacity
+                      style={styles.startSchedBtn}
+                      onPress={() => startScheduledLive(s.id)}
+                      accessibilityLabel="Démarrer ce live programmé"
+                    >
+                      <Text style={styles.startSchedBtnText}>Démarrer</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               ))}
             </ScrollView>
           </>

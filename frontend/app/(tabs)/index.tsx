@@ -32,6 +32,7 @@ import VideoReactionBar, { reactionEmojiForType } from '../../src/components/fee
 import { addRecentlyViewedVideo } from '../../src/utils/recentlyViewedVideos';
 import { devLog } from '../../src/utils/devLog';
 import { FollowingStoriesBar } from '../../src/components/feed/FollowingStoriesBar';
+import { LiveHomeSuggestionsRow } from '../../src/live/LiveHomeSuggestionsRow';
 import { capFeedVideosForMemory, trimIdSet, trimRecordKeys } from '../../src/utils/feedMemoryCap';
 import {
   getFeedPageLimit,
@@ -3642,6 +3643,10 @@ export default function FeedScreen(props?: {
         <View style={{ marginTop: wonderStoriesBarTopMargin }}>
           <FollowingStoriesBar />
         </View>
+      ) : null}
+
+      {activeTab === 'foryou' && !amisStandalone && !diversifiedStandalone ? (
+        <LiveHomeSuggestionsRow visible topOffset={wonderStoriesBarTopMargin} />
       ) : null}
 
       {feedOfflineMode && Platform.OS !== 'web' ? (

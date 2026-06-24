@@ -160,6 +160,20 @@ export function LiveShoppingStrip({ liveId, bottomOffset = 0 }: LiveShoppingStri
               ) : null}
             </View>
           </View>
+          <TouchableOpacity
+            style={styles.buyBtn}
+            testID={`live-shopping-buy-${activeProduct.productId}`}
+            onPress={() => {
+              try {
+                router.push({ pathname: '/shop/product/[id]', params: { id: activeProduct.productId } } as never);
+              } catch {
+                setPickerOpen(true);
+              }
+            }}
+            accessibilityLabel="Acheter ce produit"
+          >
+            <Text style={styles.buyBtnText}>Acheter</Text>
+          </TouchableOpacity>
           {discountPct ? (
             <View style={styles.discountBadge}>
               <Text style={styles.discountText}>-{discountPct}%</Text>
@@ -255,6 +269,14 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   price: { color: '#FFD93D', fontSize: FontSizes.sm, fontWeight: '700' },
   originalPrice: { color: 'rgba(255,255,255,0.5)', fontSize: 11, textDecorationLine: 'line-through' },
+  buyBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  buyBtnText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: '800' },
   discountBadge: {
     backgroundColor: '#FF3366',
     paddingHorizontal: 6,

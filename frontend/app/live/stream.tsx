@@ -35,6 +35,16 @@ import { LiveTopFansSheet } from './_liveTopFansSheet';
 import { uploadImageForLive } from '../../src/live/uploadImageForLive';
 import { LivePollStrip } from '../../src/live/LivePollStrip';
 import FloatingHeartsBurst, { type FloatingHeartsBurstHandle } from '../../src/live/FloatingHeartsBurst';
+import { LiveHostModerationSection } from '../../src/live/LiveHostModerationSection';
+import { LiveHostProductPinSection } from '../../src/live/LiveHostProductPinSection';
+import { probeAgoraLiveReady } from '../../src/live/probeAgoraLiveReady';
+import { useLiveBattle } from '../../src/live/useLiveBattle';
+import { LiveBattleChallengeModal } from '../../src/live/LiveBattleChallengeModal';
+import { LiveBattleProposedModal } from '../../src/live/LiveBattleProposedModal';
+import { LiveBattleScoreBar } from '../../src/live/LiveBattleScoreBar';
+import { LiveBattleSplitLayout } from '../../src/live/LiveBattleSplitLayout';
+import { useLiveGuests } from '../../src/live/useLiveGuests';
+import { LiveGuestQueueHostSection } from '../../src/live/LiveGuestQueueHostSection';
 
 type LiveCategoryRow = { id: string; name: string; icon?: string };
 
@@ -100,8 +110,9 @@ function liveChatUserColor(m: ChatMessage): string {
 
 export default function LiveStreamScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ prefilled_title?: string; prefilled_category?: string }>();
+  const params = useLocalSearchParams<{ prefilled_title?: string; prefilled_category?: string; resume_live_id?: string }>();
   const prefilledAppliedRef = useRef(false);
+  const resumeAppliedRef = useRef(false);
   const user = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
 
@@ -129,6 +140,7 @@ export default function LiveStreamScreen() {
   const [liveCategories, setLiveCategories] = useState<LiveCategoryRow[]>([]);
   const [categoryId, setCategoryId] = useState('general');
   const [scheduleMode, setScheduleMode] = useState(false);
+  const [privateMode, setPrivateMode] = useState(false);
   const [scheduledAtInput, setScheduledAtInput] = useState('');
   const [ageRestriction, setAgeRestriction] = useState<'all' | '13+' | '18+'>('all');
   const [goalTargetStr, setGoalTargetStr] = useState('');
@@ -144,12 +156,14 @@ export default function LiveStreamScreen() {
   const [pollSocketBump, setPollSocketBump] = useState<unknown>(null);
   const [pollReloadKey, setPollReloadKey] = useState(0);
   const [showHostDashboard, setShowHostDashboard] = useState(false);
+  const [showBattleChallenge, setShowBattleChallenge] = useState(false);
   const [hostEconomyLine, setHostEconomyLine] = useState<string | null>(null);
   const [showPollModal, setShowPollModal] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOpt, setPollOpt] = useState(['', '', '', '']);
   const [bannedWordsInput, setBannedWordsInput] = useState('');
   const [raisedHands, setRaisedHands] = useState<Record<string, { username: string; at: number }>>({});
+  const [joinRequests, setJoinRequests] = useState<Record<string, { username: string; at: number }>>({});
   const [cohostInviteUserId, setCohostInviteUserId] = useState('');
   const [followersBaseline, setFollowersBaseline] = useState<number | null>(null);
   const [followersNow, setFollowersNow] = useState<number | null>(null);
@@ -170,17 +184,21 @@ export default function LiveStreamScreen() {
   const { hasPermission: hasCamPerm, requestPermission: requestCamPerm } = useNativeCameraPermission();
   const [previewFacing, setPreviewFacing] = useState<'front' | 'back'>('front');
 
-  const { agoraJoined, agoraError, AgoraLocalView, AgoraRemoteGrid, remoteUids, toggleScreenShare } = useAgoraLiveRtc({
+  const { agoraJoined, agoraPreviewReady, agoraError, AgoraLocalView, AgoraRemoteGrid, remoteUids, toggleScreenShare } = useAgoraLiveRtc({
     liveId,
     role: 'host',
     enabled: phase === 'live' && !!liveId,
     muted: isMuted,
     cameraFlipNonce,
     beautyEnabled: beautyOn,
+    initialCameraFront: previewFacing === 'front',
   });
 
   const { animations, removeAnimation, GiftAnimationBubble, GiftFullscreenHost } = useGiftAnimations(liveId || '');
   const hostHeartsRef = useRef<FloatingHeartsBurstHandle>(null);
+
+  const { battle, proposedBattle, isBattleActive, acceptBattle, declineBattle, endBattle } = useLiveBattle(liveId);
+  const { queue: guestQueue, respondGuest, removeGuest } = useLiveGuests(liveId, true);
 
   /** Le host reçoit les cœurs de son audience via socket → burst côté broadcaster. */
   useEffect(() => {
@@ -353,6 +371,47 @@ export default function LiveStreamScreen() {
     }
   };
 
+  const respondJoinRequestHost = async (targetUserId: string, accept: boolean) => {
+    if (!liveId) return;
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/join-request/respond`, {
+        userId: targetUserId,
+        accept,
+      });
+      setJoinRequests((prev) => {
+        const n = { ...prev };
+        delete n[targetUserId];
+        return n;
+      });
+      Alert.alert(
+        accept ? 'Accès autorisé' : 'Accès refusé',
+        accept ? 'Le spectateur peut maintenant regarder le live.' : 'Le spectateur a été notifié.',
+      );
+    } catch (e: unknown) {
+      Alert.alert('Demande d’accès', getAlertMessageForCaughtError(e));
+    }
+  };
+
+  const fetchPendingJoinRequests = useCallback(async (id: string) => {
+    try {
+      const res = await apiClient.get(`/live/${encodeURIComponent(id)}/join-requests`);
+      const rows = (res.data?.data ?? res.data) as { userId?: string; username?: string; requested_at?: string }[];
+      if (!Array.isArray(rows)) return;
+      const map: Record<string, { username: string; at: number }> = {};
+      for (const row of rows) {
+        const uid = String(row.userId ?? '').trim();
+        if (!uid) continue;
+        map[uid] = {
+          username: String(row.username || 'Spectateur'),
+          at: row.requested_at ? Date.parse(row.requested_at) : Date.now(),
+        };
+      }
+      setJoinRequests(map);
+    } catch {
+      /* ignore — live public ou erreur réseau */
+    }
+  }, []);
+
   const sendHostCaption = async () => {
     const t = hostCaptionDraft.trim();
     if (!liveId || !t) return;
@@ -486,6 +545,46 @@ export default function LiveStreamScreen() {
   }, [params.prefilled_title, params.prefilled_category]);
 
   useEffect(() => {
+    const rid = typeof params.resume_live_id === 'string' ? params.resume_live_id.trim() : '';
+    if (!rid || resumeAppliedRef.current) return;
+    resumeAppliedRef.current = true;
+    void (async () => {
+      setLoading(true);
+      try {
+        await apiClient.post(`/live/${encodeURIComponent(rid)}/start-scheduled`, {});
+        const res = await apiClient.get(`/live/${encodeURIComponent(rid)}`);
+        const s = (res.data?.data ?? res.data) as Record<string, unknown> | null;
+        if (s?.title) setTitle(String(s.title));
+        if (typeof s?.goal_target === 'number' && s.goal_target > 0) {
+          setGoalTarget(s.goal_target);
+          setGoalTargetStr(String(s.goal_target));
+        }
+        await runLaunch321();
+        setLiveId(rid);
+        setIsFrontCamera(previewFacing === 'front');
+        setPhase('live');
+        liveStartedAtMsRef.current = Date.now();
+        setLiveTime(0);
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => {
+          const started = liveStartedAtMsRef.current;
+          if (!started) {
+            setLiveTime((prev) => prev + 1);
+            return;
+          }
+          setLiveTime(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+        }, 1000);
+        void fetchTopDonors(rid);
+      } catch (e: unknown) {
+        Alert.alert('Live programmé', getAlertMessageForCaughtError(e));
+        router.back();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [params.resume_live_id, previewFacing]);
+
+  useEffect(() => {
     if (accessToken) socketService.connect(accessToken);
   }, [accessToken]);
 
@@ -595,6 +694,29 @@ export default function LiveStreamScreen() {
       });
     };
 
+    const joinRequestHandler = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const d = raw as { userId?: string; username?: string; at?: number };
+      const uid = d.userId;
+      if (!uid) return;
+      setJoinRequests((prev) => ({
+        ...prev,
+        [uid]: { username: String(d.username || 'Spectateur'), at: Number(d.at) || Date.now() },
+      }));
+    };
+
+    const joinResolvedHandler = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const d = raw as { userId?: string };
+      const uid = d.userId;
+      if (!uid) return;
+      setJoinRequests((prev) => {
+        const next = { ...prev };
+        delete next[uid];
+        return next;
+      });
+    };
+
     const timerHandler = (payload: unknown) => {
       if (payload == null) {
         setBroadcastTimer(null);
@@ -619,6 +741,8 @@ export default function LiveStreamScreen() {
     socketService.on('live:poll:updated', pollUpdated);
     socketService.on('live:poll:ended', pollEnded);
     socketService.on('live:raise-hand', raiseHandler);
+    socketService.on('live:join-request', joinRequestHandler);
+    socketService.on('live:join-request:resolved', joinResolvedHandler);
     socketService.on('live:timer', timerHandler);
 
     return () => {
@@ -631,14 +755,19 @@ export default function LiveStreamScreen() {
       socketService.off('live:poll:updated', pollUpdated);
       socketService.off('live:poll:ended', pollEnded);
       socketService.off('live:raise-hand', raiseHandler);
+      socketService.off('live:join-request', joinRequestHandler);
+      socketService.off('live:join-request:resolved', joinResolvedHandler);
       socketService.off('live:timer', timerHandler);
       socketService.leaveLiveStream(liveId);
     };
   }, [liveId, fetchTopDonors, hydrateFromStream]);
 
   useEffect(() => {
-    if (liveId && phase === 'live') void hydrateFromStream(liveId);
-  }, [liveId, phase, hydrateFromStream]);
+    if (liveId && phase === 'live') {
+      void hydrateFromStream(liveId);
+      void fetchPendingJoinRequests(liveId);
+    }
+  }, [liveId, phase, hydrateFromStream, fetchPendingJoinRequests]);
 
   const runLaunch321 = useCallback(async () => {
     for (const n of [3, 2, 1] as const) {
@@ -735,6 +864,7 @@ export default function LiveStreamScreen() {
         goal_target,
         status,
         scheduled_at: scheduled_at?.toISOString(),
+        private_mode: privateMode,
       });
       const data = res.data?.data ?? res.data;
       const id = String(data?.id ?? data?.live_id ?? '').trim();
@@ -749,6 +879,7 @@ export default function LiveStreamScreen() {
       }
 
       setLiveId(id);
+      setIsFrontCamera(previewFacing === 'front');
       setPhase('live');
       liveStartedAtMsRef.current = Date.now();
       setLiveTime(0);
@@ -1033,6 +1164,15 @@ export default function LiveStreamScreen() {
             <Text style={styles.label}>Planifier (Wonder notifié)</Text>
             <Switch value={scheduleMode} onValueChange={setScheduleMode} />
           </View>
+          <View style={styles.rowBetween}>
+            <View style={{ flex: 1, paddingRight: Spacing.sm }}>
+              <Text style={styles.label}>Accès sur demande</Text>
+              <Text style={styles.hint}>
+                Les spectateurs envoient une demande ; vous acceptez ou refusez avant qu’ils voient le live.
+              </Text>
+            </View>
+            <Switch value={privateMode} onValueChange={setPrivateMode} />
+          </View>
           {scheduleMode ? (
             <>
               <Text style={styles.hint}>ISO local : 2026-04-20T18:00 (heure future)</Text>
@@ -1072,6 +1212,12 @@ export default function LiveStreamScreen() {
             value={goalTargetStr}
             onChangeText={setGoalTargetStr}
           />
+          <TouchableOpacity
+            style={[styles.modalOutline, { marginBottom: Spacing.md }]}
+            onPress={() => void probeAgoraLiveReady()}
+          >
+            <Text style={styles.modalOutlineText}>Tester connexion Agora</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             testID="live-start-button"
             style={[
@@ -1250,6 +1396,29 @@ export default function LiveStreamScreen() {
                   <Text style={styles.modalPrimaryText}>Ouvrir les analytics du live</Text>
                 </TouchableOpacity>
               ) : null}
+              <Text style={styles.modalSection}>Demandes d’accès (live privé)</Text>
+              {Object.keys(joinRequests).length === 0 ? (
+                <Text style={styles.modalMuted}>Aucune demande en attente.</Text>
+              ) : (
+                Object.entries(joinRequests).map(([uid, h]) => (
+                  <View key={`join-${uid}`} style={styles.raisedHandRow}>
+                    <Text style={styles.modalLine} numberOfLines={1}>
+                      {h.username}
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      <TouchableOpacity style={styles.inviteCohostChip} onPress={() => void respondJoinRequestHost(uid, true)}>
+                        <Text style={styles.inviteCohostChipText}>Accepter</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.inviteCohostChip, { backgroundColor: 'rgba(248,113,113,0.25)' }]}
+                        onPress={() => void respondJoinRequestHost(uid, false)}
+                      >
+                        <Text style={styles.inviteCohostChipText}>Refuser</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
               <Text style={styles.modalSection}>Mains levées</Text>
               {Object.keys(raisedHands).length === 0 ? (
                 <Text style={styles.modalMuted}>Personne pour l’instant.</Text>
@@ -1298,6 +1467,32 @@ export default function LiveStreamScreen() {
               <TouchableOpacity style={styles.modalPrimary} onPress={() => void inviteCohost()}>
                 <Text style={styles.modalPrimaryText}>Envoyer invitation</Text>
               </TouchableOpacity>
+              {liveId ? (
+                <>
+                  <LiveHostModerationSection liveId={liveId} />
+                  <LiveHostProductPinSection liveId={liveId} />
+                  <Text style={styles.modalSection}>Multi-guest (8 places TikTok)</Text>
+                  <LiveGuestQueueHostSection
+                    queue={guestQueue}
+                    onAccept={(uid) => void respondGuest(uid, true)}
+                    onReject={(uid) => void respondGuest(uid, false)}
+                  />
+                  <TouchableOpacity
+                    style={styles.modalOutline}
+                    onPress={() => {
+                      setShowHostDashboard(false);
+                      setShowBattleChallenge(true);
+                    }}
+                  >
+                    <Text style={styles.modalOutlineText}>Lancer un Battle 1v1</Text>
+                  </TouchableOpacity>
+                  {isBattleActive ? (
+                    <TouchableOpacity style={styles.modalPrimary} onPress={() => void endBattle()}>
+                      <Text style={styles.modalPrimaryText}>Terminer le battle</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              ) : null}
             </ScrollView>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowHostDashboard(false)}>
               <Text style={styles.modalCloseText}>Fermer</Text>
@@ -1306,19 +1501,43 @@ export default function LiveStreamScreen() {
         </View>
       </Modal>
 
+      {liveId ? (
+        <LiveBattleChallengeModal
+          visible={showBattleChallenge}
+          liveId={liveId}
+          onClose={() => setShowBattleChallenge(false)}
+          onChallenged={() => setShowBattleChallenge(false)}
+        />
+      ) : null}
+
+      <LiveBattleProposedModal
+        visible={!!proposedBattle && proposedBattle.status === 'pending' && proposedBattle.opponent_live_id === liveId}
+        onAccept={() => void acceptBattle()}
+        onDecline={() => void declineBattle()}
+      />
+
+      {isBattleActive && battle && liveId ? (
+        <LiveBattleScoreBar battle={battle} liveId={liveId} topInset={insets.top + 48} />
+      ) : null}
+
+      <LiveBattleSplitLayout
+        battle={battle}
+        liveId={liveId || ''}
+        battleActive={isBattleActive && !!battle && !!liveId}
+        mainChildren={
       <View style={styles.cameraPlaceholder}>
         <LinearGradient colors={['#1a0020', '#0a0a12', '#001020']} style={StyleSheet.absoluteFillObject} />
-        {Platform.OS !== 'web' && agoraJoined ? (
+        {Platform.OS !== 'web' && agoraPreviewReady ? (
           <>
             <AgoraLocalView style={StyleSheet.absoluteFillObject} />
             {remoteUids.length > 0 ? (
               <View style={styles.cohostStrip} pointerEvents="box-none">
-                <AgoraRemoteGrid maxCells={5} style={{}} />
+                <AgoraRemoteGrid maxCells={8} style={{}} />
               </View>
             ) : null}
           </>
         ) : null}
-        {!agoraJoined ? (
+        {!agoraPreviewReady ? (
           <>
             <Ionicons name="videocam" size={60} color="rgba(255,255,255,0.15)" />
             <Text style={styles.camHint}>Caméra en direct</Text>
@@ -1331,6 +1550,8 @@ export default function LiveStreamScreen() {
           </>
         ) : null}
       </View>
+        }
+      />
 
       {animations.map((anim) => (
         <GiftAnimationBubble key={anim.id} gift={anim} onRemove={removeAnimation} />

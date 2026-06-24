@@ -41,6 +41,20 @@ import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import FloatingHeartsBurst, { type FloatingHeartsBurstHandle } from '../../src/live/FloatingHeartsBurst';
 import LiveShoppingStrip from '../../src/live/LiveShoppingStrip';
+import { LivePollStrip } from '../../src/live/LivePollStrip';
+import { LiveGoalBar } from '../../src/live/LiveGoalBar';
+import { useLiveViewerSession } from '../../src/live/useLiveViewerSession';
+import { useLiveCoHostRtc } from '../../src/live/useLiveCoHostRtc';
+import { LiveCoHostInviteModal } from '../../src/live/LiveCoHostInviteModal';
+import { LiveViewerTipButton, LiveCreatorSubscribeButton } from '../../src/live/LiveViewerMonetization';
+import { useLiveBattle } from '../../src/live/useLiveBattle';
+import { LiveBattleScoreBar } from '../../src/live/LiveBattleScoreBar';
+import { LiveBattleProposedModal } from '../../src/live/LiveBattleProposedModal';
+import { LiveBattleSplitLayout } from '../../src/live/LiveBattleSplitLayout';
+import { battleSideForViewer } from '../../src/live/liveBattleTypes';
+import { useLiveGuests } from '../../src/live/useLiveGuests';
+import { LiveGuestGridBadge } from '../../src/live/LiveGuestGridBadge';
+import { canAccessPrivateLive, type LiveViewerJoinAccess, liveJoinAccessLabel } from '../../src/live/liveJoinAccess';
 
 const { width, height } = Dimensions.get('window');
 const LIVE_REMINDER_KEY = (creatorId: string) => `afw_live_reminder_${creatorId}`;
@@ -163,6 +177,14 @@ export default function LiveStreamViewerScreen() {
   const [, setBroadcastTimerTick] = useState(0);
   const [hostCaptionLine, setHostCaptionLine] = useState<string | null>(null);
   const [showCaptions, setShowCaptions] = useState(true);
+  const [privateMode, setPrivateMode] = useState(false);
+  const [joinAccess, setJoinAccess] = useState<LiveViewerJoinAccess>('allowed');
+  const [joinRequestSending, setJoinRequestSending] = useState(false);
+  const [goalAmount, setGoalAmount] = useState(0);
+  const [goalTarget, setGoalTarget] = useState(0);
+  const [pollSocketBump, setPollSocketBump] = useState<unknown>(null);
+  const [creatorSubscribed, setCreatorSubscribed] = useState(false);
+  const [battleGiftSide, setBattleGiftSide] = useState<'challenger' | 'opponent' | null>(null);
   const chatTimesRef = useRef<number[]>([]);
   const reactionCooldownRef = useRef(0);
   const heartsBurstRef = useRef<FloatingHeartsBurstHandle>(null);
@@ -248,18 +270,58 @@ export default function LiveStreamViewerScreen() {
     [messages, topDonorIdSet],
   );
 
-  const liveInteractionsEnabled = streamStatus === 'live';
+  const liveAccessGranted = canAccessPrivateLive(joinAccess);
+  const liveInteractionsEnabled = streamStatus === 'live' && liveAccessGranted;
 
-  const { agoraJoined, agoraError, AgoraRemoteView, AgoraRemoteGrid, remoteUids } = useAgoraLiveRtc({
+  const { rtcRole, cohostInviteVisible, cohostBusy, acceptCoHostInvite, declineCoHostInvite } = useLiveCoHostRtc({
     liveId: liveId || null,
-    role: 'audience',
+    creatorId,
+    liveAccessGranted,
+  });
+
+  const { agoraJoined, agoraError, AgoraRemoteView, AgoraRemoteGrid, AgoraLocalView, remoteUids } = useAgoraLiveRtc({
+    liveId: liveId || null,
+    role: rtcRole,
     enabled:
       isAuthenticated &&
       !!liveId &&
       loading === false &&
       ((ageRestriction !== '18+' && ageRestriction !== '13+') || ageGateOk) &&
-      liveInteractionsEnabled,
+      liveInteractionsEnabled &&
+      liveAccessGranted,
   });
+
+  useLiveViewerSession({
+    liveId: liveId || null,
+    sessionId,
+    enabled:
+      isAuthenticated &&
+      !!liveId &&
+      streamStatus === 'live' &&
+      liveAccessGranted &&
+      ((ageRestriction !== '18+' && ageRestriction !== '13+') || ageGateOk),
+  });
+
+  const {
+    battle,
+    proposedBattle,
+    isBattleActive,
+    acceptBattle,
+    declineBattle,
+  } = useLiveBattle(liveId || null);
+
+  const { slots: guestSlots, maxSlots: guestMaxSlots, requestGuestSlot } = useLiveGuests(
+    liveId || null,
+    false,
+  );
+
+  useEffect(() => {
+    if (isBattleActive && battle && liveId) {
+      setBattleGiftSide((prev) => prev ?? battleSideForViewer(battle, liveId));
+    } else if (!isBattleActive) {
+      setBattleGiftSide(null);
+    }
+  }, [isBattleActive, battle, liveId]);
 
   useEffect(() => {
     if (accessToken) socketService.connect(accessToken);
@@ -314,6 +376,15 @@ export default function LiveStreamViewerScreen() {
           if (Number.isFinite(parsed)) satMs = parsed;
         }
         setScheduledAtMs(satMs);
+        setPrivateMode(Boolean(s.private_mode));
+        const accessRaw = String(s.viewer_join_access ?? 'allowed').toLowerCase();
+        const accessNorm: LiveViewerJoinAccess =
+          accessRaw === 'pending' || accessRaw === 'rejected' || accessRaw === 'none'
+            ? accessRaw
+            : 'allowed';
+        setJoinAccess(Boolean(s.private_mode) ? accessNorm : 'allowed');
+        if (typeof s.goal_amount === 'number') setGoalAmount(s.goal_amount);
+        if (typeof s.goal_target === 'number' && s.goal_target > 0) setGoalTarget(s.goal_target);
         const rawMsgs = s.chat_messages;
         if (Array.isArray(rawMsgs) && rawMsgs.length) {
           setMessages(
@@ -399,6 +470,7 @@ export default function LiveStreamViewerScreen() {
     if (!isAuthenticated || !liveId) return;
     if (streamStatus !== 'live') return;
     if ((ageRestriction === '18+' || ageRestriction === '13+') && !ageGateOk) return;
+    if (!liveAccessGranted) return;
     void (async () => {
       try {
         const geo = await resolveLiveJoinGeo();
@@ -410,15 +482,49 @@ export default function LiveStreamViewerScreen() {
         const msg = typeof box === 'object' && box ? box.message : '';
         if (err.response?.status === 403 && (code === 'AGE_ACK_REQUIRED' || String(msg).toLowerCase().includes('âge'))) {
           Alert.alert('Accès live', 'Confirmez votre âge sur la fenêtre de sécurité pour rejoindre ce direct.');
+        } else if (
+          err.response?.status === 403 &&
+          (code === 'JOIN_ACCESS_REQUIRED' || code === 'JOIN_ACCESS_PENDING' || code === 'JOIN_ACCESS_REJECTED')
+        ) {
+          if (code === 'JOIN_ACCESS_PENDING') setJoinAccess('pending');
+          else if (code === 'JOIN_ACCESS_REJECTED') setJoinAccess('rejected');
+          else setJoinAccess('none');
         }
       }
     })();
-  }, [isAuthenticated, liveId, sessionId, ageRestriction, ageGateOk, streamStatus]);
+  }, [isAuthenticated, liveId, sessionId, ageRestriction, ageGateOk, streamStatus, liveAccessGranted]);
+
+  const requestLiveAccess = async () => {
+    if (!liveId || !isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour demander l’accès à ce live.');
+      return;
+    }
+    setJoinRequestSending(true);
+    try {
+      const res = await apiClient.post(`/live/${encodeURIComponent(liveId)}/join-request`);
+      const data = (res.data?.data ?? res.data) as { status?: string; already_public?: boolean };
+      const st = String(data?.status || 'pending').toLowerCase();
+      if (data?.already_public || st === 'allowed' || st === 'accepted') {
+        setJoinAccess('allowed');
+        Alert.alert('Accès autorisé', 'Vous pouvez regarder le live.');
+      } else if (st === 'pending') {
+        setJoinAccess('pending');
+        Alert.alert('Demande envoyée', 'Le créateur va accepter ou refuser votre accès.');
+      } else {
+        setJoinAccess(st as LiveViewerJoinAccess);
+      }
+    } catch (e: unknown) {
+      Alert.alert('Demande d’accès', getAlertMessageForCaughtError(e));
+    } finally {
+      setJoinRequestSending(false);
+    }
+  };
 
   useEffect(() => {
     if (!liveId) return;
     if (streamStatus !== 'live') return;
     if ((ageRestriction === '18+' || ageRestriction === '13+') && !ageGateOk) return;
+    if (!liveAccessGranted) return;
     socketService.joinLiveStream(liveId);
     const chatHandler = (raw: unknown) => {
       if (!raw || typeof raw !== 'object') return;
@@ -458,20 +564,50 @@ export default function LiveStreamViewerScreen() {
         );
       }
     };
+    const joinAccessResolved = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const p = raw as { accepted?: boolean; userId?: string; streamId?: string };
+      if (p.streamId && p.streamId !== liveId) return;
+      if (user?.id && p.userId === user.id) {
+        if (p.accepted) {
+          setJoinAccess('allowed');
+          Alert.alert('Accès autorisé', 'Vous pouvez maintenant regarder le live.');
+        } else {
+          setJoinAccess('rejected');
+          Alert.alert('Accès refusé', 'Le créateur a refusé votre demande pour ce live.');
+        }
+      }
+    };
+    const pollCreated = (p: unknown) => setPollSocketBump(p);
+    const pollUpdated = (p: unknown) => setPollSocketBump(p);
+    const pollEnded = (p: unknown) => setPollSocketBump(p);
+    const giftHandler = () => {
+      void hydrate();
+    };
     socketService.on('live:chat', chatHandler);
     socketService.on('live:viewers', viewerHandler);
     socketService.on('live:timer', timerHandler);
     socketService.on('live:caption', captionHandler);
     socketService.on('live:raise-hand:resolved', raiseResolved);
+    socketService.on('live:join-request:resolved', joinAccessResolved);
+    socketService.on('live:poll:created', pollCreated);
+    socketService.on('live:poll:updated', pollUpdated);
+    socketService.on('live:poll:ended', pollEnded);
+    socketService.on('live:gift', giftHandler);
     return () => {
       socketService.off('live:chat', chatHandler);
       socketService.off('live:viewers', viewerHandler);
       socketService.off('live:timer', timerHandler);
       socketService.off('live:caption', captionHandler);
       socketService.off('live:raise-hand:resolved', raiseResolved);
+      socketService.off('live:join-request:resolved', joinAccessResolved);
+      socketService.off('live:poll:created', pollCreated);
+      socketService.off('live:poll:updated', pollUpdated);
+      socketService.off('live:poll:ended', pollEnded);
+      socketService.off('live:gift', giftHandler);
       socketService.leaveLiveStream(liveId);
     };
-  }, [liveId, ageRestriction, ageGateOk, streamStatus, user?.id]);
+  }, [liveId, ageRestriction, ageGateOk, streamStatus, user?.id, liveAccessGranted, hydrate]);
 
   const toggleFollow = async () => {
     if (!isAuthenticated || !creatorId) {
@@ -723,6 +859,49 @@ export default function LiveStreamViewerScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={
+          streamStatus === 'live' &&
+          privateMode &&
+          !liveAccessGranted &&
+          ((ageRestriction !== '18+' && ageRestriction !== '13+') || ageGateOk)
+        }
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.ageModal}>
+          <Text style={styles.ageTitle}>Live privé</Text>
+          <Text style={styles.ageText}>
+            {liveJoinAccessLabel(joinAccess) ||
+              'Le créateur doit approuver votre accès avant que vous puissiez voir la vidéo et participer.'}
+          </Text>
+          {joinAccess === 'pending' ? (
+            <View style={styles.joinPendingBox}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={[styles.ageText, { marginTop: Spacing.sm }]}>En attente de la réponse du créateur…</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.ageBtn, joinRequestSending && { opacity: 0.6 }]}
+              onPress={() => void requestLiveAccess()}
+              disabled={joinRequestSending || !isAuthenticated}
+              accessibilityLabel="Demander l'accès au live"
+            >
+              <Text style={styles.ageBtnText}>
+                {!isAuthenticated
+                  ? 'Connectez-vous pour demander l’accès'
+                  : joinAccess === 'rejected'
+                    ? 'Redemander l’accès'
+                    : 'Demander l’accès'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.ageLeave} onPress={() => router.back()} accessibilityLabel="Retour">
+            <Text style={styles.ageLeaveText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       <Modal visible={showProfile} transparent animationType="slide">
         <Pressable style={styles.modalBackdrop} onPress={() => setShowProfile(false)}>
           <Pressable style={styles.profileCard} onPress={(e) => e.stopPropagation()}>
@@ -750,16 +929,49 @@ export default function LiveStreamViewerScreen() {
 
       <LiveTopFansSheet liveId={liveId} visible={showTopFans} onClose={() => setShowTopFans(false)} />
 
+      <LiveCoHostInviteModal
+        visible={cohostInviteVisible}
+        busy={cohostBusy}
+        onAccept={() => void acceptCoHostInvite()}
+        onDecline={declineCoHostInvite}
+      />
+
+      <LiveBattleProposedModal
+        visible={!!proposedBattle && proposedBattle.status === 'pending' && proposedBattle.opponent_live_id === liveId}
+        onAccept={() => void acceptBattle()}
+        onDecline={() => void declineBattle()}
+      />
+
+      {isBattleActive && battle ? (
+        <LiveBattleScoreBar battle={battle} liveId={liveId} topInset={insets.top + 48} />
+      ) : null}
+
+      <LiveBattleSplitLayout
+        battle={battle}
+        liveId={liveId}
+        battleActive={isBattleActive && !!battle}
+        mainChildren={
       <View style={styles.videoBackground}>
         {Platform.OS !== 'web' && agoraJoined ? (
-          <>
-            <AgoraRemoteView style={{ width, height }} />
-            {remoteUids.length > 1 ? (
-              <View style={styles.cohostStripViewer} pointerEvents="box-none">
-                <AgoraRemoteGrid uids={remoteUids.slice(1)} maxCells={4} style={{}} />
-              </View>
-            ) : null}
-          </>
+          rtcRole === 'host' ? (
+            <>
+              <AgoraLocalView style={{ width, height }} />
+              {remoteUids.length > 0 ? (
+                <View style={styles.cohostStripViewer} pointerEvents="box-none">
+                  <AgoraRemoteGrid uids={remoteUids} maxCells={8} style={{}} />
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <AgoraRemoteView style={{ width, height }} />
+              {remoteUids.length > 1 ? (
+                <View style={styles.cohostStripViewer} pointerEvents="box-none">
+                  <AgoraRemoteGrid uids={remoteUids.slice(1)} maxCells={8} style={{}} />
+                </View>
+              ) : null}
+            </>
+          )
         ) : playbackUrl ? (
           <LivePlaybackSurface uri={playbackUrl} />
         ) : posterUrl ? (
@@ -800,6 +1012,10 @@ export default function LiveStreamViewerScreen() {
           </View>
         ) : null}
       </View>
+        }
+      />
+
+      <LiveGuestGridBadge slots={guestSlots} maxSlots={guestMaxSlots} bottomOffset={168 + insets.bottom} />
 
       <View style={styles.headerOverlay}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} accessibilityLabel="Retour">
@@ -885,11 +1101,28 @@ export default function LiveStreamViewerScreen() {
           </TouchableOpacity>
         ) : null}
 
+        {liveInteractionsEnabled && creatorId && user?.id !== creatorId ? (
+          <View style={styles.monetizationRow}>
+            <LiveViewerTipButton liveId={liveId} />
+            <LiveCreatorSubscribeButton creatorId={creatorId} onSubscribedChange={setCreatorSubscribed} />
+          </View>
+        ) : null}
+
         <View style={styles.viewersBadge}>
           <Ionicons name="eye" size={14} color={Colors.text} />
           <Text style={styles.viewersText}>{formatCompactCount(viewers)}</Text>
         </View>
       </View>
+
+      {liveInteractionsEnabled && goalTarget > 0 ? (
+        <LiveGoalBar goalAmount={goalAmount} goalTarget={goalTarget} topInset={insets.top + 48} />
+      ) : null}
+
+      {liveInteractionsEnabled && liveId ? (
+        <View style={[styles.pollStripWrap, { top: insets.top + (goalTarget > 0 ? 88 : 48) }]} pointerEvents="box-none">
+          <LivePollStrip liveId={liveId} onSocketPoll={pollSocketBump as never} />
+        </View>
+      ) : null}
 
       {liveInteractionsEnabled && topDonors.length > 0 ? (
         <View style={[styles.donorStripWrap, { top: insets.top + 102 }]} pointerEvents="box-none">
@@ -945,6 +1178,14 @@ export default function LiveStreamViewerScreen() {
         ))}
         <TouchableOpacity
           style={styles.raiseBtn}
+          onPress={() => void requestGuestSlot().catch((e) => Alert.alert('Multi-guest', getAlertMessageForCaughtError(e)))}
+          disabled={!liveInteractionsEnabled}
+        >
+          <Ionicons name="people" size={18} color="#FFF" />
+          <Text style={styles.raiseBtnText}>Invité</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.raiseBtn}
           onPress={() => void raiseHand()}
           disabled={!liveInteractionsEnabled}
         >
@@ -989,6 +1230,7 @@ export default function LiveStreamViewerScreen() {
                 <Text style={[styles.msgUser, { color: liveChatViewerColor(item, creatorId) }]}>
                   {item.sender_role === 'moderator' ? '🛡️ ' : ''}
                   {creatorId && item.senderId === creatorId ? '⭐ ' : ''}
+                  {creatorSubscribed && user?.id && item.senderId === user.id ? '💎 ' : ''}
                   {item.is_top_supporter ? '👑 ' : ''}
                   {item.is_question ? '❓ ' : ''}
                   {item.user.name}
@@ -1013,7 +1255,15 @@ export default function LiveStreamViewerScreen() {
         {showGifts && creatorId ? (
           <View style={styles.giftsOverlay}>
             <TouchableOpacity style={styles.giftsBackdrop} activeOpacity={1} onPress={() => setShowGifts(false)} />
-            <LiveGiftsPanel liveId={liveId} creatorId={creatorId} visible={showGifts} onClose={() => setShowGifts(false)} />
+            <LiveGiftsPanel
+              liveId={liveId}
+              creatorId={creatorId}
+              visible={showGifts}
+              onClose={() => setShowGifts(false)}
+              battleActive={isBattleActive}
+              battleSide={battleGiftSide}
+              onBattleSideChange={setBattleGiftSide}
+            />
           </View>
         ) : null}
 
@@ -1275,6 +1525,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  monetizationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  pollStripWrap: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    zIndex: 11,
+  },
   viewersBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1482,6 +1744,7 @@ const styles = StyleSheet.create({
   ageBtnText: { color: '#FFF', fontWeight: '800' },
   ageLeave: { marginTop: 16, padding: 12 },
   ageLeaveText: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  joinPendingBox: { marginTop: 24, alignItems: 'center' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

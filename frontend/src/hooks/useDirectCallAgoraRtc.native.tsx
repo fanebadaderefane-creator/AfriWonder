@@ -490,6 +490,12 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       const engine = engineRef.current;
       if (!engine || !videoPublishedRef.current) return;
       rebindAgoraLocalPreview(engine, { callId, reason });
+      if (reason.includes('pip') || reason.includes('layout_')) {
+        setTimeout(() => {
+          const eng = engineRef.current;
+          if (eng) rebindAgoraLocalPreview(eng, { callId, reason: `${reason}_retry` });
+        }, 280);
+      }
     },
     [callId],
   );

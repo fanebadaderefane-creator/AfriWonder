@@ -18,8 +18,11 @@ export declare function useAgoraLiveRtc(opts: {
   videoQuality?: LiveVideoQuality;
   /** CDC 6.2 — beauté (natif uniquement ; no-op sur web). */
   beautyEnabled?: boolean;
+  /** Aligné sur PreviewCamera setup — front par défaut (parité Inbox / WhatsApp). */
+  initialCameraFront?: boolean;
 }): {
   agoraJoined: boolean;
+  agoraPreviewReady: boolean;
   agoraError: string | null;
   remoteUids: number[];
   AgoraLocalView: (props: { style?: StyleProp<ViewStyle> }) => JSX.Element | null;

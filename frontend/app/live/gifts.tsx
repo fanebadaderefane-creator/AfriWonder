@@ -298,6 +298,10 @@ export interface LiveGiftsPanelProps {
   creatorId: string;
   visible: boolean;
   onClose: () => void;
+  /** Battle actif : le spectateur choisit le camp avant d’envoyer un cadeau. */
+  battleActive?: boolean;
+  battleSide?: 'challenger' | 'opponent' | null;
+  onBattleSideChange?: (side: 'challenger' | 'opponent') => void;
 }
 
 type CoinPackageRow = {
@@ -313,6 +317,9 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
   creatorId: _creatorId,
   visible,
   onClose,
+  battleActive = false,
+  battleSide = null,
+  onBattleSideChange,
 }) => {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
@@ -464,6 +471,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         giftIcon: selectedGift.icon,
         amount: unitCoins,
         quantity,
+        ...(battleActive && battleSide ? { battle_side: battleSide } : {}),
       });
       setBalanceCoins((prev) => Math.max(0, prev - totalCoins));
       setSelectedGift(null);
@@ -584,6 +592,23 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         </View>
         {economyHint && activeTab === 'send' ? (
           <Text style={{ color: Colors.textMuted, fontSize: 11, paddingHorizontal: Spacing.md, marginBottom: 6 }}>{economyHint}</Text>
+        ) : null}
+        {battleActive && activeTab === 'send' ? (
+          <View style={styles.battleSideRow}>
+            <Text style={styles.battleSideLabel}>Soutenir :</Text>
+            <TouchableOpacity
+              style={[styles.battleSideBtn, battleSide === 'challenger' && styles.battleSideBtnOn]}
+              onPress={() => onBattleSideChange?.('challenger')}
+            >
+              <Text style={styles.battleSideBtnText}>Bleu</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.battleSideBtn, battleSide === 'opponent' && styles.battleSideBtnOn]}
+              onPress={() => onBattleSideChange?.('opponent')}
+            >
+              <Text style={styles.battleSideBtnText}>Rouge</Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
         {activeTab === 'send' ? (
           <TouchableOpacity
@@ -1102,4 +1127,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
   },
+  battleSideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    marginBottom: 8,
+  },
+  battleSideLabel: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '700' },
+  battleSideBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  battleSideBtnOn: { backgroundColor: Colors.primary },
+  battleSideBtnText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: '800' },
 });

@@ -10,6 +10,7 @@ import { AgoraLocalPreviewSurface } from '../../call/agoraLocalPreviewSurface.na
 import { agoraDmLocalPreviewStyles } from '../../call/agoraDmLocalPreviewStyles';
 import { agoraDmEmptyLocalPreview, useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
 import { shouldMountAgoraDmLocalPreviewOverlay } from '../../call/agoraDmLocalPreviewOverlayGuard';
+import { resolveAgoraDmOverlayLayer } from '../../call/agoraDmOverlayLayer';
 
 export function AgoraDmLocalPreviewOverlay() {
   const insets = useSafeAreaInsets();
@@ -63,16 +64,36 @@ export function AgoraDmLocalPreviewOverlay() {
   const bottomOffset = pipOnChat ? insets.bottom + 88 : 108;
   const showVideo = layout.mountSurface && layout.showVideo;
   const surfaceLayoutMode = styleKey === 'pip' ? 'pip' : 'fill';
+  const overlayLayer = resolveAgoraDmOverlayLayer({
+    containerStyle: styleKey,
+    minimized,
+  });
 
   return (
-    <View style={[styles.host, { pointerEvents: 'box-none' }]} collapsable={false}>
+    <View
+      style={[
+        styles.host,
+        {
+          zIndex: overlayLayer.hostZIndex,
+          elevation: overlayLayer.hostElevation,
+          pointerEvents: 'box-none',
+        },
+      ]}
+      collapsable={false}
+    >
       <View
         style={[
           baseStyle,
           styleKey === 'pip' ? { bottom: bottomOffset } : null,
           !showVideo ? agoraDmLocalPreviewStyles.hiddenCam : null,
         ]}
-        pointerEvents={layout.showPipFlip && showVideo && !minimized ? 'auto' : 'none'}
+        pointerEvents={
+          overlayLayer.surfacePointerEvents === 'none'
+            ? 'none'
+            : layout.showPipFlip && showVideo && !minimized
+              ? 'auto'
+              : 'none'
+        }
         collapsable={false}
       >
         <View style={styles.surfaceClip} collapsable={false}>
@@ -98,8 +119,6 @@ export function AgoraDmLocalPreviewOverlay() {
 const styles = StyleSheet.create({
   host: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 9996,
-    elevation: 9996,
   },
   surfaceClip: {
     flex: 1,

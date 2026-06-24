@@ -14,6 +14,7 @@ export function useAgoraLiveRtc(_opts: {
   cameraFlipNonce?: number;
   videoQuality?: import('../live/liveVideoQuality').LiveVideoQuality;
   beautyEnabled?: boolean;
+  initialCameraFront?: boolean;
 }) {
   const AgoraLocalView = useCallback(({ style: _style }: { style?: StyleProp<ViewStyle> }) => null, []);
   const AgoraRemoteView = useCallback(
@@ -33,6 +34,7 @@ export function useAgoraLiveRtc(_opts: {
 
   return {
     agoraJoined: false,
+    agoraPreviewReady: false,
     agoraError: null as string | null,
     remoteUids: [] as number[],
     AgoraLocalView,

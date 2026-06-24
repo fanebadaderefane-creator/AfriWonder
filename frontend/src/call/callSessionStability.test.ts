@@ -1,6 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
+vi.mock('@react-navigation/native', () => ({
+  useFocusEffect: vi.fn(),
+}));
+
+vi.mock('react-native', () => ({
+  Platform: { OS: 'android' },
+  AppState: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
+  BackHandler: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
+}));
 
 const trimMobileAppCaches = vi.fn();
 vi.mock('../lib/mobileMemoryMaintenance', () => ({

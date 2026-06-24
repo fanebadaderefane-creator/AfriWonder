@@ -25,6 +25,7 @@
     "verify:expo-fs": "node ./scripts/verify-expo-filesystem-imports.cjs",
     "verify:call-stack": "node ./scripts/verify-call-stack-prod.cjs",
     "verify:agora-dm": "node ./scripts/verify-agora-dm.cjs",
+    "verify:agora-live": "node ./scripts/verify-agora-live.cjs",
     "verify:web-call-bundle": "node ./scripts/verify-web-call-bundle.cjs",
     "verify:dm-calls": "node ./scripts/verify-dm-call-stack.cjs",
     "verify:pre-apk": "node ./scripts/verify-pre-apk.cjs",

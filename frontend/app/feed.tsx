@@ -18,59 +18,32 @@ import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 import { useAuthStore } from '../src/store/authStore';
 import { Image as ExpoImage } from 'expo-image';
 import { profileAvatarUri, uiAvatarFromSeed } from '../src/utils/avatarFallback';
+import {
+  collectPostImageUrls,
+  isLikelyRenderableMomentUrl,
+  momentPostIsDisplayable,
+  normalizeMomentFeedImageUrl,
+} from '../src/moments/momentFeedMedia';
+import { momentRowIsDisplayable } from '../src/moments/momentFeedMediaCore';
 
 const GRID_GAP = 2;
 
-/** Anciens posts : URL en http sur une page https → image bloquée (rectangle noir). */
-function normalizeMomentImageUri(raw: string): string {
-  let u = String(raw || '').trim();
-  if (!u) return '';
-  if (u.startsWith('//')) u = `https:${u}`;
-  if (Platform.OS === 'web' && /^http:\/\//i.test(u)) {
-    if (!/localhost|127\.0\.0\.1/i.test(u)) {
-      u = u.replace(/^http:\/\//i, 'https://');
-    }
-  }
-  try {
-    if (/%25[0-9A-Fa-f]{2}/i.test(u)) {
-      const once = decodeURIComponent(u);
-      if (once.length > 0 && once !== u) u = once;
-    }
-  } catch {
-    /* garder u */
-  }
-  return u;
-}
-
-function isLikelyRenderableUrl(u: string): boolean {
-  const s = String(u || '').trim();
-  if (!s || s === 'null' || s === 'undefined') return false;
-  return (
-    /^https?:\/\//i.test(s)
-    || s.startsWith('data:')
-    || s.startsWith('blob:')
-    || s.startsWith('//')
-  );
-}
-
-/** Image Moments avec repli si l’URL est morte (vieux post, mixed content, etc.). */
+/** Image Moments — masquée si URL morte (pas de grand rectangle gris). */
 function FeedPostImage({
   uri,
   style,
   resizeMode = 'cover',
+  onBroken,
 }: {
   uri: string;
   style: ImageStyle | ImageStyle[];
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
+  onBroken?: () => void;
 }) {
   const [broken, setBroken] = useState(false);
-  const clean = normalizeMomentImageUri(uri);
-  if (!clean || !isLikelyRenderableUrl(clean) || broken) {
-    return (
-      <View style={[style, { backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }]}>
-        <Ionicons name="image-outline" size={32} color="#444" />
-      </View>
-    );
+  const clean = normalizeMomentFeedImageUrl(uri);
+  if (!clean || !isLikelyRenderableMomentUrl(uri) || broken) {
+    return null;
   }
   const contentFit =
     resizeMode === 'contain' ? 'contain'
@@ -83,7 +56,10 @@ function FeedPostImage({
       style={style}
       contentFit={contentFit}
       transition={0}
-      onError={() => setBroken(true)}
+      onError={() => {
+        setBroken(true);
+        onBroken?.();
+      }}
     />
   );
 }
@@ -163,7 +139,7 @@ function buildMomentStoryRings(
     const aid = normalizeId(p.authorId);
     if (!aid || seen.has(aid)) return;
     seen.add(aid);
-    const preview = p.images[0] ? normalizeMomentImageUri(p.images[0]) : '';
+    const preview = p.images[0] ? normalizeMomentFeedImageUrl(p.images[0]) : '';
     rings.push({
       id: `author-${aid}`,
       userId: aid,
@@ -191,58 +167,6 @@ function formatTimeAgo(iso: string | undefined): string {
   const days = Math.floor(h / 24);
   if (days < 7) return `${days} j`;
   return d.toLocaleDateString('fr-FR');
-}
-
-function rowImageUrl(row: Record<string, unknown>): string {
-  return String(
-    row.image_url
-    || row.imageUrl
-    || row.url
-    || row.file_url
-    || row.fileUrl
-    || row.src
-    || ''
-  ).trim();
-}
-
-/** `images` peut être un tableau JSON ou une chaîne JSON (selon clients / proxies). */
-function parseImagesField(raw: unknown): Record<string, unknown>[] {
-  if (Array.isArray(raw)) return raw as Record<string, unknown>[];
-  if (typeof raw === 'string') {
-    const s = raw.trim();
-    if (!s) return [];
-    try {
-      const j = JSON.parse(s) as unknown;
-      return Array.isArray(j) ? (j as Record<string, unknown>[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-/** URLs du carrousel : snake_case + camelCase, ordre `position`. */
-function collectPostImageUrls(p: Record<string, unknown>): string[] {
-  const rows = parseImagesField(p.images ?? p.Images ?? p.post_images);
-  rows.sort((a, b) => {
-    const pa = Number(a.position ?? a.Position ?? 0);
-    const pb = Number(b.position ?? b.Position ?? 0);
-    return pa - pb;
-  });
-  const fromRows = rows.map(rowImageUrl).filter((u) => isLikelyRenderableUrl(u));
-  const legacyRaw = String(p.image_url || p.imageUrl || '').trim();
-  const legacy = isLikelyRenderableUrl(legacyRaw) ? legacyRaw : '';
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  for (const u of fromRows) {
-    if (!seen.has(u)) {
-      seen.add(u);
-      ordered.push(u);
-    }
-  }
-  if (legacy && !seen.has(legacy)) ordered.unshift(legacy);
-  const merged = ordered.length > 0 ? ordered : (legacy ? [legacy] : []);
-  return merged.map(normalizeMomentImageUri).filter(isLikelyRenderableUrl);
 }
 
 /** Identifiant auteur du post (API snake_case / camelCase / objet user). */
@@ -326,12 +250,15 @@ export default function FeedScreen() {
     const body = res.data as Record<string, unknown> | undefined;
     const inner = (body?.data ?? body) as Record<string, unknown> | undefined;
     const raw = Array.isArray(inner?.posts) ? (inner.posts as Record<string, unknown>[]) : [];
-    const posts = raw.map((row) => mapApiPostToFeedPost(row));
+    const posts = raw
+      .filter((row) => momentRowIsDisplayable(row))
+      .map((row) => mapApiPostToFeedPost(row))
+      .filter((p) => momentPostIsDisplayable(p.content, p.images));
     return { posts, loaded: true };
   }, []);
 
   const { data: feedData, isLoading, isOffline, refresh } = useOfflineData<MomentsFeedPayload>({
-    cacheKey: 'moments_feed_api_v4',
+    cacheKey: 'moments_feed_api_v6',
     fallbackData: MOMENTS_FEED_FALLBACK,
     fetcher: fetchMomentsFeed,
     ttl: 1000 * 60 * 2,
@@ -344,7 +271,21 @@ export default function FeedScreen() {
     }, [refresh])
   );
 
-  const displayPosts = feedData.posts;
+  const [hiddenPostIds, setHiddenPostIds] = useState<Set<string>>(() => new Set());
+
+  const markPostHidden = useCallback((postId: string) => {
+    setHiddenPostIds((prev) => {
+      if (prev.has(postId)) return prev;
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
+  }, []);
+
+  const displayPosts = useMemo(
+    () => feedData.posts.filter((p) => !hiddenPostIds.has(p.id)),
+    [feedData.posts, hiddenPostIds],
+  );
 
   const momentStoryRings = useMemo(
     () => buildMomentStoryRings(displayPosts, user),
@@ -718,29 +659,37 @@ export default function FeedScreen() {
   const postCardOuterGap = 12;
   const postCardWidth = Math.max(0, screenWidth - postCardOuterGap * 2);
 
-  const renderImages = (images: string[], _postId: string, imgWidth: number) => {
+  const renderImages = (post: Post, imgWidth: number) => {
+    const images = post.images;
     if (images.length === 0) return null;
     if (imgWidth < 40) return null;
 
+    const onImageBroken = () => {
+      if (!post.content.trim()) markPostHidden(post.id);
+    };
+
     if (images.length === 1) {
       return (
-        <FeedPostImage uri={images[0]} style={{ width: imgWidth, height: imgWidth * 0.65 }} resizeMode="cover" />
+        <FeedPostImage
+          uri={images[0]}
+          style={{ width: imgWidth, height: imgWidth * 0.65 }}
+          resizeMode="cover"
+          onBroken={onImageBroken}
+        />
       );
     }
 
     if (images.length === 2) {
       const half = (imgWidth - GRID_GAP) / 2;
       const h = half * 1.2;
-      // Flux horizontal (évite la 2e image invisible sur RN Web avec absolu + overflow).
       return (
         <View style={{ flexDirection: 'row', width: imgWidth, height: h }}>
-          <FeedPostImage uri={images[0]} style={{ width: half, height: h, marginRight: GRID_GAP }} resizeMode="cover" />
-          <FeedPostImage uri={images[1]} style={{ width: half, height: h }} resizeMode="cover" />
+          <FeedPostImage uri={images[0]} style={{ width: half, height: h, marginRight: GRID_GAP }} resizeMode="cover" onBroken={onImageBroken} />
+          <FeedPostImage uri={images[1]} style={{ width: half, height: h }} resizeMode="cover" onBroken={onImageBroken} />
         </View>
       );
     }
 
-    // 3+ images: first large, rest in column
     const mainW = imgWidth * 0.65;
     const sideW = imgWidth - mainW - GRID_GAP;
     const mainH = imgWidth * 0.6;
@@ -750,13 +699,13 @@ export default function FeedScreen() {
     return (
       <View style={{ width: imgWidth, height: mainH, overflow: 'hidden' }}>
         <View style={{ position: 'absolute', left: 0, top: 0, width: mainW, height: mainH }}>
-          <FeedPostImage uri={images[0]} style={{ width: mainW, height: mainH }} resizeMode="cover" />
+          <FeedPostImage uri={images[0]} style={{ width: mainW, height: mainH }} resizeMode="cover" onBroken={onImageBroken} />
         </View>
         <View style={{ position: 'absolute', left: mainW + GRID_GAP, top: 0, width: sideW, height: sideH }}>
-          <FeedPostImage uri={images[1]} style={{ width: sideW, height: sideH }} resizeMode="cover" />
+          <FeedPostImage uri={images[1]} style={{ width: sideW, height: sideH }} resizeMode="cover" onBroken={onImageBroken} />
         </View>
         <View style={{ position: 'absolute', left: mainW + GRID_GAP, top: sideH + GRID_GAP, width: sideW, height: sideH }}>
-          <FeedPostImage uri={images[2]} style={{ width: sideW, height: sideH }} resizeMode="cover" />
+          <FeedPostImage uri={images[2]} style={{ width: sideW, height: sideH }} resizeMode="cover" onBroken={onImageBroken} />
           {remaining > 0 && (
             <View style={styles.moreOverlay}>
               <Text style={styles.moreText}>+{remaining}</Text>
@@ -903,7 +852,7 @@ export default function FeedScreen() {
             </View>
 
             {/* Médias puis légende (une seule barre d’actions par carte) */}
-            {renderImages(post.images, post.id, postCardWidth)}
+            {renderImages(post, postCardWidth)}
             {!!post.content.trim() && (
               <Text style={styles.postContent}>{post.content}</Text>
             )}

@@ -225,6 +225,7 @@ import {
 import {
   prepareCallSessionMemory,
   releaseCallSessionMemory,
+  useCallScreenLifecycleGuards,
 } from '../../src/call/callSessionStability';
 import {
   nativeRtcTeardownDelayMs,
@@ -633,6 +634,14 @@ function CallScreenInner() {
       };
     }, []),
   );
+
+  useCallScreenLifecycleGuards({
+    engine: 'webrtc',
+    callId: callIdRef.current,
+    role,
+    isVideoCall: startedAsVideo,
+    blockAndroidBack: callState !== 'ended',
+  });
 
   /** Démonte RTCView + annule timers avant `pc.close()` — crash Android/iOS sinon. */
   const prepareNativeRtcViewUnmount = useCallback(() => {
