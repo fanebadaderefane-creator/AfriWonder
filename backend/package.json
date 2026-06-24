@@ -112,7 +112,7 @@
     "@types/node": "^22.13.5",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.16.0",
-    "@types/supertest": "^6.0.3",
+    "@types/supertest": "^7.2.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "cross-env": "^10.1.0",
