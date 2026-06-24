@@ -141,7 +141,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
           screenSharingRef.current = false;
           setScreenSharing(false);
         }
-        if (handler) engine.unregisterEventHandler(handler);
+        if (handler) {
+          const unregister = (engine as { unregisterEventHandler?: (h: typeof handler) => void })
+            .unregisterEventHandler;
+          if (typeof unregister === 'function') {
+            unregister(handler);
+          }
+        }
         await engine.leaveChannel();
         engine.release();
       } catch {
@@ -169,11 +175,17 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     const engine = engineRef.current;
     if (!engine) return;
     const next = !camOn;
-    engine.muteLocalVideoStream(!next);
-    if (next) {
-      rebindAgoraLocalPreview(engine, { callId, reason: 'toggle_cam_on' });
+    try {
+      const muteVideo = (engine as { muteLocalVideoStream?: (mute: boolean) => number }).muteLocalVideoStream;
+      if (typeof muteVideo !== 'function') return;
+      muteVideo(!next);
+      if (next) {
+        rebindAgoraLocalPreview(engine, { callId, reason: 'toggle_cam_on' });
+      }
+      setCamOn(next);
+    } catch {
+      /* SDK Agora — méthode indisponible sur certaines versions */
     }
-    setCamOn(next);
   }, [callId, camOn]);
 
   const upgradeToVideo = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {

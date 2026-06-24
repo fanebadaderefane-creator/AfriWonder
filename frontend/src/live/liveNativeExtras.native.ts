@@ -5,20 +5,36 @@ import type { PipEnterOptions } from './liveNativeExtras.types';
 
 export type { PipEnterOptions } from './liveNativeExtras.types';
 
+function pipSetParams(params: {
+  width: number;
+  height: number;
+  title: string;
+  seamlessResizeEnabled: boolean;
+  autoEnterEnabled: boolean;
+}): boolean {
+  const setParams = ExpoPip?.setPictureInPictureParams;
+  if (typeof setParams !== 'function') return false;
+  setParams(params);
+  return true;
+}
+
 export async function prepareVideoCallSystemPip(opts: {
   title?: string;
   silent?: boolean;
 }): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
-    if (typeof ExpoPip.setPictureInPictureParams !== 'function') return;
-    ExpoPip.setPictureInPictureParams({
+    if (
+      !pipSetParams({
       width: 200,
       height: 300,
       title: opts.title ?? 'Appel AfriWonder',
       seamlessResizeEnabled: true,
       autoEnterEnabled: false,
-    });
+      })
+    ) {
+      return;
+    }
     logAfwCall('system_pip_prepared', { title: opts.title ?? null });
   } catch (e) {
     logAfwCall('system_pip_prepare_failed', {
@@ -39,8 +55,8 @@ export async function tryEnterPictureInPicture(opts: PipEnterOptions = {}): Prom
   }
 
   try {
-    const available =
-      typeof ExpoPip.isAvailable === 'function' ? ExpoPip.isAvailable() : true;
+    const isAvailable = ExpoPip?.isAvailable;
+    const available = typeof isAvailable === 'function' ? isAvailable() : true;
 
     if (!available) {
       logAfwCall('system_pip_unavailable', { silent });
@@ -53,18 +69,17 @@ export async function tryEnterPictureInPicture(opts: PipEnterOptions = {}): Prom
       return false;
     }
 
-    if (typeof ExpoPip.setPictureInPictureParams === 'function') {
-      ExpoPip.setPictureInPictureParams({
-        width,
-        height,
-        title: title ?? 'Appel AfriWonder',
-        seamlessResizeEnabled: true,
-        autoEnterEnabled: false,
-      });
-    }
+    pipSetParams({
+      width,
+      height,
+      title: title ?? 'Appel AfriWonder',
+      seamlessResizeEnabled: true,
+      autoEnterEnabled: false,
+    });
 
-    if (typeof ExpoPip.enterPipMode === 'function') {
-      await ExpoPip.enterPipMode({ width, height });
+    const enterPip = ExpoPip?.enterPipMode;
+    if (typeof enterPip === 'function') {
+      await enterPip({ width, height });
       logAfwCall('system_pip_entered', { width, height });
       return true;
     }

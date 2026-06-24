@@ -1,7 +1,7 @@
 /**
  * Écran appel DM 1:1 — média Agora (signalisation Socket.io conservée).
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -142,22 +142,6 @@ export function DirectCallAgoraScreen() {
     blockAndroidBack: callState !== 'ended' && !minimized,
   });
 
-  /** Sortie navigation sans raccrocher — évite moteur Agora + overlay root orphelins. */
-  useEffect(() => {
-    return () => {
-      if (finishingRef.current || callStateRef.current === 'ended') return;
-      const state = callStateRef.current;
-      const reason =
-        role === 'caller' && state === 'ringing'
-          ? 'declined'
-          : state === 'connected'
-            ? 'completed'
-            : 'declined';
-      void finishCallRef.current(reason, { skipNavigation: true });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const videoPreviewStartedRef = useRef(false);
   const [videoPreviewReady, setVideoPreviewReady] = useState(false);
 
@@ -295,7 +279,14 @@ export function DirectCallAgoraScreen() {
       return;
     }
     initialCamAppliedRef.current = true;
-    toggleCam();
+    try {
+      toggleCam();
+    } catch (e) {
+      logAfwCall('agora_toggle_cam_initial_failed', {
+        callId: callIdRef.current,
+        error: String((e as Error)?.message ?? e),
+      });
+    }
   }, [camOn, initialCamOn, isVideoCall, joined, toggleCam]);
 
   useFocusEffect(
@@ -392,6 +383,22 @@ export function DirectCallAgoraScreen() {
   );
 
   finishCallRef.current = finishCall;
+
+  /** Sortie navigation sans raccrocher — évite moteur Agora + overlay root orphelins. */
+  useEffect(() => {
+    return () => {
+      if (finishingRef.current || callStateRef.current === 'ended') return;
+      const state = callStateRef.current;
+      const reason =
+        role === 'caller' && state === 'ringing'
+          ? 'declined'
+          : state === 'connected'
+            ? 'completed'
+            : 'declined';
+      void finishCallRef.current(reason, { skipNavigation: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMissedNoAnswer = useCallback(async () => {
     if (finishingRef.current || callStateRef.current !== 'ringing') return;
@@ -686,9 +693,9 @@ export function DirectCallAgoraScreen() {
   );
 
   useEffect(() => {
-    if (!joined || !isVideoCall || Platform.OS !== 'android') return;
+    if (callState !== 'connected' || !isVideoCall || Platform.OS !== 'android') return;
     void prepareVideoCallSystemPip({ title: name, silent: true });
-  }, [isVideoCall, joined, name]);
+  }, [callState, isVideoCall, name]);
 
   const handleMinimize = useCallback(async () => {
     if (callState === 'ended') return;
@@ -805,16 +812,29 @@ export function DirectCallAgoraScreen() {
   });
   const showRemoteFull = shouldShowRemoteVideoFullscreen({ isVideoCall, remoteJoined });
   const showSideRail = shouldShowVideoSideRail({ isVideoCall, mediaEnabled, remoteEverJoined });
-  const localPreviewLayout = resolveAgoraDmLocalPreviewLayout({
-    isVideoCall,
-    videoPublished,
-    joined,
-    camOn,
-    localScreenSharing,
-    remoteJoined,
-    remoteEverJoined,
-    mediaEnabled,
-  });
+  const localPreviewLayout = useMemo(
+    () =>
+      resolveAgoraDmLocalPreviewLayout({
+        isVideoCall,
+        videoPublished,
+        joined,
+        camOn,
+        localScreenSharing,
+        remoteJoined,
+        remoteEverJoined,
+        mediaEnabled,
+      }),
+    [
+      camOn,
+      isVideoCall,
+      joined,
+      localScreenSharing,
+      mediaEnabled,
+      remoteEverJoined,
+      remoteJoined,
+      videoPublished,
+    ],
+  );
 
   useLayoutEffect(() => {
     if (showMissedPanel || (callState === 'ended' && !endingReason)) {

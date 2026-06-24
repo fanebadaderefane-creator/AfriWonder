@@ -2,6 +2,7 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { captureSentryException } from '../../lib/sentryMobile';
+import { logAfwCall } from '../../call/callDiagnosticLog';
 import { safeRouterBack } from '../../utils/safeRouter';
 import { Colors } from '../../theme/colors';
 
@@ -20,6 +21,11 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('[VIDEO_SCREEN_CRASH]', error?.message ?? String(error));
+    logAfwCall('video_screen_crash', {
+      message: error?.message ?? String(error),
+      stack: String(error?.stack ?? '').slice(0, 500),
+    });
     captureSentryException(error, {
       source: 'CallScreenErrorBoundary',
       componentStack: String(info.componentStack || '').slice(0, 2000),

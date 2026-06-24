@@ -13,6 +13,17 @@ import {
   logVideoScreenUnmount,
 } from './callUiLifecycleLog';
 
+function removeNativeSubscription(sub: { remove?: () => void } | (() => void) | null | undefined): void {
+  if (!sub) return;
+  if (typeof sub === 'function') {
+    sub();
+    return;
+  }
+  if (typeof sub.remove === 'function') {
+    sub.remove();
+  }
+}
+
 /**
  * Libère de la RAM avant d’ouvrir WebRTC (micro/caméra + PeerConnection).
  * Réduit les fermetures Android/iOS au lancement d’un appel vocal ou vidéo.
@@ -95,7 +106,7 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
         });
       }
     });
-    return () => sub.remove();
+    return () => removeNativeSubscription(sub);
   }, []);
 
   useEffect(() => {
@@ -112,6 +123,6 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
       cur.onAndroidBackWhileBlocked?.();
       return true;
     });
-    return () => sub.remove();
+    return () => removeNativeSubscription(sub);
   }, []);
 }
