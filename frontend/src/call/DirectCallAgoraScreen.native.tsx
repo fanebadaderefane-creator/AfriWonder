@@ -24,6 +24,7 @@ import { ALLOWED_CALL_REACTIONS } from './callDmMenuConstants';
 import { formatAgoraDmCallStatus, CALL_END_STATUS_DISPLAY_MS } from './callStatusLine';
 import type { CallEndReasonUi } from './callStatusLine';
 import { resolveAgoraDmCallId, shouldStartNativeInCallBeforeAgora } from './agoraDmCallSession';
+import { shouldApplyInviteAckCallId } from './agoraDmJoinLifecycle';
 import { shouldEnableAgoraChannelJoin, shouldStartAgoraCallTimer } from './agoraDmChannelReady';
 import { shouldFlushAgoraDmConnected } from './agoraDmRemoteReady';
 import { peekAgoraDmActiveChannelCallId } from './agoraDmActiveChannel';
@@ -192,7 +193,6 @@ export function DirectCallAgoraScreen() {
     screenAliveRef.current = true;
     finishingRef.current = false;
     callAbortedRef.current = false;
-    bootstrapDoneRef.current = false;
     return () => {
       screenAliveRef.current = false;
     };
@@ -311,6 +311,15 @@ export function DirectCallAgoraScreen() {
     flushConnectedFromRemote();
   }, [flushConnectedFromRemote, role]);
 
+  const channelJoinEnabled =
+    shouldEnableAgoraChannelJoin({
+      role,
+      peerAccepted,
+      callEnded: callState === 'ended',
+      mediaEnabled,
+      audioOnly: !startedAsVideo,
+    }) && callState !== 'ended';
+
   const {
     joined,
     error: rtcError,
@@ -328,14 +337,7 @@ export function DirectCallAgoraScreen() {
     previewActive,
   } = useDirectCallAgoraRtc({
     callId,
-    enabled:
-      shouldEnableAgoraChannelJoin({
-        role,
-        peerAccepted,
-        callEnded: callState === 'ended',
-        mediaEnabled,
-        audioOnly: !startedAsVideo,
-      }) && callState !== 'ended',
+    enabled: channelJoinEnabled,
     audioOnly: !startedAsVideo,
     muted,
     cameraFlipNonce,
@@ -354,6 +356,18 @@ export function DirectCallAgoraScreen() {
     },
     onError: (msg) => setErrorMsg(msg),
   });
+
+  useEffect(() => {
+    logAfwCall('agora_channel_join_gate', {
+      callId,
+      enabled: channelJoinEnabled,
+      role,
+      peerAccepted,
+      mediaEnabled,
+      audioOnly: !startedAsVideo,
+      callState,
+    });
+  }, [callId, callState, channelJoinEnabled, mediaEnabled, peerAccepted, role, startedAsVideo]);
 
   useEffect(() => {
     syncAgoraCallMediaAlive({
@@ -775,6 +789,7 @@ export function DirectCallAgoraScreen() {
     const onAccept = (payload: { callId?: string }) => {
       if (role !== 'caller') return;
       if (payload?.callId && payload.callId !== callIdRef.current) return;
+      logAfwCall('agora_peer_accepted', { callId: callIdRef.current, role });
       if (ringTimeoutRef.current) {
         clearTimeout(ringTimeoutRef.current);
         ringTimeoutRef.current = null;
@@ -804,8 +819,12 @@ export function DirectCallAgoraScreen() {
 
     const onInviteAck = (payload: { callId?: string; receiverReachable?: boolean }) => {
       if (role !== 'caller' || !payload?.callId) return;
-      callIdRef.current = String(payload.callId);
-      setCallId(String(payload.callId));
+      const ackId = String(payload.callId);
+      if (shouldApplyInviteAckCallId(callIdRef.current, ackId)) {
+        logAfwCall('agora_invite_ack_call_id_sync', { from: callIdRef.current, to: ackId });
+        callIdRef.current = ackId;
+        setCallId(ackId);
+      }
       if (payload.receiverReachable === false) {
         setErrorMsg(
           'Le correspondant semble hors ligne. Une notification lui a été envoyée — il doit ouvrir AfriWonder.',
@@ -833,7 +852,6 @@ export function DirectCallAgoraScreen() {
   }, [
     activateVideoPreview,
     beginAgoraMedia,
-    callId,
     handleMissedNoAnswer,
     myUserId,
     name,
@@ -1014,6 +1032,7 @@ export function DirectCallAgoraScreen() {
     isVideoCall,
     mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),
     remoteEverJoined,
+    remoteJoined,
   });
   const showRemoteFull = shouldShowRemoteVideoFullscreen({
     isVideoCall,

@@ -61,7 +61,7 @@ describe('agoraDmChannelReady', () => {
     ).toBe(false);
   });
 
-  it('vidéo — connected UI sur première frame distante', () => {
+  it('vidéo — connected dès join canal ou frame distante', () => {
     expect(
       shouldPromoteAgoraRemoteToConnected({
         audioOnly: false,
@@ -73,16 +73,34 @@ describe('agoraDmChannelReady', () => {
         audioOnly: false,
         eventSource: 'onUserJoined',
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      shouldPromoteAgoraRemoteToConnected({
+        audioOnly: false,
+        eventSource: 'onRemoteVideoStateChanged',
+      }),
+    ).toBe(true);
   });
 
-  it('vidéo — remoteEverJoined seulement sur première frame distante', () => {
+  it('vidéo — remoteEverJoined sur decode vidéo (pas audio seul)', () => {
     expect(
       shouldMarkAgoraRemoteEverJoined({
         audioOnly: false,
         eventSource: 'onFirstRemoteVideoDecoded',
       }),
     ).toBe(true);
+    expect(
+      shouldMarkAgoraRemoteEverJoined({
+        audioOnly: false,
+        eventSource: 'onRemoteVideoStateChanged',
+      }),
+    ).toBe(true);
+    expect(
+      shouldMarkAgoraRemoteEverJoined({
+        audioOnly: false,
+        eventSource: 'onUserJoined',
+      }),
+    ).toBe(false);
     expect(
       shouldMarkAgoraRemoteEverJoined({
         audioOnly: false,

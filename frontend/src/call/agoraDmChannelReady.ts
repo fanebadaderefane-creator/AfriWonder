@@ -26,7 +26,18 @@ export function shouldStartAgoraCallTimer(input: {
   return input.peerAccepted;
 }
 
-/** Déclencher connected UI depuis Agora — vidéo exige une frame distante décodée. */
+/** Agora 4.x Android — `onFirstRemoteVideoDecoded` parfois absent ; `Decoding` = 2. */
+export const AGORA_REMOTE_VIDEO_STATE_DECODING = 2;
+
+export function isAgoraRemoteVideoDecodeSource(eventSource: string): boolean {
+  return (
+    eventSource === 'onFirstRemoteVideoDecoded' ||
+    eventSource === 'onRemoteVideoStateChanged' ||
+    eventSource === 'onFirstRemoteVideoFrame'
+  );
+}
+
+/** Déclencher connected UI depuis Agora. */
 export function shouldPromoteAgoraRemoteToConnected(input: {
   audioOnly: boolean;
   eventSource: string;
@@ -37,14 +48,16 @@ export function shouldPromoteAgoraRemoteToConnected(input: {
       input.eventSource === 'onRemoteAudioStateChanged'
     );
   }
-  return input.eventSource === 'onFirstRemoteVideoDecoded';
+  return (
+    input.eventSource === 'onUserJoined' || isAgoraRemoteVideoDecodeSource(input.eventSource)
+  );
 }
 
-/** Sticky « correspondant vu » — vidéo : première frame distante seulement (pas l’audio seul). */
+/** Sticky « correspondant vu » — vidéo : frame distante décodée (pas l’audio seul). */
 export function shouldMarkAgoraRemoteEverJoined(input: {
   audioOnly: boolean;
   eventSource: string;
 }): boolean {
   if (input.audioOnly) return true;
-  return input.eventSource === 'onFirstRemoteVideoDecoded';
+  return isAgoraRemoteVideoDecodeSource(input.eventSource);
 }

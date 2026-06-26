@@ -98,6 +98,38 @@ function checkFrontendWiring() {
     fail('Hook Agora — invokeAgoraEngine', 'appel sans import — TypeError undefined is not a function');
   }
 
+  if (/agora_channel_join_gate/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — gate join diagnostic', 'agora_channel_join_gate');
+  } else {
+    warn('DirectCallAgoraScreen — gate join diagnostic', 'manquant');
+  }
+
+  if (/agora_join_ok_watchdog/.test(hook) && /shouldStopPreviewBeforeChannelJoin/.test(hook)) {
+    pass('Hook Agora — join watchdog + preview join', 'callback SDK absent');
+  } else {
+    warn('Hook Agora — join watchdog', 'vérifier agoraDmJoinLifecycle');
+  }
+
+  if (/shouldApplyInviteAckCallId/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — invite:ack sans reset join', 'OK');
+  } else {
+    warn('DirectCallAgoraScreen — invite:ack', 'risque double bootstrap/join');
+  }
+
+  if (/onConnectionStateChanged/.test(hook) && /agora_join_channel_invoke/.test(hook)) {
+    pass('Hook Agora — join + connectionState fallback', 'agora_join_ok manquant');
+  } else {
+    fail('Hook Agora — join fallback', 'onConnectionStateChanged / agora_join_channel_invoke manquant');
+  }
+
+  if (/createAgoraRtcEngine/.test(hook) && !/await import\('react-native-agora'\)/.test(hook.split('upgradeToVideo')[0] || hook)) {
+    pass('Hook Agora — import statique SDK join', 'évite abort silencieux post token');
+  } else if (/agora_join_aborted/.test(hook) && /joinEpoch/.test(hook)) {
+    pass('Hook Agora — joinEpoch + abort logs', 'diagnostic join vocal');
+  } else {
+    fail('Hook Agora — join vocal', 'import dynamique join ou joinEpoch manquant');
+  }
+
   if (/removeNativeSubscription/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — removeNativeSubscription', 'cleanup socket sécurisé');
   } else fail('DirectCallAgoraScreen — removeNativeSubscription', 'manquant');

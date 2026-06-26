@@ -12,13 +12,16 @@ export function shouldShowAgoraVideoStage(input: {
   return input.isVideoCall && (input.mediaEnabled || input.joined || !!input.previewActive);
 }
 
-/** Appel vidéo sortant : selfie plein écran tant que le correspondant n’a pas rejoint. */
+/** Appel vidéo sortant : selfie plein écran tant que le correspondant n’a pas rejoint le canal. */
 export function shouldShowLocalVideoFullscreen(input: {
   isVideoCall: boolean;
   mediaEnabled: boolean;
   remoteEverJoined: boolean;
+  remoteJoined?: boolean;
 }): boolean {
-  return input.isVideoCall && input.mediaEnabled && !input.remoteEverJoined;
+  if (!input.isVideoCall || !input.mediaEnabled) return false;
+  if (input.remoteEverJoined || input.remoteJoined) return false;
+  return true;
 }
 
 /** Appel connecté : flux distant plein écran + pip local. */
@@ -28,7 +31,7 @@ export function shouldShowRemoteVideoFullscreen(input: {
   remoteEverJoined?: boolean;
 }): boolean {
   if (!input.isVideoCall) return false;
-  return !!input.remoteEverJoined;
+  return !!input.remoteJoined || !!input.remoteEverJoined;
 }
 
 /**

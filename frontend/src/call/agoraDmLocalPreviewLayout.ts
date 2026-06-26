@@ -58,6 +58,7 @@ export function resolveAgoraDmLocalPreviewLayout(input: {
     isVideoCall: input.isVideoCall,
     mediaEnabled: input.mediaEnabled,
     remoteEverJoined: input.remoteEverJoined,
+    remoteJoined: input.remoteJoined,
   });
 
   if (showCameraPip) {

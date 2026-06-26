@@ -21,10 +21,10 @@ describe('agoraDmVideoUi WhatsApp', () => {
     ).toBe(false);
   });
 
-  it('connecté — distant plein écran + pip si cam on', () => {
+  it('connecté — distant plein écran dès onUserJoined + pip après decode', () => {
     expect(
       shouldShowRemoteVideoFullscreen({ isVideoCall: true, remoteJoined: true }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowRemoteVideoFullscreen({
         isVideoCall: true,
@@ -32,6 +32,14 @@ describe('agoraDmVideoUi WhatsApp', () => {
         remoteEverJoined: true,
       }),
     ).toBe(true);
+    expect(
+      shouldShowLocalVideoFullscreen({
+        isVideoCall: true,
+        mediaEnabled: true,
+        remoteEverJoined: false,
+        remoteJoined: true,
+      }),
+    ).toBe(false);
     expect(
       shouldShowAgoraLocalCameraPip({
         isVideoCall: true,
