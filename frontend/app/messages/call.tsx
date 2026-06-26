@@ -141,9 +141,16 @@ import { shouldRefreshNativeRemoteAudioPlayback } from '../../src/call/callNativ
 import {
   CALL_NATIVE_STREAM_GUARD_TAG,
   safeAudioTrackCount,
+  safeGetVideoTracks,
   safeVideoTrackCount,
   shouldRunDeferredCallMediaNudge,
 } from '../../src/call/callStreamTracks';
+import {
+  clearCallMediaAlive,
+  isWebRtcMediaStillConnected,
+  syncWebRtcCallMediaAlive,
+} from '../../src/call/callMediaAliveRegistry';
+import { logCallUiState, logWhyCallInterrupted } from '../../src/call/callUiInterruptLog';
 import { sdpCandidateCounts } from '../../src/call/callIceGathering';
 import {
   optimizeCallAudioPipeline,
@@ -747,6 +754,45 @@ function CallScreenInner() {
       exitSource?: string,
     ) => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
+      const pc = pcRef.current as RTCPeerConnection | null;
+      const pcState = String(pc?.connectionState || '');
+      const iceState = String(pc?.iceConnectionState || '');
+      const sigState = String(pc?.signalingState || '');
+      logCallUiState({
+        phase: 'finish_call_requested',
+        callState: callStateRef.current,
+        connectionState: pcState,
+        iceConnectionState: iceState,
+        signalingState: sigState,
+        localStreamPresent: Boolean(localStreamRef.current),
+        remoteStreamPresent: Boolean(remoteStreamRef.current),
+        localAudioTracks: safeAudioTrackCount(localStreamRef.current),
+        remoteAudioTracks: safeAudioTrackCount(remoteStreamRef.current),
+        localVideoTracks: safeVideoTrackCount(localStreamRef.current),
+        remoteVideoTracks: safeVideoTrackCount(remoteStreamRef.current),
+        exitSource: exitSource ?? null,
+        reason,
+        engine: 'webrtc',
+        callId: callIdRef.current,
+      });
+      if (
+        reason === 'failed' &&
+        isWebRtcMediaStillConnected({
+          connectionState: pcState,
+          iceConnectionState: iceState,
+          callState: callStateRef.current,
+        })
+      ) {
+        logWhyCallInterrupted({
+          reason: 'finish_call_blocked_media_alive',
+          exitSource: exitSource ?? null,
+          callState: callStateRef.current,
+          connectionState: pcState,
+          iceConnectionState: iceState,
+          fileHint: 'call.tsx:finishCall',
+        });
+        return;
+      }
       finishingRef.current = true;
       logCallExit(reason, {
         callId: callIdRef.current,
@@ -770,6 +816,7 @@ function CallScreenInner() {
       setLocalScreenSharing(false);
       prepareNativeRtcViewUnmount();
       setCallState('ended');
+      clearCallMediaAlive('webrtc');
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
@@ -1223,8 +1270,23 @@ function CallScreenInner() {
     const markCallConnected = () => {
       try {
         if (callStateRef.current === 'connected') return;
-        const remote = remoteStreamRef.current as MediaStream;
+        const remote = remoteStreamRef.current as MediaStream | null;
         const pc = pcRef.current as RTCPeerConnection | null;
+        logCallUiState({
+          phase: 'mark_call_connected',
+          callState: callStateRef.current,
+          connectionState: String(pc?.connectionState || ''),
+          iceConnectionState: String(pc?.iceConnectionState || ''),
+          signalingState: String(pc?.signalingState || ''),
+          localStreamPresent: Boolean(localStreamRef.current),
+          remoteStreamPresent: Boolean(remote),
+          localAudioTracks: safeAudioTrackCount(localStreamRef.current),
+          remoteAudioTracks: safeAudioTrackCount(remote),
+          localVideoTracks: safeVideoTrackCount(localStreamRef.current),
+          remoteVideoTracks: safeVideoTrackCount(remote),
+          engine: 'webrtc',
+          callId: callIdRef.current,
+        });
         if (
           !remoteStreamReadyForConnectedUi({
             stream: remote,
@@ -1248,7 +1310,9 @@ function CallScreenInner() {
         setErrorMsg(null);
         setCallState('connected');
         ensureLocalAudioTracksEnabled(localStreamRef.current as MediaStream | null);
-        enableRemoteAudioTracks(remote);
+        if (remote) {
+          enableRemoteAudioTracks(remote);
+        }
         if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
         if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
         connectionWatchdogRef.current = null;
@@ -1281,6 +1345,26 @@ function CallScreenInner() {
           .catch(() => {});
       } catch (e) {
         devWarn('[Call] markCallConnected failed', e);
+        const pcNow = pcRef.current as RTCPeerConnection | null;
+        const pcState = String(pcNow?.connectionState || '');
+        const iceState = String(pcNow?.iceConnectionState || '');
+        logWhyCallInterrupted({
+          reason: 'mark_call_connected_exception',
+          error: e,
+          callState: callStateRef.current,
+          connectionState: pcState,
+          iceConnectionState: iceState,
+          fileHint: 'call.tsx:markCallConnected',
+        });
+        if (
+          isWebRtcMediaStillConnected({
+            connectionState: pcState,
+            iceConnectionState: iceState,
+            callState: callStateRef.current,
+          })
+        ) {
+          return;
+        }
         setErrorMsg('Connexion interrompue. Réessayez l’appel.');
         finishCall('failed', 'mark_call_connected');
       }
@@ -3815,6 +3899,32 @@ function CallScreenInner() {
     speakerOnRef.current = speakerOn;
   }, [speakerOn]);
 
+  /** Snapshot média WebRTC pour ErrorBoundary / garde finishCall — hors signalisation verrouillée. */
+  useEffect(() => {
+    if (callState === 'ended') {
+      clearCallMediaAlive('webrtc');
+      return;
+    }
+    const sync = () => {
+      const pc = pcRef.current as RTCPeerConnection | null;
+      syncWebRtcCallMediaAlive({
+        callId: callIdRef.current,
+        callState: callStateRef.current,
+        connectionState: pc?.connectionState ?? null,
+        iceConnectionState: pc?.iceConnectionState ?? null,
+        signalingState: pc?.signalingState ?? null,
+        localStream: localStreamRef.current,
+        remoteStream: remoteStreamRef.current,
+      });
+    };
+    sync();
+    const id = setInterval(sync, 500);
+    return () => {
+      clearInterval(id);
+      clearCallMediaAlive('webrtc');
+    };
+  }, [callState, initialCallId]);
+
   /** Journal d’appel côté serveur si l’écran est quitté sans bouton rouge (retour navigateur, etc.). */
   const finishCallRef = useRef(finishCall);
   finishCallRef.current = finishCall;
@@ -4153,9 +4263,9 @@ function CallScreenInner() {
       const mediaDevicesImpl = resolveWebRtcMediaDevices();
       if (!mediaDevicesImpl?.getUserMedia || !pcRef.current || !localStreamRef.current) return false;
       const camOnly = await mediaDevicesImpl.getUserMedia({ video: videoConstraints, audio: false });
-      const newVt = camOnly.getVideoTracks()[0];
+      const newVt = safeGetVideoTracks(camOnly)[0] as MediaStreamTrack | undefined;
       const local = localStreamRef.current as MediaStream;
-      const oldVt = local.getVideoTracks()[0];
+      const oldVt = safeGetVideoTracks(local)[0] as MediaStreamTrack | undefined;
       const sender = (pcRef.current as RTCPeerConnection)
         .getSenders()
         .find((s) => s.track?.kind === 'video');
@@ -4256,7 +4366,7 @@ function CallScreenInner() {
         video: true,
         audio: false,
       });
-      const v = display.getVideoTracks()[0];
+      const v = safeGetVideoTracks(display)[0] as MediaStreamTrack | undefined;
       if (!v) throw new Error('NO_VIDEO_TRACK');
       v.onended = () => {
         void (async () => {
@@ -4273,7 +4383,7 @@ function CallScreenInner() {
       };
       screenShareDisplayStreamRef.current = display;
       const local = localStreamRef.current as MediaStream;
-      const oldVt = local.getVideoTracks()[0];
+      const oldVt = safeGetVideoTracks(local)[0] as MediaStreamTrack | undefined;
       const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
       if (!sender) return;
       await sender.replaceTrack(v);

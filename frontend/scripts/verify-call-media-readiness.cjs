@@ -117,6 +117,9 @@ const checks = [
   ['Log signal_rx', /signal_rx/],
   ['Log sdp_send', /sdp_send/],
   ['Log signal_drop', /signal_drop/],
+  ['Garde finishCall si PC connecté', /isWebRtcMediaStillConnected/],
+  ['Logs CALL_UI_STATE / WHY_CALL_INTERRUPTED', /logCallUiState|logWhyCallInterrupted/],
+  ['Snapshot média WebRTC (ErrorBoundary)', /syncWebRtcCallMediaAlive/],
 ];
 for (const [label, re] of checks) {
   if (re.test(callTsx)) ok(label);

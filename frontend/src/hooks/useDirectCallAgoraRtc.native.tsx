@@ -14,7 +14,10 @@ import {
   rebindAgoraLocalPreview,
 } from '../call/agoraCallVideoBind.native';
 import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
-import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
+import {
+  clearAgoraDmActiveChannel,
+  registerAgoraDmActiveChannel,
+} from '../call/agoraDmActiveChannel';
 import { logAfwCall } from '../call/callDiagnosticLog';
 import { logRemoteStreamRemoved } from '../call/callUiLifecycleLog';
 import {
@@ -22,6 +25,7 @@ import {
   shouldPromoteAgoraRemoteToConnected,
 } from '../call/agoraDmChannelReady';
 import { shouldLogAgoraRemoteReady } from '../call/agoraDmRemoteReady';
+import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
 import { shouldRunRtcChannelTeardown, shouldReleaseAgoraPreviewSession } from '../call/agoraRtcLifecycle';
 import { requestNativeCallPermissions, applyNativeCallSpeakerRoute, stopNativeOutgoingRingback } from '../call/callNativeMedia';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
@@ -98,10 +102,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     muted = false,
     cameraFlipNonce = 0,
     speakerOn = true,
+    callAbortedRef,
     onRemoteJoined,
     onRemoteLeft,
     onError,
   } = opts;
+
+  const isAborted = useCallback(() => callAbortedRef?.current === true, [callAbortedRef]);
 
   const engineRef = useRef<IRtcEngine | null>(null);
   const handlerRef = useRef<IRtcEngineEventHandler | null>(null);
@@ -146,6 +153,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       const handler = handlerRef.current;
       engineRef.current = null;
       handlerRef.current = null;
+      if (callId) clearAgoraDmActiveChannel(callId);
       remoteUidRef.current = null;
       remoteNotifiedRef.current = false;
       setRemoteUid(null);
@@ -325,7 +333,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         setError(null);
         remoteNotifiedRef.current = false;
         const tokenData = await fetchDirectCallAgoraToken(callId);
-        if (cancelled) return;
+        if (cancelled || isAborted()) return;
         if (!tokenData) {
           const msg = 'Média indisponible — Agora non configuré sur le serveur.';
           setError(msg);
@@ -341,6 +349,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         });
 
         const mod = await import('react-native-agora');
+        if (cancelled || isAborted()) return;
         const { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, AudioScenarioType } = mod;
 
         let adoptedEngine = consumeAgoraDmPreviewEngine(callId);
@@ -360,6 +369,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
         const engine = adoptedEngine ?? createAgoraRtcEngine();
         engineRef.current = engine;
+        if (callId) registerAgoraDmActiveChannel(callId, engine);
 
         if (!adoptedPreview) {
           engine.initialize({ appId: tokenData.appId });
@@ -391,7 +401,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
 
         const eventHandler: IRtcEngineEventHandler = {
           onJoinChannelSuccess(_conn, elapsed) {
-            if (cancelled) return;
+            if (cancelled || isAborted()) return;
             setJoined(true);
             setError(null);
             try {
@@ -505,7 +515,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       cancelled = true;
       void leave({ releasePreview: false, reason: 'channel_effect_cleanup' });
     };
-  }, [audioOnly, callId, enabled, leave]);
+  }, [audioOnly, callId, enabled, isAborted, leave]);
 
   useEffect(() => {
     const engine = engineRef.current;

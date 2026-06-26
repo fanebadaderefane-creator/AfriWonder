@@ -93,7 +93,9 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
       return;
     }
     showControls();
-    return clearHideTimer;
+    return () => {
+      clearHideTimer();
+    };
   }, [input.isVideoStage, input.callEnded, clearHideTimer, showControls]);
 
   useEffect(() => {

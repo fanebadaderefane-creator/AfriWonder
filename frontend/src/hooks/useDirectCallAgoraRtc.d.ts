@@ -9,6 +9,8 @@ export interface DirectCallAgoraRtcOptions {
   muted?: boolean;
   cameraFlipNonce?: number;
   speakerOn?: boolean;
+  /** true dès finishCall — annule join/token Agora en vol. */
+  callAbortedRef?: { current: boolean };
   onRemoteJoined?: () => void;
   onRemoteLeft?: () => void;
   onError?: (msg: string) => void;

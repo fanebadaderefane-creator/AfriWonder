@@ -7,6 +7,12 @@ import {
   shouldShowLocalVideoFullscreen,
 } from './agoraDmVideoUi';
 
+export function agoraDmLocalPreviewLayoutFingerprint(
+  layout: AgoraDmLocalPreviewLayout,
+): string {
+  return `${layout.mountSurface}|${layout.containerStyle}|${layout.showVideo}|${layout.showPipFlip}|${layout.showFullAvatarFallback}`;
+}
+
 export type AgoraDmLocalPreviewLayout = {
   /** Garder RtcSurfaceView monté (ne pas démonter entre plein écran et PiP). */
   mountSurface: boolean;

@@ -89,9 +89,14 @@ function checkFrontendWiring() {
     fail('Hook Agora — joinedRef', 'manquant — resubscribe socket sur joined');
   }
 
-  if (/invokeAgoraEngine/.test(hook)) {
-    pass('Hook Agora — invokeAgoraEngine', 'méthodes SDK optionnelles sécurisées');
-  } else fail('Hook Agora — invokeAgoraEngine', 'manquant');
+  if (
+    /import[\s\S]*invokeAgoraEngine/.test(hook) &&
+    /invokeAgoraEngine\(/.test(hook)
+  ) {
+    pass('Hook Agora — invokeAgoraEngine importé', 'évite crash post agora_join_ok');
+  } else {
+    fail('Hook Agora — invokeAgoraEngine', 'appel sans import — TypeError undefined is not a function');
+  }
 
   if (/removeNativeSubscription/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — removeNativeSubscription', 'cleanup socket sécurisé');
@@ -159,6 +164,22 @@ function checkFrontendWiring() {
     fail('CallScreenErrorBoundary', 'Retour messages sans hangup Agora');
   }
 
+  if (
+    /shouldSuppressCallInterruptedUi/.test(errorBoundary) &&
+    /logWhyCallInterrupted/.test(errorBoundary)
+  ) {
+    pass('CallScreenErrorBoundary — média vivant = pas Appel interrompu', 'recovery UI');
+  } else {
+    fail('CallScreenErrorBoundary — garde média vivant', 'manquant — faux écran interrompu');
+  }
+
+  const mediaAlive = read('src/call/callMediaAliveRegistry.ts');
+  if (/shouldSuppressCallInterruptedUi/.test(mediaAlive) && /syncWebRtcCallMediaAlive/.test(mediaAlive)) {
+    pass('callMediaAliveRegistry — snapshot WebRTC + Agora', 'OK');
+  } else {
+    fail('callMediaAliveRegistry', 'manquant');
+  }
+
   const remoteReady = read('src/call/agoraDmRemoteReady.ts');
   if (/shouldLogAgoraRemoteReady/.test(read('src/hooks/useDirectCallAgoraRtc.native.tsx'))) {
     pass('useDirectCallAgoraRtc — remote ready relay', 'pas de blocage remoteNotifiedRef');
@@ -171,6 +192,19 @@ function checkFrontendWiring() {
     pass('useCallVideoControlsOverlay — removeNativeSubscription', 'évite crash AppState cleanup');
   } else {
     fail('useCallVideoControlsOverlay — AppState cleanup', 'sub.remove() ou useNavigation risqué');
+  }
+
+  if (/forceLeaveAgoraDmActiveChannel/.test(read('src/call/agoraDmForceHangup.native.ts'))
+    && /registerAgoraDmActiveChannel/.test(hook)) {
+    pass('Agora DM — force leave canal après crash', 'anti appel fantôme');
+  } else {
+    fail('Agora DM — force leave canal', 'ErrorBoundary ne coupe pas le média');
+  }
+
+  if (/emergencyHangup/.test(read('src/call/agoraDmCallHangupRegistry.ts'))) {
+    pass('Hangup registry — emergencyHangup', 'Retour messages après crash');
+  } else {
+    fail('Hangup registry — emergencyHangup', 'manquant');
   }
 
   if (/pinnedHangupWrap/.test(agoraScreen)) {
