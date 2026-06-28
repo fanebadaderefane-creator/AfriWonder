@@ -19,6 +19,7 @@ import {
 export type UseCallVideoControlsOverlayInput = {
   isVideoStage: boolean;
   callEnded: boolean;
+  callConnected: boolean;
   minimized: boolean;
   moreMenuOpen: boolean;
   messageModalOpen: boolean;
@@ -55,6 +56,7 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
     return shouldAutoHideCallVideoControls({
       isVideoStage: cur.isVideoStage,
       callEnded: cur.callEnded,
+      callConnected: cur.callConnected,
       minimized: cur.minimized,
       moreMenuOpen: cur.moreMenuOpen,
       messageModalOpen: cur.messageModalOpen,
@@ -92,11 +94,24 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
       setChromeMode('visible');
       return;
     }
+    if (!cur.callConnected) {
+      clearHideTimer();
+      setChromeMode('visible');
+      logCallControlsVisible({ ...logMeta(), reason: 'pre_connected' });
+      return;
+    }
     showControls();
     return () => {
       clearHideTimer();
     };
-  }, [input.isVideoStage, input.callEnded, clearHideTimer, showControls]);
+  }, [
+    input.callConnected,
+    input.callEnded,
+    input.isVideoStage,
+    clearHideTimer,
+    logMeta,
+    showControls,
+  ]);
 
   useEffect(() => {
     if (input.moreMenuOpen || input.messageModalOpen) {
@@ -105,6 +120,7 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
   }, [input.messageModalOpen, input.moreMenuOpen, showControls]);
 
   useEffect(() => {
+    if (typeof AppState.addEventListener !== 'function') return;
     const sub = AppState.addEventListener('change', (next) => {
       const cur = inputRef.current;
       if (

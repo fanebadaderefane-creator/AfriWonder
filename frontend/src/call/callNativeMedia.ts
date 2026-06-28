@@ -721,7 +721,10 @@ export async function stopNativeOutgoingRingback(): Promise<void> {
   const incall = loadInCallManager();
   if (!incall) return;
   try {
-    incall.stopRingback();
+    const stopRingback = (incall as { stopRingback?: () => void }).stopRingback;
+    if (typeof stopRingback === 'function') {
+      stopRingback.call(incall);
+    }
   } catch {
     /* ignore */
   }
@@ -733,7 +736,10 @@ export async function stopNativeCallAudioSession(): Promise<void> {
   const incall = loadInCallManager();
   if (incall) {
     try {
-      incall.stop();
+      const stop = (incall as { stop?: () => void }).stop;
+      if (typeof stop === 'function') {
+        stop.call(incall);
+      }
     } catch {
       /* ignore */
     }

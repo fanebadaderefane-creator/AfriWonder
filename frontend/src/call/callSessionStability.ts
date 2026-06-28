@@ -110,6 +110,7 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
   }, []);
 
   useEffect(() => {
+    if (typeof AppState.addEventListener !== 'function') return;
     const sub = AppState.addEventListener('change', (next) => {
       logAppStateChange(next, {
         engine: inputRef.current.engine,

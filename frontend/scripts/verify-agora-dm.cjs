@@ -98,6 +98,13 @@ function checkFrontendWiring() {
     fail('Hook Agora — invokeAgoraEngine', 'appel sans import — TypeError undefined is not a function');
   }
 
+  const safeEffect = read('src/call/callScreenSafeEffect.ts');
+  if (/call_screen_effect_error/.test(safeEffect) && !/throw error/.test(safeEffect)) {
+    pass('callScreenSafeEffect — log sans rethrow', 'pas cascade ErrorBoundary');
+  } else {
+    fail('callScreenSafeEffect — swallow post-join', 'rethrow encore actif');
+  }
+
   if (/agora_channel_join_gate/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — gate join diagnostic', 'agora_channel_join_gate');
   } else {
@@ -233,6 +240,45 @@ function checkFrontendWiring() {
     fail('Agora DM — force leave canal', 'ErrorBoundary ne coupe pas le média');
   }
 
+  if (/prepareAgoraEngineForChannelJoin/.test(hook) && /agora_join_rejected_retry/.test(hook)) {
+    pass('Hook Agora — join -17 retry + pre-leave', 'ERR_JOIN_CHANNEL_REJECTED preview');
+  } else {
+    fail('Hook Agora — join -17', 'prepareAgoraEngineForChannelJoin / retry manquant');
+  }
+
+  if (/join_sync_rejected/.test(hook) && /leave\(\{ releasePreview: false, reason: 'join_sync_rejected' \}\)/.test(hook)) {
+    pass('Hook Agora — join sync reject libère moteur', 'pas de fuite engine');
+  } else {
+    fail('Hook Agora — join sync reject cleanup', 'engine orphelin après -17');
+  }
+
+  if (/join_aborted_post_invoke/.test(hook)) {
+    pass('Hook Agora — abort avant register canal', 'pas de canal fantôme');
+  } else {
+    fail('Hook Agora — guard post-invoke abort', 'manquant');
+  }
+
+  if (
+    /shouldSuppressCallInterruptedUi/.test(read('src/components/call/CallScreenErrorBoundary.tsx')) &&
+    /getDerivedStateFromError/.test(read('src/components/call/CallScreenErrorBoundary.tsx'))
+  ) {
+    pass('ErrorBoundary — recovery sync avant unmount', 'markCallScreenRecovering getDerivedStateFromError');
+  } else {
+    fail('ErrorBoundary — recovery sync', 'manquant');
+  }
+
+  if (/agora_join_cleanup_skipped/.test(hook) && /isCallScreenRecovering/.test(hook)) {
+    pass('Hook Agora — skip leave cleanup recovery', 'OK');
+  } else {
+    fail('Hook Agora — join cleanup recovery', 'manquant');
+  }
+
+  if (!/runAfterCallUiInteractions/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — flush connected sync', 'pas de defer InteractionManager');
+  } else {
+    warn('DirectCallAgoraScreen — flush connected', 'runAfterCallUiInteractions encore présent');
+  }
+
   if (/emergencyHangup/.test(read('src/call/agoraDmCallHangupRegistry.ts'))) {
     pass('Hangup registry — emergencyHangup', 'Retour messages après crash');
   } else {
@@ -250,6 +296,67 @@ function checkFrontendWiring() {
     pass('callVideoControlsOverlay — auto-masque 5s', 'OK');
   } else {
     fail('callVideoControlsOverlay — délai auto-masque', 'incorrect');
+  }
+
+  if (/!callConnected/.test(overlayModule) || /callConnected/.test(overlayModule)) {
+    pass('callVideoControlsOverlay — pas auto-masque avant connected', 'contrôles visibles sonnerie');
+  } else {
+    fail('callVideoControlsOverlay — gate callConnected', 'dock masqué pendant connexion');
+  }
+
+  if (/shouldHandleAgoraPeerAccept/.test(agoraScreen) && /agora_peer_accepted_dedup/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — dedup call:accept', 'évite double join');
+  } else {
+    fail('DirectCallAgoraScreen — dedup call:accept', 'manquant');
+  }
+
+  if (/joinedRef\.current = joined/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — joinedRef sync render', 'garde unmount post-join');
+  } else {
+    fail('DirectCallAgoraScreen — joinedRef sync render', 'manquant');
+  }
+
+  if (/unmount_finish_call_blocked/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — finishCall bloqué média vivant', 'anti cascade Appel interrompu');
+  } else {
+    fail('DirectCallAgoraScreen — finishCall bloqué média vivant', 'manquant');
+  }
+
+  if (/agora_socket_handlers_bound/.test(agoraScreen) && /Sockets call:\*/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — sockets séparés du bootstrap', 'call:accept survit invite:ack');
+  } else {
+    fail('DirectCallAgoraScreen — sockets séparés bootstrap', 'risque perte call:accept');
+  }
+
+  if (/agora_stale_channel_on_mount/.test(agoraScreen) && /migrateAgoraDmActiveChannelCallId/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — invite:ack migre canal (pas forceLeave)', 'anti kill mid-call audio');
+  } else {
+    fail('DirectCallAgoraScreen — invite:ack canal', 'migrate ou stale mount-only manquant');
+  }
+
+  if (/callAbortedRef\.current = true/.test(agoraScreen) && /agora_missed_no_answer/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — missed aborte join', 'pas de canal fantôme');
+  } else {
+    fail('DirectCallAgoraScreen — missed callAbortedRef', 'manquant');
+  }
+
+  if (/force\?: boolean/.test(agoraScreen) && /finishCallRef\.current\('failed', \{ force: true \}\)/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — finishCall force bootstrap', 'échec permission ferme vraiment');
+  } else {
+    fail('DirectCallAgoraScreen — finishCall force', 'manquant');
+  }
+
+  if (/prepareCallSessionMemory/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — prepareCallSessionMemory', 'RAM avant média Agora');
+  } else {
+    fail('DirectCallAgoraScreen — prepareCallSessionMemory', 'manquant');
+  }
+
+  const activeChannel = read('src/call/agoraDmActiveChannel.ts');
+  if (/migrateAgoraDmActiveChannelCallId/.test(activeChannel) && /clearCallMediaAlive\('agora'\)/.test(activeChannel)) {
+    pass('agoraDmActiveChannel — migrate + forceLeave clear snapshot', 'OK');
+  } else {
+    fail('agoraDmActiveChannel — migrate / clear snapshot', 'manquant');
   }
 
   if (/shouldEnableAgoraChannelJoin/.test(agoraScreen)) {
@@ -425,7 +532,7 @@ function runBackendAgoraTests() {
 function runFrontendAgoraTests() {
   try {
     execSync(
-      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/callNativeSubscription.test.ts src/call/agoraEngineInvoke.test.ts src/call/openNativeCallScreen.test.ts',
+      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/callNativeSubscription.test.ts src/call/agoraEngineInvoke.test.ts src/call/openNativeCallScreen.test.ts src/call/agoraDmPeerAcceptDedup.test.ts src/call/agoraConnectionJoin.test.ts src/call/agoraEngineChannelPrep.test.ts src/call/callVideoControlsOverlay.test.ts src/call/callMediaAliveRegistry.test.ts src/call/callScreenSafeEffect.test.ts src/call/agoraDmActiveChannel.test.ts src/call/agoraDmLifecycleAudit.test.ts src/call/callErrorRecoveryGate.test.ts src/call/agoraDmJoinLifecycle.test.ts src/call/agoraDmChannelReady.test.ts',
       { cwd: ROOT, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
     );
     pass('Tests frontend Agora DM', 'dmCallMediaEngine + session + UI');

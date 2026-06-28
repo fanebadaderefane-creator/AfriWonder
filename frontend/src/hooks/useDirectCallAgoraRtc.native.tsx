@@ -39,12 +39,20 @@ import {
 } from '../call/agoraDmChannelReady';
 import { shouldLogAgoraRemoteReady } from '../call/agoraDmRemoteReady';
 import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
+import { runCallScreenSafeEffect } from '../call/callScreenSafeEffect';
 import {
   agoraJoinChannelErrorMessage,
   isAgoraConnectionStateJoined,
   isAgoraJoinChannelReturnOk,
 } from '../call/agoraConnectionJoin';
+import {
+  prepareAgoraEngineForChannelJoin,
+  shouldRetryAgoraJoinAfterRejected,
+  leaveAgoraEngineChannelOnly,
+} from '../call/agoraEngineChannelPrep';
 import { shouldRunRtcChannelTeardown, shouldReleaseAgoraPreviewSession } from '../call/agoraRtcLifecycle';
+import { isCallScreenRecovering } from '../call/callErrorRecoveryGate';
+import { shouldSuppressCallInterruptedUi } from '../call/callMediaAliveRegistry';
 import { requestNativeCallPermissions, applyNativeCallSpeakerRoute, stopNativeOutgoingRingback } from '../call/callNativeMedia';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
 import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
@@ -427,21 +435,18 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         }
         const adoptedPreview = adoptedEngine != null;
 
-        if (!adoptedPreview) {
-          await forceLeaveAgoraDmActiveChannel('pre_join_stale_channel');
-          if (!peekAgoraDmPreviewSession(joinCallId)) {
-            await releaseAgoraDmPreviewSession('pre_join_stale_preview');
-          }
-          if (isJoinAborted()) {
-            logJoinAborted('after_stale_engine_cleanup');
-            return;
-          }
+        await forceLeaveAgoraDmActiveChannel('pre_join_stale_channel');
+        if (!adoptedPreview && !peekAgoraDmPreviewSession(joinCallId)) {
+          await releaseAgoraDmPreviewSession('pre_join_stale_preview');
+        }
+        if (isJoinAborted()) {
+          logJoinAborted('after_stale_engine_cleanup');
+          return;
         }
 
         const engine = adoptedEngine ?? createAgoraRtcEngine();
         engineRef.current = engine;
         logAfwCall('agora_engine_ready', { callId: joinCallId, adoptedPreview, audioOnly });
-        if (joinCallId) registerAgoraDmActiveChannel(joinCallId, engine);
 
         if (!adoptedPreview) {
           engine.initialize({ appId: tokenData.appId });
@@ -479,6 +484,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
             clearTimeout(joinWatchdogRef.current);
             joinWatchdogRef.current = null;
           }
+          joinedRef.current = true;
           setJoined(true);
           setError(null);
           try {
@@ -637,14 +643,38 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
           return;
         }
 
-        const joinRet = engine.joinChannel(tokenData.token, tokenData.channel, tokenData.uid, {
+        await prepareAgoraEngineForChannelJoin(engine, joinCallId);
+        if (isJoinAborted()) {
+          logJoinAborted('after_pre_join_leave');
+          return;
+        }
+
+        const joinOptions = {
           channelProfile: ChannelProfileType.ChannelProfileCommunication,
           clientRoleType: ClientRoleType.ClientRoleBroadcaster,
           publishCameraTrack: publishVideo,
           publishMicrophoneTrack: true,
           autoSubscribeAudio: true,
           autoSubscribeVideo: !audioOnly,
-        });
+        };
+
+        let joinRet = engine.joinChannel(
+          tokenData.token,
+          tokenData.channel,
+          tokenData.uid,
+          joinOptions,
+        );
+        if (!isAgoraJoinChannelReturnOk(joinRet) && shouldRetryAgoraJoinAfterRejected(joinRet)) {
+          logAfwCall('agora_join_rejected_retry', { callId: joinCallId, joinRet });
+          await leaveAgoraEngineChannelOnly(engine, { callId: joinCallId, phase: 'retry_after_-17' });
+          joinRet = engine.joinChannel(
+            tokenData.token,
+            tokenData.channel,
+            tokenData.uid,
+            joinOptions,
+          );
+        }
+
         logAfwCall('agora_join_channel_invoke', {
           callId: joinCallId,
           channel: tokenData.channel,
@@ -657,8 +687,17 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
           setError(msg);
           logAfwCall('agora_join_sync_rejected', { callId: joinCallId, joinRet });
           onErrorRef.current?.(msg);
+          await leave({ releasePreview: false, reason: 'join_sync_rejected' });
           return;
         }
+
+        if (isJoinAborted()) {
+          logJoinAborted('after_join_channel_before_register');
+          await leave({ releasePreview: false, reason: 'join_aborted_post_invoke' });
+          return;
+        }
+
+        if (joinCallId) registerAgoraDmActiveChannel(joinCallId, engine);
 
         if (joinWatchdogRef.current) {
           clearTimeout(joinWatchdogRef.current);
@@ -686,6 +725,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         clearTimeout(joinWatchdogRef.current);
         joinWatchdogRef.current = null;
       }
+      if (isCallScreenRecovering() || shouldSuppressCallInterruptedUi()) {
+        logAfwCall('agora_join_cleanup_skipped', {
+          callId: joinCallId,
+          reason: 'recovery_or_media_alive',
+        });
+        return;
+      }
       if (engineRef.current != null || joinedRef.current) {
         void leave({ releasePreview: false, reason: 'channel_effect_cleanup' });
       } else {
@@ -700,21 +746,27 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   }, [audioOnly, callId, joinEpoch, leave]);
 
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !joined || audioOnly) return;
-    invokeAgoraEngine(engine, 'muteLocalVideoStream', !camOn);
+    runCallScreenSafeEffect('agora_mute_local_video', () => {
+      const engine = engineRef.current;
+      if (!engine || !joined || audioOnly) return;
+      invokeAgoraEngine(engine, 'muteLocalVideoStream', !camOn);
+    });
   }, [audioOnly, camOn, joined]);
 
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !joined) return;
-    invokeAgoraEngine(engine, 'muteLocalAudioStream', !!muted);
+    runCallScreenSafeEffect('agora_mute_local_audio', () => {
+      const engine = engineRef.current;
+      if (!engine || !joined) return;
+      invokeAgoraEngine(engine, 'muteLocalAudioStream', !!muted);
+    });
   }, [joined, muted]);
 
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !joined) return;
-    invokeAgoraEngine(engine, 'setEnableSpeakerphone', !!speakerOn);
+    runCallScreenSafeEffect('agora_speaker_route', () => {
+      const engine = engineRef.current;
+      if (!engine || !joined) return;
+      invokeAgoraEngine(engine, 'setEnableSpeakerphone', !!speakerOn);
+    });
   }, [joined, speakerOn]);
 
   useEffect(() => {
@@ -723,7 +775,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     if (!shouldAgoraSwitchCameraOnNonce(cameraFlipNonce)) return;
     try {
       logAgoraSwitchCamera({ callId, nonce: cameraFlipNonce });
-      engine.switchCamera();
+      invokeAgoraEngine(engine, 'switchCamera');
       cameraFacingRef.current = cameraFacingRef.current === 'front' ? 'back' : 'front';
       logCameraFacingSelected(cameraFacingRef.current, { callId, nonce: cameraFlipNonce });
       rebindAgoraLocalPreview(engine, { callId, reason: 'switch_camera' });
@@ -750,7 +802,15 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !remoteEverJoined || !videoPublished) return;
-    rebindAgoraLocalPreview(engine, { callId, reason: 'remote_ever_joined_pip' });
+    try {
+      rebindAgoraLocalPreview(engine, { callId, reason: 'remote_ever_joined_pip' });
+    } catch (e) {
+      logAfwCall('agora_local_preview_rebind_failed', {
+        callId,
+        reason: 'remote_ever_joined_pip',
+        error: String((e as Error)?.message ?? e),
+      });
+    }
   }, [callId, remoteEverJoined, videoPublished]);
 
   useEffect(() => {

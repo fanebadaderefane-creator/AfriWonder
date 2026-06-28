@@ -19,5 +19,8 @@ export function isAgoraJoinChannelReturnOk(code: unknown): boolean {
 export function agoraJoinChannelErrorMessage(code: unknown): string {
   const n = Number(code);
   if (!Number.isFinite(n) || n === 0) return 'Impossible de rejoindre le canal Agora.';
+  if (n === -17) {
+    return 'Connexion média refusée (code -17). Fermez l’appel précédent ou relancez AfriWonder.';
+  }
   return `Connexion média refusée (code ${n}). Réessayez.`;
 }

@@ -158,6 +158,17 @@ const agoraDmChecks = [
       src.slice(src.indexOf('navigateToReceiverCallScreen')),
     );
   }],
+  ['openNativeCallScreen — web prime getUserMedia avant async', () => {
+    const src = read('src/call/openNativeCallScreen.ts');
+    const fn = src.slice(src.indexOf('export function openNativeCallScreen'));
+    const primeIdx = fn.indexOf('primeWebCallMediaCapture');
+    const asyncIdx = fn.indexOf('void (async () => {');
+    return primeIdx > -1 && asyncIdx > -1 && primeIdx < asyncIdx;
+  }],
+  ['call.tsx — ErrorBoundary sessionNonce', () => {
+    const src = read('app/messages/call.tsx');
+    return /sessionNonce/.test(src) && /callSessionKey/.test(src);
+  }],
   ['DirectCallAgoraScreen — libère InCallManager avant Agora', /stopEveryCallRingAlert[\s\S]*agora_media_start|agora_media_start[\s\S]*stopEveryCallRingAlert/],
   ['agoraDmCallSession — receveur callId obligatoire', /resolveAgoraDmCallId/],
   ['package.json — react-native-agora', () => /"react-native-agora"/.test(read('package.json'))],

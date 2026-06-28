@@ -24,8 +24,22 @@ describe('callVideoControlsOverlay — TEST 1 visible au lancement', () => {
     expect(resolveCallVideoControlsChromePointerEvents('visible')).toBe('auto');
   });
 
-  it('auto-masque autorisé en appel vidéo actif', () => {
-    expect(shouldAutoHideCallVideoControls(videoActive)).toBe(true);
+  it('auto-masque autorisé en appel vidéo connecté', () => {
+    expect(
+      shouldAutoHideCallVideoControls({
+        ...videoActive,
+        callConnected: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('pas de auto-masque pendant sonnerie / connexion', () => {
+    expect(
+      shouldAutoHideCallVideoControls({
+        ...videoActive,
+        callConnected: false,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -63,10 +77,11 @@ describe('callVideoControlsOverlay — TEST 3 tap révèle', () => {
 });
 
 describe('callVideoControlsOverlay — TEST 4 après acceptation', () => {
-  it('auto-masque reste actif une fois connecté (vidéo)', () => {
+  it('auto-masque actif une fois connecté (vidéo)', () => {
     expect(
       shouldAutoHideCallVideoControls({
         ...videoActive,
+        callConnected: true,
       }),
     ).toBe(true);
   });

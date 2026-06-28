@@ -4897,7 +4897,7 @@ function CallScreenInner() {
                   ? 'Autoriser et appeler'
                   : 'Autoriser le micro',
             )}
-            {!startedAsVideo && (webMediaConsentError || webAudioProbe?.inputCount === 0) ? (
+            {(webMediaConsentError || (!startedAsVideo && webAudioProbe?.inputCount === 0)) ? (
               createElement(
                 'button',
                 {
@@ -5004,9 +5004,11 @@ function CallScreenInner() {
 }
 
 export default function CallScreen() {
-  const params = useLocalSearchParams<{ callId?: string; peerId?: string }>();
-  /** Nouvel appel = boundary neuve (évite écran bloqué après VIDEO_SCREEN_CRASH). */
-  const callSessionKey = String(params.callId ?? params.peerId ?? 'call');
+  const params = useLocalSearchParams<{ callId?: string; peerId?: string; sessionNonce?: string }>();
+  /** Nouvel appel = boundary neuve (évite écran bloqué après crash). */
+  const callSessionKey = String(
+    params.callId ?? `${params.peerId ?? 'call'}-${params.sessionNonce ?? '0'}`,
+  );
 
   if (Platform.OS !== 'web' && shouldUseAgoraDmCalls()) {
     return (

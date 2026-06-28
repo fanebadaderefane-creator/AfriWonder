@@ -20,5 +20,6 @@ describe('agoraConnectionJoin', () => {
 
   it('agoraJoinChannelErrorMessage', () => {
     expect(agoraJoinChannelErrorMessage(-17)).toContain('-17');
+    expect(agoraJoinChannelErrorMessage(-17)).toContain('relancez');
   });
 });

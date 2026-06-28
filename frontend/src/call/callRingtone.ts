@@ -153,5 +153,10 @@ export async function stopAllCallRings(): Promise<void> {
   }
   const stops = [...activeNativeRingStops];
   activeNativeRingStops.clear();
-  await Promise.all(stops.map((stop) => stop().catch(() => {})));
+  await Promise.all(
+    stops.map((stop) => {
+      if (typeof stop !== 'function') return Promise.resolve();
+      return stop().catch(() => {});
+    }),
+  );
 }

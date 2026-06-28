@@ -70,7 +70,10 @@ export function rebindAgoraLocalPreview(
     /* setupLocalVideo optionnel selon version SDK */
   }
   try {
-    engine.startPreview();
+    const startPreview = (engine as { startPreview?: () => void }).startPreview;
+    if (typeof startPreview === 'function') {
+      startPreview.call(engine);
+    }
   } catch {
     /* ignore */
   }

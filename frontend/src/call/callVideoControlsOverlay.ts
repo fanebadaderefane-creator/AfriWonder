@@ -13,11 +13,14 @@ export function shouldAutoHideCallVideoControls(input: {
   minimized: boolean;
   moreMenuOpen: boolean;
   messageModalOpen: boolean;
+  /** WhatsApp : dock visible pendant sonnerie / connexion — masque seulement une fois connecté. */
+  callConnected?: boolean;
 }): boolean {
   if (!input.isVideoStage) return false;
   if (input.callEnded) return false;
   if (input.minimized) return false;
   if (input.moreMenuOpen || input.messageModalOpen) return false;
+  if (input.callConnected === false) return false;
   return true;
 }
 

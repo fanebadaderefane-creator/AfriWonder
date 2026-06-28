@@ -34,6 +34,8 @@ import {
 
 import { safeRouterBack } from '../../utils/safeRouter';
 
+import { markCallScreenRecovering } from '../../call/callErrorRecoveryGate';
+
 import { Colors } from '../../theme/colors';
 
 
@@ -67,9 +69,11 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
 
 
   static getDerivedStateFromError(): Partial<State> {
-
+    if (shouldSuppressCallInterruptedUi()) {
+      markCallScreenRecovering(true);
+      return { hasError: true, recovering: true };
+    }
     return { hasError: true };
-
   }
 
 
@@ -101,6 +105,8 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
 
     if (mediaAlive) {
 
+      markCallScreenRecovering(true);
+
       logAfwCall('error_boundary_recover_scheduled', {
 
         callId: aliveSnap.callId ?? null,
@@ -116,6 +122,8 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
         this.recoverTimer = setTimeout(() => {
 
           this.recoverTimer = null;
+
+          markCallScreenRecovering(false);
 
           this.setState({ hasError: false, recovering: false });
 
@@ -152,6 +160,8 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
 
 
   componentWillUnmount(): void {
+
+    markCallScreenRecovering(false);
 
     if (this.recoverTimer) {
 

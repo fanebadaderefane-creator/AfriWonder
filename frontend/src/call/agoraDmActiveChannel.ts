@@ -12,10 +12,14 @@ type ActiveChannel = {
 
 let activeChannel: ActiveChannel | null = null;
 
-export function registerAgoraDmActiveChannel(callId: string, engine: IRtcEngine): void {
+export function registerAgoraDmActiveChannel(
+  callId: string,
+  engine: IRtcEngine,
+  callState: 'connecting' | 'connected' = 'connecting',
+): void {
   if (!callId || !engine) return;
   activeChannel = { callId, engine };
-  syncAgoraCallMediaAlive({ callId, alive: true, callState: 'connected' });
+  syncAgoraCallMediaAlive({ callId, alive: true, callState });
 }
 
 export function clearAgoraDmActiveChannel(callId?: string): void {
@@ -29,11 +33,21 @@ export function peekAgoraDmActiveChannelCallId(): string | null {
   return activeChannel?.callId ?? null;
 }
 
+/** invite:ack — réaligner le canal actif sans leave (évite kill mid-call). */
+export function migrateAgoraDmActiveChannelCallId(fromId: string, toId: string): boolean {
+  if (!activeChannel || activeChannel.callId !== fromId || !toId) return false;
+  activeChannel = { callId: toId, engine: activeChannel.engine };
+  syncAgoraCallMediaAlive({ callId: toId, alive: true, callState: 'connecting' });
+  logAfwCall('agora_active_channel_id_migrated', { fromId, toId });
+  return true;
+}
+
 /** Quitte le canal Agora même si l’écran d’appel a crashé. */
 export async function forceLeaveAgoraDmActiveChannel(reason: string): Promise<boolean> {
   const entry = activeChannel;
   if (!entry) return false;
   activeChannel = null;
+  clearCallMediaAlive('agora');
   const { callId, engine } = entry;
   try {
     await engine.leaveChannel();

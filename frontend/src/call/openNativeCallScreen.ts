@@ -15,7 +15,7 @@ import {
   nativeCallLaunchBlockedMessage,
   type ReceiverCallScreenInput,
 } from './openNativeCallScreenLogic';
-import { primeWebCallMediaCapture } from './webCallMediaSession';
+import { clearWebCallMediaCapture, primeWebCallMediaCapture } from './webCallMediaSession';
 import { shouldUseAgoraDmCalls } from './dmCallMediaEngine';
 import { logAfwCall } from './callDiagnosticLog';
 
@@ -53,9 +53,6 @@ async function fetchCallNetworkSnapshot(): Promise<NetworkSnapshot | null> {
 }
 
 function pushCallerCallScreen(params: OpenNativeCallScreenParams, callType: 'audio' | 'video'): void {
-  if (Platform.OS === 'web') {
-    primeWebCallMediaCapture(callType === 'video');
-  }
   router.push({
     pathname: '/messages/call',
     params: {
@@ -64,6 +61,7 @@ function pushCallerCallScreen(params: OpenNativeCallScreenParams, callType: 'aud
       type: callType,
       otherUserId: String(params.peerUserId),
       role: 'caller',
+      sessionNonce: String(Date.now()),
     },
   } as never);
 }
@@ -83,12 +81,23 @@ export function openNativeCallScreen(params: OpenNativeCallScreenParams): boolea
     return false;
   }
   prepareCallSessionMemory();
+  /**
+   * Web : getUserMedia doit être invoqué pendant le clic « Appeler ».
+   * Si on attend NetInfo (~1,5 s) avant prime, Firefox renvoie NotFoundError
+   * (« The object can not be found here ») sans popup permission.
+   */
+  if (Platform.OS === 'web') {
+    primeWebCallMediaCapture(params.type === 'video');
+  }
   void (async () => {
     let callType = params.type;
     if (params.type === 'video') {
       const net = await fetchCallNetworkSnapshot();
       const resolved = resolveOutboundCallTypeForNetwork('video', net);
       callType = resolved.type;
+      if (resolved.downgradedFromVideo && Platform.OS === 'web') {
+        clearWebCallMediaCapture();
+      }
       const downgradeMsg = resolved.downgradedFromVideo ? outboundVideoDowngradeMessage(net) : null;
       if (downgradeMsg) {
         Alert.alert('Appel', downgradeMsg);
@@ -107,12 +116,12 @@ export type { ReceiverCallScreenInput };
  */
 export function navigateToReceiverCallScreen(input: ReceiverCallScreenInput): void {
   prepareCallSessionMemory();
+  if (Platform.OS === 'web') {
+    primeWebCallMediaCapture(input.type === 'video');
+  }
   void (async () => {
     /** Appel vidéo entrant : ne pas rétrograder en audio seul (sinon pas de `autoSubscribeVideo` Agora). */
     const callType = input.type;
-    if (Platform.OS === 'web') {
-      primeWebCallMediaCapture(callType === 'video');
-    }
     const pushReceiverScreen = () => {
       router.push({
         pathname: '/messages/call',

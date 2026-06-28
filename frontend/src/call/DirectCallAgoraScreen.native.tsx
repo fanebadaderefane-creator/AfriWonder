@@ -6,7 +6,6 @@ import {
   Alert,
   Animated,
   Image,
-  InteractionManager,
   Platform,
   Pressable,
   StyleSheet,
@@ -25,12 +24,17 @@ import { formatAgoraDmCallStatus, CALL_END_STATUS_DISPLAY_MS } from './callStatu
 import type { CallEndReasonUi } from './callStatusLine';
 import { resolveAgoraDmCallId, shouldStartNativeInCallBeforeAgora } from './agoraDmCallSession';
 import { shouldApplyInviteAckCallId } from './agoraDmJoinLifecycle';
+import {
+  clearAgoraPeerAcceptDedup,
+  shouldHandleAgoraPeerAccept,
+} from './agoraDmPeerAcceptDedup';
 import { shouldEnableAgoraChannelJoin, shouldStartAgoraCallTimer } from './agoraDmChannelReady';
 import { shouldFlushAgoraDmConnected } from './agoraDmRemoteReady';
-import { peekAgoraDmActiveChannelCallId } from './agoraDmActiveChannel';
+import { peekAgoraDmActiveChannelCallId, forceLeaveAgoraDmActiveChannel, migrateAgoraDmActiveChannelCallId } from './agoraDmActiveChannel';
 import {
   clearCallMediaAlive,
   syncAgoraCallMediaAlive,
+  shouldSuppressCallInterruptedUi,
 } from './callMediaAliveRegistry';
 import { logCallUiState, logWhyCallInterrupted } from './callUiInterruptLog';
 import {
@@ -70,7 +74,7 @@ import {
 } from '../components/call/CallMoreMenu';
 import { CallFloatingReactions } from '../components/call/CallFloatingReactions';
 import { CallMissedWhatsAppPanel } from '../components/call/CallMissedWhatsAppPanel';
-import { useCallScreenLifecycleGuards } from './callSessionStability';
+import { useCallScreenLifecycleGuards, prepareCallSessionMemory } from './callSessionStability';
 import { removeNativeSubscription } from './callNativeSubscription';
 import { logLocalStreamCreated, logLocalStreamDestroyed, logRemoteStreamAdded, logCallNav } from './callUiLifecycleLog';
 import {
@@ -80,6 +84,7 @@ import {
   logCallControlsVisible,
 } from './callControlsLifecycleLog';
 import { AgoraLocalPreviewSurface } from './agoraLocalPreviewSurface.native';
+import { isCallScreenRecovering } from './callErrorRecoveryGate';
 import { useCallVideoControlsOverlay } from './useCallVideoControlsOverlay';
 
 const CALL_RING_MS = 30_000;
@@ -148,6 +153,7 @@ export function DirectCallAgoraScreen() {
   const mediaEnabledRef = useRef(false);
   const stopOutgoingRingRef = useRef<(() => Promise<void>) | null>(null);
   const bootstrapDoneRef = useRef(false);
+  const peerAcceptHandledRef = useRef(role === 'receiver');
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -159,11 +165,22 @@ export function DirectCallAgoraScreen() {
   }, [callState]);
 
   useEffect(() => {
-    logAfwCall('agora_screen_mount', { callId, role, platform: Platform.OS });
-    logCallNav('messages/call', { action: 'mount', callId, role, engine: 'agora' });
+    const staleCallId = peekAgoraDmActiveChannelCallId();
+    const currentCallId = callIdRef.current;
+    if (staleCallId && staleCallId !== currentCallId) {
+      logAfwCall('agora_stale_channel_on_mount', { staleCallId, callId: currentCallId });
+      void forceLeaveAgoraDmActiveChannel('call_screen_mount_stale');
+    }
+    logAfwCall('agora_screen_mount', { callId: currentCallId, role, platform: Platform.OS });
+    logCallNav('messages/call', { action: 'mount', callId: currentCallId, role, engine: 'agora' });
     return () => {
-      logCallNav('messages/call', { action: 'unmount', callId, role, engine: 'agora' });
+      logCallNav('messages/call', { action: 'unmount', callId: callIdRef.current, role, engine: 'agora' });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    logAfwCall('agora_screen_call_id', { callId, role });
   }, [callId, role]);
 
   useCallScreenLifecycleGuards({
@@ -191,12 +208,10 @@ export function DirectCallAgoraScreen() {
 
   useEffect(() => {
     screenAliveRef.current = true;
-    finishingRef.current = false;
-    callAbortedRef.current = false;
     return () => {
       screenAliveRef.current = false;
     };
-  }, [callId]);
+  }, []);
 
   const pinLocalPreviewFull = useCallback(() => {
     useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(true);
@@ -236,7 +251,9 @@ export function DirectCallAgoraScreen() {
     videoPreviewStartedRef.current = true;
     await stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
-    await stopEveryCallRingAlert();
+    if (typeof stopEveryCallRingAlert === 'function') {
+      await stopEveryCallRingAlert();
+    }
     mediaEnabledRef.current = true;
     setMediaEnabled(true);
     setVideoPreviewReady(true);
@@ -254,14 +271,19 @@ export function DirectCallAgoraScreen() {
   }, [activateVideoPreview, startedAsVideo]);
 
   const finishCallRef = useRef<
-  (reason?: 'completed' | 'failed' | 'missed' | 'declined', options?: { skipNavigation?: boolean }) => Promise<void>
+  (
+    reason?: 'completed' | 'failed' | 'missed' | 'declined',
+    options?: { skipNavigation?: boolean; force?: boolean },
+  ) => Promise<void>
   >(async () => {});
 
   const startAgoraMediaTracks = useCallback(async () => {
     if (mediaEnabledRef.current) return;
     await stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
-    await stopEveryCallRingAlert();
+    if (typeof stopEveryCallRingAlert === 'function') {
+      await stopEveryCallRingAlert();
+    }
     logAfwCall('agora_media_start', { callId: callIdRef.current, role });
     mediaEnabledRef.current = true;
     setMediaEnabled(true);
@@ -272,7 +294,7 @@ export function DirectCallAgoraScreen() {
       const ok = await activateVideoPreview();
       if (!ok) {
         setErrorMsg('Caméra indisponible.');
-        await finishCallRef.current('failed');
+        await finishCallRef.current('failed', { force: true });
         return;
       }
     } else if (!mediaEnabledRef.current) {
@@ -285,20 +307,19 @@ export function DirectCallAgoraScreen() {
 
   const remoteEverJoinedRef = useRef(false);
   const remoteJoinPendingRef = useRef(false);
+  const joinedRef = useRef(false);
 
   const flushConnectedFromRemote = useCallback(() => {
     if (!peerAcceptedRef.current) return;
     if (callStateRef.current === 'connected' || callStateRef.current === 'ended') return;
-    InteractionManager.runAfterInteractions(() => {
-      if (!peerAcceptedRef.current) return;
-      if (callStateRef.current === 'connected' || callStateRef.current === 'ended') return;
-      setCallState('connected');
-      logRemoteStreamAdded({ callId: callIdRef.current, engine: 'agora' });
+    setCallState('connected');
+    logRemoteStreamAdded({ callId: callIdRef.current, engine: 'agora' });
+    if (typeof stopEveryCallRingAlert === 'function') {
       void stopEveryCallRingAlert();
-      void apiClient
-        .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
-        .catch(() => {});
-    });
+    }
+    void apiClient
+      .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'active' })
+      .catch(() => {});
   }, []);
 
   const handleRemoteJoined = useCallback(() => {
@@ -371,7 +392,7 @@ export function DirectCallAgoraScreen() {
 
   useEffect(() => {
     syncAgoraCallMediaAlive({
-      callId: callIdRef.current,
+      callId,
       alive:
         callState !== 'ended' &&
         (joined || mediaEnabled || Boolean(peekAgoraDmActiveChannelCallId())),
@@ -380,10 +401,12 @@ export function DirectCallAgoraScreen() {
     if (callState === 'ended') {
       clearCallMediaAlive('agora');
     }
-  }, [callState, joined, mediaEnabled]);
+  }, [callId, callState, joined, mediaEnabled]);
 
   const upgradeToVideoRef = useRef(upgradeToVideo);
   upgradeToVideoRef.current = upgradeToVideo;
+
+  joinedRef.current = joined;
 
   useEffect(() => {
     if (rtcError) setErrorMsg(rtcError);
@@ -408,9 +431,7 @@ export function DirectCallAgoraScreen() {
     ) {
       return;
     }
-    InteractionManager.runAfterInteractions(() => {
-      flushConnectedFromRemote();
-    });
+    flushConnectedFromRemote();
   }, [callState, flushConnectedFromRemote, joined, peerAccepted, remoteJoined]);
 
   useEffect(() => {
@@ -473,7 +494,7 @@ export function DirectCallAgoraScreen() {
   const finishCall = useCallback(
     async (
       reason: 'completed' | 'failed' | 'missed' | 'declined' = 'completed',
-      options?: { skipNavigation?: boolean },
+      options?: { skipNavigation?: boolean; force?: boolean },
     ) => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
       logCallUiState({
@@ -484,10 +505,28 @@ export function DirectCallAgoraScreen() {
         callId: callIdRef.current,
         localStreamPresent: mediaEnabledRef.current,
       });
-      if (
-        reason === 'failed' &&
-        (joined || Boolean(peekAgoraDmActiveChannelCallId()))
-      ) {
+      const mediaStillAlive =
+        joinedRef.current ||
+        joined ||
+        Boolean(peekAgoraDmActiveChannelCallId()) ||
+        shouldSuppressCallInterruptedUi();
+      const automatedUnmountTeardown =
+        options?.skipNavigation === true && (reason === 'failed' || reason === 'declined');
+      if (!options?.force && automatedUnmountTeardown && mediaStillAlive) {
+        logCallNav('messages/call', {
+          action: 'unmount_finish_call_blocked',
+          callId: callIdRef.current,
+          reason,
+          joined: joinedRef.current,
+        });
+        logWhyCallInterrupted({
+          reason: 'agora_finish_call_blocked_media_alive',
+          callState: callStateRef.current,
+          fileHint: 'DirectCallAgoraScreen.native.tsx:finishCall',
+        });
+        return;
+      }
+      if (!options?.force && reason === 'failed' && mediaStillAlive) {
         logWhyCallInterrupted({
           reason: 'agora_finish_call_blocked_media_alive',
           callState: callStateRef.current,
@@ -518,8 +557,11 @@ export function DirectCallAgoraScreen() {
       disableCallKeepAwake({ callId: callIdRef.current, reason: 'finish_call' });
       await stopOutgoingRingRef.current?.();
       stopOutgoingRingRef.current = null;
-      await stopEveryCallRingAlert();
+      if (typeof stopEveryCallRingAlert === 'function') {
+        await stopEveryCallRingAlert();
+      }
       logAfwCall('agora_finish', { callId: callIdRef.current, reason });
+      clearAgoraPeerAcceptDedup(callIdRef.current);
       clearAgoraDmCallHangup(callIdRef.current);
       if (!options?.skipNavigation) {
         clearEmergencyAgoraDmCallHangup(callIdRef.current);
@@ -565,6 +607,26 @@ export function DirectCallAgoraScreen() {
   useEffect(() => {
     return () => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
+      if (isCallScreenRecovering()) {
+        logCallNav('messages/call', {
+          action: 'unmount_skip_finish_recovery',
+          callId: callIdRef.current,
+        });
+        return;
+      }
+      if (
+        joinedRef.current ||
+        peekAgoraDmActiveChannelCallId() ||
+        shouldSuppressCallInterruptedUi()
+      ) {
+        logCallNav('messages/call', {
+          action: 'unmount_preserve_media_alive',
+          callId: callIdRef.current,
+          role,
+          joined: joinedRef.current,
+        });
+        return;
+      }
       if (useAgoraDmCallUiStore.getState().minimized) {
         logCallNav('messages/call', {
           action: 'unmount_while_minimized',
@@ -590,34 +652,15 @@ export function DirectCallAgoraScreen() {
 
   const handleMissedNoAnswer = useCallback(async () => {
     if (finishingRef.current || callStateRef.current !== 'ringing') return;
-    finishingRef.current = true;
-    setCallState('ended');
+    callAbortedRef.current = true;
     if (ringTimeoutRef.current) {
       clearTimeout(ringTimeoutRef.current);
       ringTimeoutRef.current = null;
     }
-    mediaEnabledRef.current = false;
-    setMediaEnabled(false);
-    await leaveAgora();
-    disableCallKeepAwake({ callId: callIdRef.current, reason: 'missed_no_answer' });
-    await stopOutgoingRingRef.current?.();
-    stopOutgoingRingRef.current = null;
-    await stopEveryCallRingAlert();
-    await stopActiveCallForeground();
-    useAgoraDmCallUiStore.getState().clearSession();
     logAfwCall('agora_missed_no_answer', { callId: callIdRef.current });
-    await apiClient
-      .post(`/calls/${encodeURIComponent(callIdRef.current)}/session-state`, { status: 'missed' })
-      .catch(() => {});
-    await socketService.ensureConnectedEmit('call:end', {
-      callId: callIdRef.current,
-      fromUserId: myUserId,
-      toUserId: otherUserId,
-      reason: 'missed',
-      durationSec: 0,
-    });
+    await finishCallRef.current('missed', { skipNavigation: true });
     setShowMissedPanel(true);
-  }, [leaveAgora, myUserId, otherUserId]);
+  }, []);
 
   const dismissMissedPanel = useCallback(() => {
     safeRouterBack('/messages');
@@ -665,12 +708,21 @@ export function DirectCallAgoraScreen() {
     if (callState !== 'connecting' && callState !== 'connected' && callState !== 'ended') return;
     void stopOutgoingRingRef.current?.();
     stopOutgoingRingRef.current = null;
-    void stopEveryCallRingAlert();
+    if (typeof stopEveryCallRingAlert === 'function') {
+      void stopEveryCallRingAlert();
+    }
   }, [callState]);
 
   useEffect(() => {
     if (!shouldStartAgoraCallTimer({ callState, peerAccepted })) return;
-    timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+    try {
+      timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+    } catch (e) {
+      logAfwCall('agora_call_timer_failed', {
+        callId: callIdRef.current,
+        error: String((e as Error)?.message ?? e),
+      });
+    }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -684,7 +736,9 @@ export function DirectCallAgoraScreen() {
         Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
       ]),
     );
-    loop.start();
+    if (typeof loop.start === 'function') {
+      loop.start();
+    }
     return () => {
       if (typeof loop.stop === 'function') {
         loop.stop();
@@ -692,15 +746,29 @@ export function DirectCallAgoraScreen() {
     };
   }, [callState, pulseAnim]);
 
+  const handleMissedNoAnswerRef = useRef(handleMissedNoAnswer);
+  handleMissedNoAnswerRef.current = handleMissedNoAnswer;
+
+  const activateVideoPreviewRef = useRef(activateVideoPreview);
+  activateVideoPreviewRef.current = activateVideoPreview;
+  const beginAgoraMediaRef = useRef(beginAgoraMedia);
+  beginAgoraMediaRef.current = beginAgoraMedia;
+  const startAgoraMediaTracksRef = useRef(startAgoraMediaTracks);
+  startAgoraMediaTracksRef.current = startAgoraMediaTracks;
+  const flushConnectedFromRemoteRef = useRef(flushConnectedFromRemote);
+  flushConnectedFromRemoteRef.current = flushConnectedFromRemote;
+
+  /** Bootstrap média + invite — une fois ; ne pas y attacher les sockets (churn deps). */
   useEffect(() => {
     if (!myUserId || !otherUserId || !callId) return;
     if (bootstrapDoneRef.current) return;
     if (resolvedCall.error && role === 'receiver') {
       setErrorMsg(resolvedCall.error);
-      void finishCallRef.current('failed');
+      void finishCallRef.current('failed', { force: true });
       return;
     }
     bootstrapDoneRef.current = true;
+    prepareCallSessionMemory();
     let cancelled = false;
     const authUser = useAuthStore.getState().user;
 
@@ -710,19 +778,19 @@ export function DirectCallAgoraScreen() {
         if (!screenAliveRef.current) return;
         if (!permitted) {
           setErrorMsg('Microphone ou caméra non autorisé.');
-          await finishCallRef.current('failed');
+          await finishCallRef.current('failed', { force: true });
           return;
         }
         if (startedAsVideo) {
-          const previewOk = await activateVideoPreview();
+          const previewOk = await activateVideoPreviewRef.current();
           if (!screenAliveRef.current) return;
           if (!previewOk) {
             setErrorMsg('Microphone ou caméra non autorisé.');
-            await finishCallRef.current('failed');
+            await finishCallRef.current('failed', { force: true });
             return;
           }
         } else {
-          await startAgoraMediaTracks();
+          await startAgoraMediaTracksRef.current();
         }
         if (shouldStartNativeInCallBeforeAgora(role)) {
           await startNativeCallAudioSession(startedAsVideo, true, { outgoingRingback: true });
@@ -753,12 +821,12 @@ export function DirectCallAgoraScreen() {
           const invited = await socketService.ensureConnectedEmit('call:invite', invitePayload);
           if (!invited) {
             setErrorMsg('Connexion indisponible. Réessayez.');
-            await finishCallRef.current('failed');
+            await finishCallRef.current('failed', { force: true });
             return;
           }
           ringTimeoutRef.current = setTimeout(() => {
             if (callStateRef.current === 'ringing') {
-              void handleMissedNoAnswer();
+              void handleMissedNoAnswerRef.current();
             }
           }, CALL_RING_MS);
         } else {
@@ -773,22 +841,42 @@ export function DirectCallAgoraScreen() {
           );
           if (!accepted) {
             setErrorMsg('Connexion indisponible. Réessayez.');
-            await finishCallRef.current('failed');
+            await finishCallRef.current('failed', { force: true });
             return;
           }
-          await beginAgoraMedia();
+          await beginAgoraMediaRef.current();
         }
       } catch {
         if (!cancelled) {
           setErrorMsg('Impossible de démarrer l’appel.');
-          await finishCallRef.current('failed');
+          await finishCallRef.current('failed', { force: true });
         }
       }
     })();
 
+    return () => {
+      cancelled = true;
+      void stopOutgoingRingRef.current?.();
+      stopOutgoingRingRef.current = null;
+      if (typeof stopEveryCallRingAlert === 'function') {
+        void stopEveryCallRingAlert();
+      }
+    };
+  }, [callId, myUserId, name, otherUserId, resolvedCall.error, role, startedAsVideo]);
+
+  /** Sockets call:* — deps minimales pour ne jamais perdre call:accept après invite:ack. */
+  useEffect(() => {
+    if (!myUserId || !otherUserId) return;
+
     const onAccept = (payload: { callId?: string }) => {
       if (role !== 'caller') return;
       if (payload?.callId && payload.callId !== callIdRef.current) return;
+      if (peerAcceptHandledRef.current) return;
+      if (!shouldHandleAgoraPeerAccept(callIdRef.current)) {
+        logAfwCall('agora_peer_accepted_dedup', { callId: callIdRef.current, role });
+        return;
+      }
+      peerAcceptHandledRef.current = true;
       logAfwCall('agora_peer_accepted', { callId: callIdRef.current, role });
       if (ringTimeoutRef.current) {
         clearTimeout(ringTimeoutRef.current);
@@ -799,31 +887,42 @@ export function DirectCallAgoraScreen() {
       if (mediaEnabledRef.current) {
         setCallState('connecting');
         if (remoteEverJoinedRef.current) {
-          flushConnectedFromRemote();
+          flushConnectedFromRemoteRef.current();
         }
       } else {
-        void beginAgoraMedia();
+        void beginAgoraMediaRef.current();
       }
     };
 
-    const onEnd = (payload?: { callId?: string }) => {
+    const onEnd = (payload?: { callId?: string }, reason: 'completed' | 'declined' | 'missed' = 'completed') => {
       if (payload?.callId && payload.callId !== callIdRef.current) return;
       if (finishingRef.current || callStateRef.current === 'ended') return;
       logAfwCall('call_end_signal', {
         callId: callIdRef.current,
         state: callStateRef.current,
         source: 'socket',
+        reason,
       });
-      void finishCallRef.current('completed');
+      void finishCallRef.current(reason);
     };
 
     const onInviteAck = (payload: { callId?: string; receiverReachable?: boolean }) => {
       if (role !== 'caller' || !payload?.callId) return;
       const ackId = String(payload.callId);
-      if (shouldApplyInviteAckCallId(callIdRef.current, ackId)) {
-        logAfwCall('agora_invite_ack_call_id_sync', { from: callIdRef.current, to: ackId });
+      const prevId = callIdRef.current;
+      if (shouldApplyInviteAckCallId(prevId, ackId)) {
+        logAfwCall('agora_invite_ack_call_id_sync', { from: prevId, to: ackId });
+        migrateAgoraDmActiveChannelCallId(prevId, ackId);
         callIdRef.current = ackId;
         setCallId(ackId);
+        void apiClient
+          .post('/calls/session/upsert', {
+            callId: ackId,
+            peerUserId: otherUserId,
+            role,
+            status: 'pending',
+          })
+          .catch(() => {});
       }
       if (payload.receiverReachable === false) {
         setErrorMsg(
@@ -832,35 +931,22 @@ export function DirectCallAgoraScreen() {
       }
     };
 
+    logAfwCall('agora_socket_handlers_bound', { callId: callIdRef.current, role });
     const offAccept = socketService.on('call:accept', onAccept);
-    const offEnd = socketService.on('call:end', onEnd);
-    const offDecline = socketService.on('call:decline', onEnd);
-    const offMissed = socketService.on('call:missed', onEnd);
+    const offEnd = socketService.on('call:end', (p) => onEnd(p, 'completed'));
+    const offDecline = socketService.on('call:decline', (p) => onEnd(p, 'declined'));
+    const offMissed = socketService.on('call:missed', (p) => onEnd(p, 'missed'));
     const offInviteAck = socketService.on('call:invite:ack', onInviteAck);
 
     return () => {
-      cancelled = true;
+      logAfwCall('agora_socket_handlers_unbound', { callId: callIdRef.current, role });
       removeNativeSubscription(offAccept);
       removeNativeSubscription(offEnd);
       removeNativeSubscription(offDecline);
       removeNativeSubscription(offMissed);
       removeNativeSubscription(offInviteAck);
-      void stopOutgoingRingRef.current?.();
-      stopOutgoingRingRef.current = null;
-      void stopEveryCallRingAlert();
     };
-  }, [
-    activateVideoPreview,
-    beginAgoraMedia,
-    handleMissedNoAnswer,
-    myUserId,
-    name,
-    otherUserId,
-    resolvedCall.error,
-    role,
-    startAgoraMediaTracks,
-    startedAsVideo,
-  ]);
+  }, [myUserId, otherUserId, role]);
 
   const statusLine = formatAgoraDmCallStatus({
     callState: endingReason ? 'ended' : callState,
@@ -903,16 +989,19 @@ export function DirectCallAgoraScreen() {
 
   useEffect(() => {
     if (callState !== 'connected' || !isVideoCall || Platform.OS !== 'android') return;
-    void (async () => {
-      try {
-        await prepareVideoCallSystemPip({ title: name, silent: true });
-      } catch (e) {
+    if (typeof prepareVideoCallSystemPip !== 'function') {
+      logAfwCall('system_pip_prepare_skipped', { callId: callIdRef.current, reason: 'missing_export' });
+      return;
+    }
+    const timer = setTimeout(() => {
+      void prepareVideoCallSystemPip({ title: name, silent: true }).catch((e) => {
         logAfwCall('system_pip_prepare_effect_failed', {
           callId: callIdRef.current,
           error: String((e as Error)?.message ?? e),
         });
-      }
-    })();
+      });
+    }, 0);
+    return () => clearTimeout(timer);
   }, [callState, isVideoCall, name]);
 
   const handleMinimize = useCallback(async () => {
@@ -994,7 +1083,7 @@ export function DirectCallAgoraScreen() {
       (p: { callId?: string; fromUserId?: string; active?: boolean }) => {
         if (p?.callId !== callIdRef.current || p.fromUserId !== otherUserId || !p.active) return;
         setIsVideoCall(true);
-        void upgradeToVideoRef.current();
+        void upgradeToVideoRef.current?.();
       },
     );
     return () => {
@@ -1091,6 +1180,7 @@ export function DirectCallAgoraScreen() {
   } = useCallVideoControlsOverlay({
     isVideoStage: showVideoStage,
     callEnded,
+    callConnected: callState === 'connected',
     minimized,
     moreMenuOpen,
     messageModalOpen,

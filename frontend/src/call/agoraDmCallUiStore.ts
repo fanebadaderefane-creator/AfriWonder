@@ -71,7 +71,10 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
   setLocalPreviewEngineReady: (localPreviewEngineReady) => set({ localPreviewEngineReady }),
   registerLocalPreviewRefresh: (handler) => set({ localPreviewRefreshHandler: handler }),
   requestLocalPreviewRefresh: (reason) => {
-    get().localPreviewRefreshHandler?.(reason);
+    const handler = get().localPreviewRefreshHandler;
+    if (typeof handler === 'function') {
+      handler(reason);
+    }
   },
   requestFlipCamera: () => set((s) => ({ flipCameraTick: s.flipCameraTick + 1 })),
   clearSession: () =>
