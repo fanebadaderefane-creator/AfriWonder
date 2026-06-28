@@ -1,6 +1,7 @@
 import { AppState } from 'react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { removeNativeSubscription } from './callNativeSubscription';
+import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 import {
   logCallControlsHidden,
   logCallControlsVisible,
@@ -87,50 +88,53 @@ export function useCallVideoControlsOverlay(input: UseCallVideoControlsOverlayIn
     showControls();
   }, [showControls]);
 
-  useEffect(() => {
-    const cur = inputRef.current;
-    if (!cur.isVideoStage || cur.callEnded) {
-      clearHideTimer();
-      setChromeMode('visible');
-      return;
-    }
-    if (!cur.callConnected) {
-      clearHideTimer();
-      setChromeMode('visible');
-      logCallControlsVisible({ ...logMeta(), reason: 'pre_connected' });
-      return;
-    }
-    showControls();
-    return () => {
-      clearHideTimer();
-    };
-  }, [
-    input.callConnected,
-    input.callEnded,
-    input.isVideoStage,
-    clearHideTimer,
-    logMeta,
-    showControls,
-  ]);
-
-  useEffect(() => {
-    if (input.moreMenuOpen || input.messageModalOpen) {
-      showControls();
-    }
-  }, [input.messageModalOpen, input.moreMenuOpen, showControls]);
-
-  useEffect(() => {
-    if (typeof AppState.addEventListener !== 'function') return;
-    const sub = AppState.addEventListener('change', (next) => {
+  useCallScreenSafeEffect(
+    'call_video_controls_stage',
+    () => {
       const cur = inputRef.current;
-      if (
-        shouldRevealControlsOnAppResume(next, cur.isVideoStage, cur.callEnded)
-      ) {
+      if (!cur.isVideoStage || cur.callEnded) {
+        clearHideTimer();
+        setChromeMode('visible');
+        return;
+      }
+      if (!cur.callConnected) {
+        clearHideTimer();
+        setChromeMode('visible');
+        logCallControlsVisible({ ...logMeta(), reason: 'pre_connected' });
+        return;
+      }
+      showControls();
+      return () => {
+        clearHideTimer();
+      };
+    },
+    [input.callConnected, input.callEnded, input.isVideoStage, clearHideTimer, logMeta, showControls],
+  );
+
+  useCallScreenSafeEffect(
+    'call_video_controls_menu',
+    () => {
+      if (input.moreMenuOpen || input.messageModalOpen) {
         showControls();
       }
-    });
-    return () => removeNativeSubscription(sub);
-  }, [showControls]);
+    },
+    [input.messageModalOpen, input.moreMenuOpen, showControls],
+  );
+
+  useCallScreenSafeEffect(
+    'call_video_controls_app_state',
+    () => {
+      if (typeof AppState.addEventListener !== 'function') return;
+      const sub = AppState.addEventListener('change', (next) => {
+        const cur = inputRef.current;
+        if (shouldRevealControlsOnAppResume(next, cur.isVideoStage, cur.callEnded)) {
+          showControls();
+        }
+      });
+      return () => removeNativeSubscription(sub);
+    },
+    [showControls],
+  );
 
   const overlayInput = {
     mode: chromeMode,

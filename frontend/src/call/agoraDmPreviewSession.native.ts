@@ -15,7 +15,7 @@ import {
   shouldBlockPreviewSessionRelease,
 } from './agoraDmPreviewHandoff';
 import { logAfwCall } from './callDiagnosticLog';
-import { forceLeaveAgoraDmActiveChannel } from './agoraDmActiveChannel';
+import { forceLeaveAgoraDmActiveChannelIfStale } from './agoraDmActiveChannel';
 import { requestNativeCallPermissions } from './callNativeMedia';
 
 type PreviewSession = {
@@ -70,7 +70,7 @@ export async function activateAgoraDmVideoPreview(callId: string): Promise<boole
 }
 
 async function createPreviewSession(callId: string): Promise<boolean> {
-  await forceLeaveAgoraDmActiveChannel('preview_replace_stale_channel');
+  await forceLeaveAgoraDmActiveChannelIfStale(callId, 'preview_replace_stale_channel');
   await releaseAgoraDmPreviewSession('replace');
   const permitted = await requestNativeCallPermissions(true);
   if (!permitted) {

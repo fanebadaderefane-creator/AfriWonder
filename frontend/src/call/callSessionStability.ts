@@ -1,8 +1,9 @@
 import { AppState, BackHandler, Platform } from 'react-native';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { trimMobileAppCaches } from '../lib/mobileMemoryMaintenance';
 import { removeNativeSubscription } from './callNativeSubscription';
+import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 import {
   logAndroidBackPressed,
   logAppStateChange,
@@ -48,105 +49,121 @@ export function useCallScreenLifecycleGuards(input: CallScreenLifecycleGuardInpu
   const navigationRef = useRef(navigation);
   navigationRef.current = navigation;
 
-  useEffect(() => {
-    const meta = {
-      engine: input.engine,
-      callId: input.callId,
-      role: input.role,
-      isVideoCall: input.isVideoCall,
-      platform: Platform.OS,
-    };
-    logVideoScreenMount(meta);
-    logCallUiVisible(meta);
-    return () => {
-      logCallUiHidden(meta);
-      logVideoScreenUnmount(meta);
-    };
-  }, [input.callId, input.engine, input.isVideoCall, input.role]);
+  useCallScreenSafeEffect(
+    'call_lifecycle_video_screen_log',
+    () => {
+      const meta = {
+        engine: input.engine,
+        callId: input.callId,
+        role: input.role,
+        isVideoCall: input.isVideoCall,
+        platform: Platform.OS,
+      };
+      logVideoScreenMount(meta);
+      logCallUiVisible(meta);
+      return () => {
+        logCallUiHidden(meta);
+        logVideoScreenUnmount(meta);
+      };
+    },
+    [input.callId, input.engine, input.isVideoCall, input.role],
+  );
 
   /**
    * Pas de useFocusEffect ici : sa dépendance `navigation` peut changer après
    * `agora_join_ok` et rappeler `navigation.isFocused()` / `addListener` undefined.
    */
-  useEffect(() => {
-    const nav = navigationRef.current as {
-      isFocused?: () => boolean;
-      addListener?: (event: string, cb: () => void) => (() => void) | { remove?: () => void };
-    } | null;
+  useCallScreenSafeEffect(
+    'call_lifecycle_navigation',
+    () => {
+      const nav = navigationRef.current as {
+        isFocused?: () => boolean;
+        addListener?: (event: string, cb: () => void) => (() => void) | { remove?: () => void };
+      } | null;
 
-    const logFocus = () => {
-      const meta = {
-        engine: inputRef.current.engine,
-        callId: inputRef.current.callId,
-        role: inputRef.current.role,
+      const logFocus = () => {
+        const meta = {
+          engine: inputRef.current.engine,
+          callId: inputRef.current.callId,
+          role: inputRef.current.role,
+        };
+        logNavigationFocus(meta);
+        logCallUiVisible(meta);
       };
-      logNavigationFocus(meta);
-      logCallUiVisible(meta);
-    };
-    const logBlur = () => {
-      logNavigationBlur({
-        engine: inputRef.current.engine,
-        callId: inputRef.current.callId,
-        role: inputRef.current.role,
-      });
-    };
-
-    if (typeof nav?.isFocused !== 'function' || typeof nav?.addListener !== 'function') {
-      logFocus();
-      return;
-    }
-
-    if (nav.isFocused()) {
-      logFocus();
-    }
-
-    const unsubFocus = nav.addListener('focus', logFocus);
-    const unsubBlur = nav.addListener('blur', logBlur);
-
-    return () => {
-      removeNativeSubscription(unsubFocus);
-      removeNativeSubscription(unsubBlur);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof AppState.addEventListener !== 'function') return;
-    const sub = AppState.addEventListener('change', (next) => {
-      logAppStateChange(next, {
-        engine: inputRef.current.engine,
-        callId: inputRef.current.callId,
-      });
-      if (next === 'background' || next === 'inactive') {
-        logCallUiHidden({
+      const logBlur = () => {
+        logNavigationBlur({
           engine: inputRef.current.engine,
           callId: inputRef.current.callId,
-          appState: next,
+          role: inputRef.current.role,
         });
-      } else if (next === 'active') {
-        logCallUiVisible({
-          engine: inputRef.current.engine,
-          callId: inputRef.current.callId,
-          appState: next,
-        });
+      };
+
+      if (typeof nav?.isFocused !== 'function' || typeof nav?.addListener !== 'function') {
+        logFocus();
+        return;
       }
-    });
-    return () => removeNativeSubscription(sub);
-  }, []);
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      const cur = inputRef.current;
-      if (!cur.blockAndroidBack) return false;
-      logAndroidBackPressed({
-        engine: cur.engine,
-        callId: cur.callId,
-        role: cur.role,
-        blocked: true,
+      if (nav.isFocused()) {
+        logFocus();
+      }
+
+      const unsubFocus = nav.addListener('focus', logFocus);
+      const unsubBlur = nav.addListener('blur', logBlur);
+
+      return () => {
+        removeNativeSubscription(unsubFocus);
+        removeNativeSubscription(unsubBlur);
+      };
+    },
+    [],
+  );
+
+  useCallScreenSafeEffect(
+    'call_lifecycle_app_state',
+    () => {
+      if (typeof AppState.addEventListener !== 'function') return;
+      const sub = AppState.addEventListener('change', (next) => {
+        logAppStateChange(next, {
+          engine: inputRef.current.engine,
+          callId: inputRef.current.callId,
+        });
+        if (next === 'background' || next === 'inactive') {
+          logCallUiHidden({
+            engine: inputRef.current.engine,
+            callId: inputRef.current.callId,
+            appState: next,
+          });
+        } else if (next === 'active') {
+          logCallUiVisible({
+            engine: inputRef.current.engine,
+            callId: inputRef.current.callId,
+            appState: next,
+          });
+        }
       });
-      cur.onAndroidBackWhileBlocked?.();
-      return true;
-    });
-    return () => removeNativeSubscription(sub);
-  }, []);
+      return () => removeNativeSubscription(sub);
+    },
+    [],
+  );
+
+  useCallScreenSafeEffect(
+    'call_lifecycle_android_back',
+    () => {
+      if (Platform.OS !== 'android') return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        const cur = inputRef.current;
+        if (!cur.blockAndroidBack) return false;
+        logAndroidBackPressed({
+          engine: cur.engine,
+          callId: cur.callId,
+          role: cur.role,
+          blocked: true,
+        });
+        cur.onAndroidBackWhileBlocked?.();
+        return true;
+      });
+      return () => removeNativeSubscription(sub);
+    },
+    [],
+  );
 }

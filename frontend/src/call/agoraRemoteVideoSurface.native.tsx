@@ -1,9 +1,10 @@
 /**
  * Surface Agora distante — montage stable ; Android TextureView (évite SurfaceView par-dessus PiP).
  */
-import React, { memo, useEffect } from 'react';
+import React, { memo } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
+import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
 export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
   remoteUid,
@@ -12,12 +13,16 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
   remoteUid: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  useEffect(() => {
-    logAfwCall('REMOTE_RENDERER_ATTACHED', { remoteUid });
-    return () => {
-      logAfwCall('REMOTE_RENDERER_DETACHED', { remoteUid });
-    };
-  }, [remoteUid]);
+  useCallScreenSafeEffect(
+    'agora_remote_renderer_log',
+    () => {
+      logAfwCall('REMOTE_RENDERER_ATTACHED', { remoteUid });
+      return () => {
+        logAfwCall('REMOTE_RENDERER_DETACHED', { remoteUid });
+      };
+    },
+    [remoteUid],
+  );
 
   if (Platform.OS === 'web' || remoteUid == null) {
     return <View style={style} />;

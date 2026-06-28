@@ -5,6 +5,7 @@
 import { logAfwCall } from './callDiagnosticLog';
 import {
   peekCallMediaAliveSnapshot,
+  shouldSuppressCallInterruptedUi,
   type CallMediaAliveSnapshot,
 } from './callMediaAliveRegistry';
 
@@ -88,7 +89,8 @@ export function logWhyCallInterrupted(input: WhyCallInterruptedInput): void {
     callState: input.callState ?? alive.callState ?? null,
     connectionState: input.connectionState ?? alive.connectionState ?? null,
     iceConnectionState: input.iceConnectionState ?? alive.iceConnectionState ?? null,
-    mediaAlive: alive.alive,
+    mediaAlive: shouldSuppressCallInterruptedUi(),
+    mediaAliveSnapshot: alive.alive,
     engine: alive.engine ?? null,
     callId: alive.callId ?? null,
     fileHint: input.fileHint ?? null,

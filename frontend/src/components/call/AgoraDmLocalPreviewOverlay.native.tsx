@@ -2,7 +2,7 @@
  * Overlay root — unique hôte RtcView (uid 0) pour tout l’appel vidéo.
  * Surface jamais démontée entre plein écran (sonnerie) et PiP (connecté).
  */
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { agoraDmLocalPreviewStyles } from '../../call/agoraDmLocalPreviewStyles'
 import { agoraDmEmptyLocalPreview, useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
 import { shouldMountAgoraDmLocalPreviewOverlay } from '../../call/agoraDmLocalPreviewOverlayGuard';
 import { resolveAgoraDmOverlayLayer } from '../../call/agoraDmOverlayLayer';
+import { useCallScreenSafeEffect } from '../../call/useCallScreenSafeEffect';
 
 export function AgoraDmLocalPreviewOverlay() {
   const insets = useSafeAreaInsets();
@@ -25,13 +26,17 @@ export function AgoraDmLocalPreviewOverlay() {
 
   const prevLayoutRef = useRef(localPreview?.containerStyle ?? 'hidden');
 
-  useEffect(() => {
-    const next = localPreview?.containerStyle ?? 'hidden';
-    if (prevLayoutRef.current !== next) {
-      prevLayoutRef.current = next;
-      requestLocalPreviewRefresh(`layout_${next}`);
-    }
-  }, [localPreview?.containerStyle, requestLocalPreviewRefresh]);
+  useCallScreenSafeEffect(
+    'agora_overlay_layout_refresh',
+    () => {
+      const next = localPreview?.containerStyle ?? 'hidden';
+      if (prevLayoutRef.current !== next) {
+        prevLayoutRef.current = next;
+        requestLocalPreviewRefresh(`layout_${next}`);
+      }
+    },
+    [localPreview?.containerStyle, requestLocalPreviewRefresh],
+  );
 
   const onFlip = useCallback(() => {
     requestFlipCamera();

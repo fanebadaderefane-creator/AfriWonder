@@ -548,6 +548,12 @@ async function main() {
 
   console.log('━━ Code mobile ━━');
   checkFrontendWiring();
+  try {
+    execSync('node scripts/audit-agora-call-effects.cjs', { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
+    pass('Audit effets React Agora', '100% useCallScreenSafeEffect sur le chemin appel');
+  } catch (e) {
+    fail('Audit effets React Agora', String(e.stdout || e.stderr || e.message).slice(-600));
+  }
 
   console.log('\n━━ Production ━━');
   await verifyProdAgoraFlag();

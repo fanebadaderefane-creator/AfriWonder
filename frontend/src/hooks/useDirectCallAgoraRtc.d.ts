@@ -6,6 +6,7 @@ export interface DirectCallAgoraRtcOptions {
   callId: string | null;
   enabled: boolean;
   audioOnly: boolean;
+  role?: 'caller' | 'receiver';
   muted?: boolean;
   cameraFlipNonce?: number;
   speakerOn?: boolean;

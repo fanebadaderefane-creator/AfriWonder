@@ -1,7 +1,7 @@
 /**
  * Appel DM 1:1 — média Agora RTC (remplace WebRTC/TURN sur natif).
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   AudioScenarioType,
@@ -23,7 +23,9 @@ import {
 import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
 import {
   clearAgoraDmActiveChannel,
-  forceLeaveAgoraDmActiveChannel,
+  forceLeaveAgoraDmActiveChannelIfStale,
+  peekAgoraDmActiveChannelCallId,
+  peekAgoraDmActiveChannelEngine,
   registerAgoraDmActiveChannel,
 } from '../call/agoraDmActiveChannel';
 import { logAfwCall } from '../call/callDiagnosticLog';
@@ -39,7 +41,7 @@ import {
 } from '../call/agoraDmChannelReady';
 import { shouldLogAgoraRemoteReady } from '../call/agoraDmRemoteReady';
 import { invokeAgoraEngine } from '../call/agoraEngineInvoke';
-import { runCallScreenSafeEffect } from '../call/callScreenSafeEffect';
+import { useCallScreenSafeEffect } from '../call/useCallScreenSafeEffect';
 import {
   agoraJoinChannelErrorMessage,
   isAgoraConnectionStateJoined,
@@ -53,7 +55,13 @@ import {
 import { shouldRunRtcChannelTeardown, shouldReleaseAgoraPreviewSession } from '../call/agoraRtcLifecycle';
 import { isCallScreenRecovering } from '../call/callErrorRecoveryGate';
 import { shouldSuppressCallInterruptedUi } from '../call/callMediaAliveRegistry';
-import { requestNativeCallPermissions, applyNativeCallSpeakerRoute, stopNativeOutgoingRingback } from '../call/callNativeMedia';
+import {
+  applyNativeCallSpeakerRoute,
+  requestNativeCallPermissions,
+  startNativeCallAudioSession,
+  stopNativeOutgoingRingback,
+} from '../call/callNativeMedia';
+import { shouldEnsureNativeInCallAfterAgoraJoin } from '../call/agoraDmCallSession';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
 import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import { AgoraRemoteVideoSurface } from '../call/agoraRemoteVideoSurface.native';
@@ -126,6 +134,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     callId,
     enabled,
     audioOnly,
+    role = 'caller',
     muted = false,
     cameraFlipNonce = 0,
     speakerOn = true,
@@ -168,11 +177,15 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     bars: 2,
   });
 
-  useEffect(() => {
-    onRemoteJoinedRef.current = onRemoteJoined;
-    onRemoteLeftRef.current = onRemoteLeft;
-    onErrorRef.current = onError;
-  }, [onRemoteJoined, onRemoteLeft, onError]);
+  useCallScreenSafeEffect(
+    'agora_rtc_callback_refs',
+    () => {
+      onRemoteJoinedRef.current = onRemoteJoined;
+      onRemoteLeftRef.current = onRemoteLeft;
+      onErrorRef.current = onError;
+    },
+    [onRemoteJoined, onRemoteLeft, onError],
+  );
 
   const leave = useCallback(
     async (options?: { releasePreview?: boolean; reason?: string }) => {
@@ -333,9 +346,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     return result;
   }, [callId, camOn]);
 
-  useEffect(() => {
-    videoPublishedRef.current = videoPublished;
-  }, [videoPublished]);
+  useCallScreenSafeEffect(
+    'agora_video_published_ref',
+    () => {
+      videoPublishedRef.current = videoPublished;
+    },
+    [videoPublished],
+  );
 
   /** Déclenche join une fois quand `enabled` passe true — évite annulation silencieuse si deps churn. */
   const joinEpochRef = useRef(0);
@@ -343,26 +360,36 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const prevJoinCallIdRef = useRef(callId);
   const [joinEpoch, setJoinEpoch] = useState(0);
 
-  useEffect(() => {
-    if (prevJoinCallIdRef.current !== callId) {
-      prevJoinCallIdRef.current = callId;
-      enabledWasTrueRef.current = false;
-    }
-  }, [callId]);
-
-  useEffect(() => {
-    if (enabled && callId) {
-      if (!enabledWasTrueRef.current) {
-        enabledWasTrueRef.current = true;
-        joinEpochRef.current += 1;
-        setJoinEpoch(joinEpochRef.current);
+  useCallScreenSafeEffect(
+    'agora_join_call_id_reset',
+    () => {
+      if (prevJoinCallIdRef.current !== callId) {
+        prevJoinCallIdRef.current = callId;
+        enabledWasTrueRef.current = false;
       }
-      return;
-    }
-    enabledWasTrueRef.current = false;
-  }, [callId, enabled]);
+    },
+    [callId],
+  );
 
-  useEffect(() => {
+  useCallScreenSafeEffect(
+    'agora_join_epoch',
+    () => {
+      if (enabled && callId) {
+        if (!enabledWasTrueRef.current) {
+          enabledWasTrueRef.current = true;
+          joinEpochRef.current += 1;
+          setJoinEpoch(joinEpochRef.current);
+        }
+        return;
+      }
+      enabledWasTrueRef.current = false;
+    },
+    [callId, enabled],
+  );
+
+  useCallScreenSafeEffect(
+    'agora_channel_disabled_teardown',
+    () => {
     if (!callId || Platform.OS === 'web') return;
     const hasChannelEngine = engineRef.current != null;
     if (
@@ -376,9 +403,13 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     if (!enabled) {
       void leave({ releasePreview: false, reason: 'channel_disabled' });
     }
-  }, [callId, enabled, leave]);
+    },
+    [callId, enabled, leave],
+  );
 
-  useEffect(() => {
+  useCallScreenSafeEffect(
+    'agora_channel_join',
+    () => {
     if (!callId || Platform.OS === 'web' || joinEpoch <= 0) {
       return;
     }
@@ -417,6 +448,20 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
           uid: tokenData.uid,
         });
 
+        const activeEngine = peekAgoraDmActiveChannelEngine();
+        if (activeEngine && peekAgoraDmActiveChannelCallId() === joinCallId) {
+          engineRef.current = activeEngine;
+          joinedRef.current = true;
+          setJoined(true);
+          setPreviewActive(true);
+          if (!audioOnly) {
+            videoPublishedRef.current = true;
+            setVideoPublished(true);
+          }
+          logAfwCall('agora_join_adopt_active_channel', { callId: joinCallId });
+          return;
+        }
+
         let adoptedEngine = consumeAgoraDmPreviewEngine(joinCallId);
         if (!adoptedEngine && !audioOnly) {
           await ensureAgoraDmPreviewSession(joinCallId);
@@ -435,7 +480,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         }
         const adoptedPreview = adoptedEngine != null;
 
-        await forceLeaveAgoraDmActiveChannel('pre_join_stale_channel');
+        await forceLeaveAgoraDmActiveChannelIfStale(joinCallId, 'pre_join_stale_channel');
         if (!adoptedPreview && !peekAgoraDmPreviewSession(joinCallId)) {
           await releaseAgoraDmPreviewSession('pre_join_stale_preview');
         }
@@ -487,6 +532,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
           joinedRef.current = true;
           setJoined(true);
           setError(null);
+          registerAgoraDmActiveChannel(joinCallId, engine, 'connecting');
           try {
             engine.setEnableSpeakerphone(true);
             engine.adjustPlaybackSignalVolume(100);
@@ -504,8 +550,16 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
               }
               rebindAgoraLocalPreview(engine, { callId: joinCallId, reason: 'join_ok' });
             }
-            void stopNativeOutgoingRingback();
-            void applyNativeCallSpeakerRoute(speakerOnRef.current);
+            void (async () => {
+              await stopNativeOutgoingRingback();
+              if (shouldEnsureNativeInCallAfterAgoraJoin(role)) {
+                await startNativeCallAudioSession(!audioOnly, speakerOnRef.current, {
+                  outgoingRingback: false,
+                });
+                logAfwCall('agora_receiver_incall_session', { callId: joinCallId, audioOnly });
+              }
+              await applyNativeCallSpeakerRoute(speakerOnRef.current);
+            })();
           } catch {
             /* ignore */
           }
@@ -743,46 +797,54 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
         });
       }
     };
-  }, [audioOnly, callId, joinEpoch, leave]);
+    },
+    [audioOnly, callId, joinEpoch, leave],
+  );
 
-  useEffect(() => {
-    runCallScreenSafeEffect('agora_mute_local_video', () => {
+  useCallScreenSafeEffect(
+    'agora_mute_local_video',
+    () => {
       const engine = engineRef.current;
       if (!engine || !joined || audioOnly) return;
       invokeAgoraEngine(engine, 'muteLocalVideoStream', !camOn);
-    });
-  }, [audioOnly, camOn, joined]);
+    },
+    [audioOnly, camOn, joined],
+  );
 
-  useEffect(() => {
-    runCallScreenSafeEffect('agora_mute_local_audio', () => {
+  useCallScreenSafeEffect(
+    'agora_mute_local_audio',
+    () => {
       const engine = engineRef.current;
       if (!engine || !joined) return;
       invokeAgoraEngine(engine, 'muteLocalAudioStream', !!muted);
-    });
-  }, [joined, muted]);
+    },
+    [joined, muted],
+  );
 
-  useEffect(() => {
-    runCallScreenSafeEffect('agora_speaker_route', () => {
+  useCallScreenSafeEffect(
+    'agora_speaker_route',
+    () => {
       const engine = engineRef.current;
       if (!engine || !joined) return;
       invokeAgoraEngine(engine, 'setEnableSpeakerphone', !!speakerOn);
-    });
-  }, [joined, speakerOn]);
+    },
+    [joined, speakerOn],
+  );
 
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !joined || !videoPublished) return;
-    if (!shouldAgoraSwitchCameraOnNonce(cameraFlipNonce)) return;
-    try {
+  useCallScreenSafeEffect(
+    'agora_switch_camera',
+    () => {
+      const engine = engineRef.current;
+      if (!engine || !joined || !videoPublished) return;
+      if (!shouldAgoraSwitchCameraOnNonce(cameraFlipNonce)) return;
       logAgoraSwitchCamera({ callId, nonce: cameraFlipNonce });
       invokeAgoraEngine(engine, 'switchCamera');
       cameraFacingRef.current = cameraFacingRef.current === 'front' ? 'back' : 'front';
       logCameraFacingSelected(cameraFacingRef.current, { callId, nonce: cameraFlipNonce });
       rebindAgoraLocalPreview(engine, { callId, reason: 'switch_camera' });
-    } catch {
-      /* ignore */
-    }
-  }, [callId, cameraFlipNonce, joined, videoPublished]);
+    },
+    [callId, cameraFlipNonce, joined, videoPublished],
+  );
 
   const refreshLocalPreview = useCallback(
     (reason: string) => {
@@ -799,26 +861,26 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     [callId],
   );
 
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !remoteEverJoined || !videoPublished) return;
-    try {
+  useCallScreenSafeEffect(
+    'agora_remote_rebind_pip',
+    () => {
+      const engine = engineRef.current;
+      if (!engine || !remoteEverJoined || !videoPublished) return;
       rebindAgoraLocalPreview(engine, { callId, reason: 'remote_ever_joined_pip' });
-    } catch (e) {
-      logAfwCall('agora_local_preview_rebind_failed', {
-        callId,
-        reason: 'remote_ever_joined_pip',
-        error: String((e as Error)?.message ?? e),
-      });
-    }
-  }, [callId, remoteEverJoined, videoPublished]);
+    },
+    [callId, remoteEverJoined, videoPublished],
+  );
 
-  useEffect(() => {
-    useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(refreshLocalPreview);
-    return () => {
-      useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(null);
-    };
-  }, [refreshLocalPreview]);
+  useCallScreenSafeEffect(
+    'agora_register_preview_refresh',
+    () => {
+      useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(refreshLocalPreview);
+      return () => {
+        useAgoraDmCallUiStore.getState().registerLocalPreviewRefresh(null);
+      };
+    },
+    [refreshLocalPreview],
+  );
 
   const LocalView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {

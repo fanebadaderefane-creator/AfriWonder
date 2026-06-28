@@ -2,9 +2,10 @@
  * Surface Agora locale (uid 0) — une instance stable par appel.
  * Android PiP : dimensions explicites + zOrderMediaOverlay sur SurfaceView.
  */
-import React, { memo, useEffect } from 'react';
+import React, { memo } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
+import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
 export const AGORA_LOCAL_PREVIEW_SURFACE_KEY = 'agora-dm-local-preview-surface';
 
@@ -83,20 +84,24 @@ export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
   style?: StyleProp<ViewStyle>;
   layoutMode?: 'pip' | 'fill';
 }) {
-  useEffect(() => {
-    logAfwCall('LOCAL_RENDERER_ATTACHED', {
-      surface: 'RtcView',
-      platform: Platform.OS,
-      layoutMode,
-    });
-    return () => {
-      logAfwCall('LOCAL_RENDERER_DETACHED', {
+  useCallScreenSafeEffect(
+    'agora_local_renderer_log',
+    () => {
+      logAfwCall('LOCAL_RENDERER_ATTACHED', {
         surface: 'RtcView',
         platform: Platform.OS,
         layoutMode,
       });
-    };
-  }, [layoutMode]);
+      return () => {
+        logAfwCall('LOCAL_RENDERER_DETACHED', {
+          surface: 'RtcView',
+          platform: Platform.OS,
+          layoutMode,
+        });
+      };
+    },
+    [layoutMode],
+  );
 
   if (Platform.OS === 'web') {
     return <View style={style} />;

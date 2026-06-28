@@ -15,12 +15,10 @@ import { forceAgoraDmCallHangup } from '../../call/agoraDmForceHangup';
 import { stopEveryCallRingAlert } from '../../call/callRingStop';
 
 import {
-
   shouldSuppressCallInterruptedUi,
-
   peekCallMediaAliveSnapshot,
-
 } from '../../call/callMediaAliveRegistry';
+import { peekAgoraDmActiveChannelCallId } from '../../call/agoraDmActiveChannel';
 
 import {
 
@@ -69,7 +67,13 @@ export class CallScreenErrorBoundary extends Component<Props, State> {
 
 
   static getDerivedStateFromError(): Partial<State> {
-    if (shouldSuppressCallInterruptedUi()) {
+    const suppress = shouldSuppressCallInterruptedUi();
+    logAfwCall('error_boundary_derived_state', {
+      suppressInterruptedUi: suppress,
+      activeChannelCallId: peekAgoraDmActiveChannelCallId(),
+      mediaAliveSnapshot: peekCallMediaAliveSnapshot().alive,
+    });
+    if (suppress) {
       markCallScreenRecovering(true);
       return { hasError: true, recovering: true };
     }

@@ -33,6 +33,29 @@ export function peekAgoraDmActiveChannelCallId(): string | null {
   return activeChannel?.callId ?? null;
 }
 
+/** Met à jour le snapshot média pour ErrorBoundary / recovery (canal déjà joint). */
+export function touchAgoraDmActiveChannelCallState(
+  callId: string,
+  callState: 'connecting' | 'connected',
+): void {
+  if (!activeChannel || activeChannel.callId !== callId) return;
+  syncAgoraCallMediaAlive({ callId, alive: true, callState });
+}
+
+export function peekAgoraDmActiveChannelEngine(): IRtcEngine | null {
+  return activeChannel?.engine ?? null;
+}
+
+/** Ne quitte le canal actif que s'il appartient à un autre callId (recovery / preview). */
+export async function forceLeaveAgoraDmActiveChannelIfStale(
+  joinCallId: string,
+  reason: string,
+): Promise<boolean> {
+  const entry = activeChannel;
+  if (!entry || entry.callId === joinCallId) return false;
+  return forceLeaveAgoraDmActiveChannel(reason);
+}
+
 /** invite:ack — réaligner le canal actif sans leave (évite kill mid-call). */
 export function migrateAgoraDmActiveChannelCallId(fromId: string, toId: string): boolean {
   if (!activeChannel || activeChannel.callId !== fromId || !toId) return false;
