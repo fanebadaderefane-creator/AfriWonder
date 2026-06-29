@@ -1,17 +1,23 @@
 /**
  * Overlay root — unique hôte RtcView (uid 0) pour tout l’appel vidéo.
- * Surface jamais démontée entre plein écran (sonnerie) et PiP (connecté).
+ * Surface jamais démontée : seuls position/taille changent (plein écran ↔ PiP).
  */
-import React, { useCallback, useRef } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { AppState, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgoraLocalPreviewSurface } from '../../call/agoraLocalPreviewSurface.native';
 import { agoraDmLocalPreviewStyles } from '../../call/agoraDmLocalPreviewStyles';
 import { agoraDmEmptyLocalPreview, useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
+import { flipAgoraDmLocalCamera, refreshAgoraDmLocalPreviewCanvas } from '../../call/agoraDmLocalPreviewCanvas';
+import { scheduleAgoraDmLocalPreviewCanvasOnSurfaceLayout } from '../../call/agoraDmLocalPreviewCanvasScheduler';
+import { resolveAgoraDmOverlayLocalPreviewLayout } from '../../call/agoraDmLocalPreviewLayout';
+import { clampAgoraDmPipDrag } from '../../call/agoraDmPipPosition';
 import { shouldMountAgoraDmLocalPreviewOverlay } from '../../call/agoraDmLocalPreviewOverlayGuard';
 import { resolveAgoraDmOverlayLayer } from '../../call/agoraDmOverlayLayer';
+import { navigateToActiveAgoraCallScreen } from '../../call/navigateToActiveAgoraCallScreen';
 import { useCallScreenSafeEffect } from '../../call/useCallScreenSafeEffect';
+import { defaultAgoraDmPipStyle, useAgoraDmPipGestures } from '../../call/useAgoraDmPipGestures';
 
 export function AgoraDmLocalPreviewOverlay() {
   const insets = useSafeAreaInsets();
@@ -21,55 +27,132 @@ export function AgoraDmLocalPreviewOverlay() {
   const localPreviewPinned = useAgoraDmCallUiStore((s) => s.localPreviewPinned);
   const localPreviewEngineReady = useAgoraDmCallUiStore((s) => s.localPreviewEngineReady);
   const localPreview = useAgoraDmCallUiStore((s) => s.localPreview);
+  const pipDragX = useAgoraDmCallUiStore((s) => s.pipDragX);
+  const pipDragY = useAgoraDmCallUiStore((s) => s.pipDragY);
   const requestFlipCamera = useAgoraDmCallUiStore((s) => s.requestFlipCamera);
-  const requestLocalPreviewRefresh = useAgoraDmCallUiStore((s) => s.requestLocalPreviewRefresh);
+  const toggleVideoFeedsSwap = useAgoraDmCallUiStore((s) => s.toggleVideoFeedsSwap);
+  const setPipDrag = useAgoraDmCallUiStore((s) => s.setPipDrag);
 
-  const prevLayoutRef = useRef(localPreview?.containerStyle ?? 'hidden');
-
-  useCallScreenSafeEffect(
-    'agora_overlay_layout_refresh',
-    () => {
-      const next = localPreview?.containerStyle ?? 'hidden';
-      if (prevLayoutRef.current !== next) {
-        prevLayoutRef.current = next;
-        requestLocalPreviewRefresh(`layout_${next}`);
-      }
-    },
-    [localPreview?.containerStyle, requestLocalPreviewRefresh],
+  const layout = resolveAgoraDmOverlayLocalPreviewLayout(
+    localPreview ?? agoraDmEmptyLocalPreview,
+    minimized,
   );
+  const styleKey = layout.containerStyle;
+  const pipOnChat = minimized && styleKey === 'pip';
+  const bottomOffset = pipOnChat ? insets.bottom + 88 : insets.bottom + 108;
+  const showVideo = layout.mountSurface && layout.showVideo;
+  const isPip = styleKey === 'pip';
+  const windowSize = Dimensions.get('window');
+  const defaultPipX = windowSize.width - 110 - 16;
+  const defaultPipY = windowSize.height - bottomOffset - 156;
+
+  const onSwap = useCallback(() => {
+    toggleVideoFeedsSwap();
+  }, [toggleVideoFeedsSwap]);
+
+  const onReturnToCall = useCallback(() => {
+    navigateToActiveAgoraCallScreen();
+  }, []);
+
+  const onSurfaceLayout = useCallback((width: number, height: number) => {
+    scheduleAgoraDmLocalPreviewCanvasOnSurfaceLayout(width, height);
+  }, []);
 
   const onFlip = useCallback(() => {
+    if (minimized) {
+      flipAgoraDmLocalCamera('overlay_flip');
+      return;
+    }
     requestFlipCamera();
-  }, [requestFlipCamera]);
+  }, [minimized, requestFlipCamera]);
 
-  const layout = localPreview ?? agoraDmEmptyLocalPreview;
-  const mountSurface = layout.mountSurface;
-  const styleKey = layout.containerStyle;
+  const pipGestures = useAgoraDmPipGestures({
+    enabled: isPip && showVideo,
+    onTap: minimized ? onReturnToCall : undefined,
+    onSwap: minimized ? undefined : onSwap,
+    setPipDrag,
+    dragX: pipDragX,
+    dragY: pipDragY,
+    defaultX: defaultPipX,
+    defaultY: defaultPipY,
+  });
 
-  if (
-    !shouldMountAgoraDmLocalPreviewOverlay({
-      callState,
-      isVideoCall,
-      localPreviewPinned,
-      localPreviewEngineReady,
-      mountSurface,
-      containerStyle: styleKey,
-    })
-  ) {
+  useCallScreenSafeEffect(
+    'agora_overlay_canvas_sync',
+    () => {
+      if (!showVideo || !layout.mountSurface) return;
+      refreshAgoraDmLocalPreviewCanvas(`overlay_layout_${styleKey}_${minimized ? 'min' : 'call'}`);
+    },
+    [layout.mountSurface, minimized, showVideo, styleKey],
+  );
+
+  useCallScreenSafeEffect(
+    'agora_overlay_app_foreground',
+    () => {
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active' && showVideo) {
+          refreshAgoraDmLocalPreviewCanvas('app_foreground');
+        }
+      });
+      return () => sub.remove();
+    },
+    [showVideo],
+  );
+
+  useCallScreenSafeEffect(
+    'agora_overlay_window_resize',
+    () => {
+      const sub = Dimensions.addEventListener('change', ({ window }) => {
+        if (showVideo && isPip) {
+          refreshAgoraDmLocalPreviewCanvas('window_resize');
+          const cur = useAgoraDmCallUiStore.getState();
+          if (cur.pipDragX != null && cur.pipDragY != null) {
+            const clamped = clampAgoraDmPipDrag({
+              x: cur.pipDragX,
+              y: cur.pipDragY,
+              windowWidth: window.width,
+              windowHeight: window.height,
+            });
+            cur.setPipDrag(clamped.x, clamped.y);
+          }
+        }
+      });
+      return () => sub.remove();
+    },
+    [isPip, showVideo],
+  );
+
+  const containerStyle = useMemo(() => {
+    if (styleKey === 'full') {
+      return [agoraDmLocalPreviewStyles.full, !showVideo ? agoraDmLocalPreviewStyles.hiddenCam : null];
+    }
+    if (styleKey === 'pip') {
+      return [
+        agoraDmLocalPreviewStyles.pipBase,
+        defaultAgoraDmPipStyle({
+          bottomOffset,
+          dragX: pipDragX,
+          dragY: pipDragY,
+        }),
+        !showVideo ? agoraDmLocalPreviewStyles.hiddenCam : null,
+      ];
+    }
+    return [agoraDmLocalPreviewStyles.hidden, !showVideo ? agoraDmLocalPreviewStyles.hiddenCam : null];
+  }, [bottomOffset, pipDragX, pipDragY, showVideo, styleKey]);
+
+  const mountOverlay = shouldMountAgoraDmLocalPreviewOverlay({
+    callState,
+    isVideoCall,
+    localPreviewPinned,
+    localPreviewEngineReady,
+    mountSurface: layout.mountSurface,
+    containerStyle: styleKey,
+  });
+
+  if (!mountOverlay) {
     return null;
   }
 
-  const baseStyle =
-    styleKey === 'pip'
-      ? agoraDmLocalPreviewStyles.pip
-      : styleKey === 'full'
-        ? agoraDmLocalPreviewStyles.full
-        : agoraDmLocalPreviewStyles.hidden;
-
-  const pipOnChat = minimized && styleKey === 'pip';
-  const bottomOffset = pipOnChat ? insets.bottom + 88 : 108;
-  const showVideo = layout.mountSurface && layout.showVideo;
-  const surfaceLayoutMode = styleKey === 'pip' ? 'pip' : 'fill';
   const overlayLayer = resolveAgoraDmOverlayLayer({
     containerStyle: styleKey,
     minimized,
@@ -88,27 +171,18 @@ export function AgoraDmLocalPreviewOverlay() {
       collapsable={false}
     >
       <View
-        style={[
-          baseStyle,
-          styleKey === 'pip' ? { bottom: bottomOffset } : null,
-          !showVideo ? agoraDmLocalPreviewStyles.hiddenCam : null,
-        ]}
-        pointerEvents={
-          overlayLayer.surfacePointerEvents === 'none'
-            ? 'none'
-            : layout.showPipFlip && showVideo && !minimized
-              ? 'auto'
-              : 'none'
-        }
+        style={containerStyle}
+        pointerEvents={isPip && showVideo ? 'auto' : overlayLayer.surfacePointerEvents === 'none' ? 'none' : 'auto'}
         collapsable={false}
+        {...(isPip && showVideo ? pipGestures.panHandlers : {})}
       >
         <View style={styles.surfaceClip} collapsable={false}>
           <AgoraLocalPreviewSurface
-            layoutMode={surfaceLayoutMode}
             style={agoraDmLocalPreviewStyles.fill}
+            onSurfaceLayout={onSurfaceLayout}
           />
         </View>
-        {layout.showPipFlip && showVideo && !minimized ? (
+        {layout.showPipFlip && showVideo ? (
           <TouchableOpacity
             style={agoraDmLocalPreviewStyles.pipFlipBtn}
             onPress={onFlip}

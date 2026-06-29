@@ -118,4 +118,19 @@ export function resolveAgoraDmLocalPreviewLayout(input: {
     showFullAvatarFallback: !input.camOn,
   };
 }
-
+
+/** En chat minimisé : toujours PiP local (WhatsApp), jamais plein écran. */
+export function resolveAgoraDmOverlayLocalPreviewLayout(
+  layout: AgoraDmLocalPreviewLayout,
+  minimized: boolean,
+): AgoraDmLocalPreviewLayout {
+  if (!minimized || !layout.mountSurface || layout.containerStyle !== 'full') {
+    return layout;
+  }
+  return {
+    ...layout,
+    containerStyle: 'pip',
+    showPipFlip: layout.showVideo,
+  };
+}
+

@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import type { AgoraDmLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
+import { resetAgoraDmLocalPreviewCanvasScheduler } from './agoraDmLocalPreviewCanvasScheduler';
+import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
+import { resolveAgoraDmOverlayLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
 
 const EMPTY_PREVIEW: AgoraDmLocalPreviewLayout = {
   mountSurface: false,
@@ -23,6 +26,11 @@ export type AgoraDmCallUiSnapshot = {
   /** Layout aperçu caméra — lu par AgoraDmLocalPreviewOverlay (surface unique). */
   localPreview: AgoraDmLocalPreviewLayout;
   flipCameraTick: number;
+  /** Tap PiP — local plein écran / distant en PiP (UI seule). */
+  videoFeedsSwapped: boolean;
+  /** Position PiP glissée — null = coin par défaut. */
+  pipDragX: number | null;
+  pipDragY: number | null;
   /** Garde l’overlay local monté jusqu’à clearSession (évite démontage React). */
   localPreviewPinned: boolean;
   /** Moteur Agora preview démarré — RtcView autorisé (anti crash 1re frame). */
@@ -40,6 +48,9 @@ type AgoraDmCallUiState = AgoraDmCallUiSnapshot & {
   registerLocalPreviewRefresh: (handler: ((reason: string) => void) | null) => void;
   requestLocalPreviewRefresh: (reason: string) => void;
   requestFlipCamera: () => void;
+  toggleVideoFeedsSwap: () => void;
+  setPipDrag: (pipDragX: number, pipDragY: number) => void;
+  resetPipDrag: () => void;
   clearSession: () => void;
 };
 
@@ -56,6 +67,9 @@ const INITIAL: AgoraDmCallUiSnapshot = {
   durationSeconds: 0,
   localPreview: EMPTY_PREVIEW,
   flipCameraTick: 0,
+  videoFeedsSwapped: false,
+  pipDragX: null,
+  pipDragY: null,
   localPreviewPinned: false,
   localPreviewEngineReady: false,
 };
@@ -64,7 +78,21 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
   ...INITIAL,
   localPreviewRefreshHandler: null,
   setSession: (patch) => set((s) => ({ ...s, ...patch })),
-  setMinimized: (minimized) => set({ minimized }),
+  setMinimized: (minimized) => {
+    const wasMinimized = get().minimized;
+    set((s) => {
+      if (!minimized) return { minimized };
+      return {
+        minimized,
+        localPreview: resolveAgoraDmOverlayLocalPreviewLayout(s.localPreview, true),
+      };
+    });
+    if (minimized) {
+      queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('minimized'));
+    } else if (wasMinimized) {
+      queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('resume_minimized'));
+    }
+  },
   setDuration: (durationSeconds) => set({ durationSeconds }),
   setLocalPreview: (localPreview) => set({ localPreview }),
   setLocalPreviewPinned: (localPreviewPinned) => set({ localPreviewPinned }),
@@ -74,11 +102,26 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
     const handler = get().localPreviewRefreshHandler;
     if (typeof handler === 'function') {
       handler(reason);
+      return;
     }
+    refreshAgoraDmLocalPreviewCanvas(reason);
   },
   requestFlipCamera: () => set((s) => ({ flipCameraTick: s.flipCameraTick + 1 })),
-  clearSession: () =>
-    set({ ...INITIAL, localPreviewRefreshHandler: null, localPreviewPinned: false, localPreviewEngineReady: false }),
+  toggleVideoFeedsSwap: () => {
+    set((s) => ({ videoFeedsSwapped: !s.videoFeedsSwapped, pipDragX: null, pipDragY: null }));
+    queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('feeds_swapped'));
+  },
+  setPipDrag: (pipDragX, pipDragY) => set({ pipDragX, pipDragY }),
+  resetPipDrag: () => set({ pipDragX: null, pipDragY: null }),
+  clearSession: () => {
+    resetAgoraDmLocalPreviewCanvasScheduler();
+    set({
+      ...INITIAL,
+      localPreviewRefreshHandler: null,
+      localPreviewPinned: false,
+      localPreviewEngineReady: false,
+    });
+  },
 }));
 
 export function syncAgoraDmCallUiStore(patch: Partial<AgoraDmCallUiSnapshot>): void {

@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCallDurationCompact } from '../../call/callStatusLine';
+import { navigateToActiveAgoraCallScreen } from '../../call/navigateToActiveAgoraCallScreen';
 import { useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
 
 /** Bandeau vert « appel en cours » (style WhatsApp) quand l’écran d’appel est réduit. */
@@ -15,10 +15,6 @@ export function InCallFloatingBar() {
   const durationSeconds = useAgoraDmCallUiStore((s) => s.durationSeconds);
   const callState = useAgoraDmCallUiStore((s) => s.callState);
   const isVideoCall = useAgoraDmCallUiStore((s) => s.isVideoCall);
-  const role = useAgoraDmCallUiStore((s) => s.role);
-  const callId = useAgoraDmCallUiStore((s) => s.callId);
-  const otherUserId = useAgoraDmCallUiStore((s) => s.otherUserId);
-  const peerAvatar = useAgoraDmCallUiStore((s) => s.peerAvatar);
 
   useEffect(() => {
     if (!active || !minimized) return;
@@ -41,26 +37,7 @@ export function InCallFloatingBar() {
         : 'Appel…';
 
   const returnToCall = () => {
-    useAgoraDmCallUiStore.getState().setMinimized(false);
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.push({
-      pathname: '/messages/call',
-      params: {
-        callId,
-        peerId: otherUserId,
-        otherUserId,
-        peerName,
-        name: peerName,
-        peerAvatar,
-        avatar: peerAvatar,
-        callType: isVideoCall ? 'video' : 'audio',
-        type: isVideoCall ? 'video' : 'audio',
-        role,
-      },
-    } as never);
+    navigateToActiveAgoraCallScreen();
   };
 
   return (

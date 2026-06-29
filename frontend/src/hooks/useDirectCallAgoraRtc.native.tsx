@@ -18,9 +18,10 @@ import {
   logAgoraSwitchCamera,
   logCameraFacingSelected,
   logLocalStreamAttached,
-  rebindAgoraLocalPreview,
+  shouldAgoraSwitchCameraOnNonce,
+  syncAgoraLocalVideoCanvas,
 } from '../call/agoraCallVideoBind.native';
-import { shouldAgoraSwitchCameraOnNonce } from '../call/agoraCallVideoBind';
+import { shouldAgoraDmPreviewStartPreview } from '../call/agoraDmPipPosition';
 import {
   clearAgoraDmActiveChannel,
   forceLeaveAgoraDmActiveChannelIfStale,
@@ -63,7 +64,6 @@ import {
 } from '../call/callNativeMedia';
 import { shouldEnsureNativeInCallAfterAgoraJoin } from '../call/agoraDmCallSession';
 import { toggleAgoraScreenShare } from '../call/agoraScreenShare';
-import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import { AgoraRemoteVideoSurface } from '../call/agoraRemoteVideoSurface.native';
 import { useAgoraDmCallUiStore } from '../call/agoraDmCallUiStore';
 import {
@@ -75,6 +75,7 @@ import {
   consumeAgoraDmPreviewEngine,
   ensureAgoraDmPreviewSession,
   peekAgoraDmPreviewSession,
+  peekAgoraDmPreviewEngine,
   releaseAgoraDmPreviewSession,
 } from '../call/agoraDmPreviewSession';
 import type { ConnectionQualityDisplay } from '../call/webrtcConnectionQuality';
@@ -170,7 +171,15 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
   const [screenSharing, setScreenSharing] = useState(false);
   const screenSharingRef = useRef(false);
   const cameraFacingRef = useRef<'front' | 'back'>('front');
+  const previewActiveRef = useRef(false);
   const [previewActive, setPreviewActive] = useState(false);
+  useCallScreenSafeEffect(
+    'agora_preview_active_ref',
+    () => {
+      previewActiveRef.current = previewActive;
+    },
+    [previewActive],
+  );
   const [connectionDisplay, setConnectionDisplay] = useState<ConnectionQualityDisplay>({
     quality: 'fair',
     labelFr: 'Connexion…',
@@ -268,7 +277,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       if (typeof muteVideo !== 'function') return;
       muteVideo(!next);
       if (next) {
-        rebindAgoraLocalPreview(engine, { callId, reason: 'toggle_cam_on' });
+        syncAgoraLocalVideoCanvas(engine, { callId, reason: 'toggle_cam_on' }, { startPreview: true });
       }
       setCamOn(next);
     } catch {
@@ -339,7 +348,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       screenSharingRef.current = result.on;
       setScreenSharing(result.on);
       if (!result.on && camOn && engine) {
-        rebindAgoraLocalPreview(engine, { callId, reason: 'screen_share_end' });
+        syncAgoraLocalVideoCanvas(engine, { callId, reason: 'screen_share_end' }, { startPreview: true });
       }
       logAfwCall('agora_screen_share', { callId, active: result.on });
     }
@@ -514,7 +523,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
             logLocalStreamAttached({ callId, phase: 'init' });
           } else {
             logAfwCall('LOCAL_STREAM_REUSED', { callId, phase: 'adopted_preview' });
-            rebindAgoraLocalPreview(engine, { callId, reason: 'adopted_preview' });
+            syncAgoraLocalVideoCanvas(engine, { callId, reason: 'adopted_preview' }, { startPreview: true });
           }
           if (!cancelled) setPreviewActive(true);
         } else {
@@ -548,7 +557,11 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
                   /* ignore */
                 }
               }
-              rebindAgoraLocalPreview(engine, { callId: joinCallId, reason: 'join_ok' });
+              syncAgoraLocalVideoCanvas(
+                engine,
+                { callId: joinCallId, reason: 'join_ok' },
+                { startPreview: true },
+              );
             }
             void (async () => {
               await stopNativeOutgoingRingback();
@@ -838,37 +851,35 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       if (!engine || !joined || !videoPublished) return;
       if (!shouldAgoraSwitchCameraOnNonce(cameraFlipNonce)) return;
       logAgoraSwitchCamera({ callId, nonce: cameraFlipNonce });
-      invokeAgoraEngine(engine, 'switchCamera');
+      try {
+        if (typeof engine.switchCamera === 'function') {
+          engine.switchCamera();
+        } else {
+          invokeAgoraEngine(engine, 'switchCamera');
+        }
+      } catch {
+        invokeAgoraEngine(engine, 'switchCamera');
+      }
       cameraFacingRef.current = cameraFacingRef.current === 'front' ? 'back' : 'front';
       logCameraFacingSelected(cameraFacingRef.current, { callId, nonce: cameraFlipNonce });
-      rebindAgoraLocalPreview(engine, { callId, reason: 'switch_camera' });
+      syncAgoraLocalVideoCanvas(engine, { callId, reason: 'switch_camera' }, { startPreview: true });
     },
     [callId, cameraFlipNonce, joined, videoPublished],
   );
 
   const refreshLocalPreview = useCallback(
     (reason: string) => {
-      const engine = engineRef.current;
-      if (!engine || !videoPublishedRef.current) return;
-      rebindAgoraLocalPreview(engine, { callId, reason });
-      if (reason.includes('pip') || reason.includes('layout_')) {
-        setTimeout(() => {
-          const eng = engineRef.current;
-          if (eng) rebindAgoraLocalPreview(eng, { callId, reason: `${reason}_retry` });
-        }, 280);
-      }
+      const engine =
+        engineRef.current ?? peekAgoraDmActiveChannelEngine() ?? peekAgoraDmPreviewEngine(callId);
+      if (!engine) return;
+      if (!videoPublishedRef.current && !previewActiveRef.current) return;
+      syncAgoraLocalVideoCanvas(
+        engine,
+        { callId, reason },
+        { startPreview: shouldAgoraDmPreviewStartPreview(reason) },
+      );
     },
     [callId],
-  );
-
-  useCallScreenSafeEffect(
-    'agora_remote_rebind_pip',
-    () => {
-      const engine = engineRef.current;
-      if (!engine || !remoteEverJoined || !videoPublished) return;
-      rebindAgoraLocalPreview(engine, { callId, reason: 'remote_ever_joined_pip' });
-    },
-    [callId, remoteEverJoined, videoPublished],
   );
 
   useCallScreenSafeEffect(
@@ -882,12 +893,10 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
     [refreshLocalPreview],
   );
 
+  /** Surface locale unique — rendue par AgoraDmLocalPreviewOverlay (root). */
   const LocalView = useCallback(
-    ({ style }: { style?: StyleProp<ViewStyle> }) => {
-      if (!videoPublished || Platform.OS === 'web') return <View style={style} />;
-      return <AgoraLocalPreviewSurface style={style} />;
-    },
-    [videoPublished],
+    ({ style }: { style?: StyleProp<ViewStyle> }) => <View style={style} />,
+    [],
   );
 
   const RemoteView = useCallback(

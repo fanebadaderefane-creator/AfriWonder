@@ -10,6 +10,10 @@ export function peekAgoraDmPreviewSession(_callId: string): boolean {
   return false;
 }
 
+export function peekAgoraDmPreviewEngine(_callId: string): null {
+  return null;
+}
+
 export function isAgoraDmPreviewEngineAlive(_callId: string): boolean {
   return false;
 }

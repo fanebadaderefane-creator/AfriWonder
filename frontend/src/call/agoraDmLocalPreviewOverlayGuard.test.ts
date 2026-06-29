@@ -35,13 +35,13 @@ describe('shouldMountAgoraDmLocalPreviewOverlay', () => {
     ).toBe(false);
   });
 
-  it('plein écran — overlay root désactivé (preview dans DirectCallAgoraScreen)', () => {
+  it('plein écran — overlay root unique (surface stable)', () => {
     expect(
       shouldMountAgoraDmLocalPreviewOverlay({
         ...ready,
         containerStyle: 'full',
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('PiP — overlay root actif', () => {
@@ -49,6 +49,15 @@ describe('shouldMountAgoraDmLocalPreviewOverlay', () => {
       shouldMountAgoraDmLocalPreviewOverlay({
         ...ready,
         containerStyle: 'pip',
+      }),
+    ).toBe(true);
+  });
+
+  it('caméra off (hidden) — surface reste montée', () => {
+    expect(
+      shouldMountAgoraDmLocalPreviewOverlay({
+        ...ready,
+        containerStyle: 'hidden',
       }),
     ).toBe(true);
   });

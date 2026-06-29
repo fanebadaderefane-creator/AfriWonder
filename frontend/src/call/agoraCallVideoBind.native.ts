@@ -5,6 +5,8 @@
 import type { IRtcEngine } from 'react-native-agora';
 import { logAfwCall } from './callDiagnosticLog';
 
+export { shouldAgoraSwitchCameraOnNonce } from './agoraCallVideoBind';
+
 type AgoraEngineWithCamera = IRtcEngine & {
   setCameraCapturerConfiguration?: (config: { cameraDirection?: number }) => number;
   setupLocalVideo?: (canvas: {
@@ -47,28 +49,56 @@ export function logCameraFacingSelected(
   logAfwCall(facing === 'front' ? 'CAMERA_FRONT_SELECTED' : 'CAMERA_BACK_SELECTED', meta);
 }
 
+function localPreviewCanvasConfig(): {
+  uid: number;
+  renderMode: number;
+  mirrorMode: number;
+} {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('react-native-agora') as typeof import('react-native-agora') & {
+    RenderModeType?: { RenderModeFit?: number };
+    VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
+  };
+  return {
+    uid: 0,
+    renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
+    mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
+  };
+}
+
+/** UI seule — rattache le canvas uid 0 ; startPreview optionnel (chat / premier plan). */
+export function syncAgoraLocalVideoCanvas(
+  engine: IRtcEngine,
+  meta?: Record<string, unknown>,
+  options?: { startPreview?: boolean },
+): void {
+  try {
+    const eng = engine as AgoraEngineWithCamera;
+    if (typeof eng.setupLocalVideo === 'function') {
+      eng.setupLocalVideo(localPreviewCanvasConfig());
+    }
+  } catch {
+    /* setupLocalVideo optionnel selon version SDK */
+  }
+  if (options?.startPreview) {
+    try {
+      const startPreview = (engine as { startPreview?: () => void }).startPreview;
+      if (typeof startPreview === 'function') {
+        startPreview.call(engine);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  logAfwCall('LOCAL_CANVAS_SYNC', { ...meta, startPreview: !!options?.startPreview });
+}
+
 /** Re-bind canvas uid 0 + startPreview — après join, layout PiP ou switchCamera. */
 export function rebindAgoraLocalPreview(
   engine: IRtcEngine,
   meta?: Record<string, unknown>,
 ): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-agora') as typeof import('react-native-agora') & {
-      RenderModeType?: { RenderModeFit?: number };
-      VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
-    };
-    const eng = engine as AgoraEngineWithCamera;
-    if (typeof eng.setupLocalVideo === 'function') {
-      eng.setupLocalVideo({
-        uid: 0,
-        renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
-        mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
-      });
-    }
-  } catch {
-    /* setupLocalVideo optionnel selon version SDK */
-  }
+  syncAgoraLocalVideoCanvas(engine, meta);
   try {
     const startPreview = (engine as { startPreview?: () => void }).startPreview;
     if (typeof startPreview === 'function') {

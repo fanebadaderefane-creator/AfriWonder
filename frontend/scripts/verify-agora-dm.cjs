@@ -152,17 +152,29 @@ function checkFrontendWiring() {
     warn('DirectCallAgoraScreen — PiP', 'vérifier prepareVideoCallSystemPip lié à callState connected');
   }
 
-  if (/AgoraLocalPreviewSurface/.test(agoraScreen) && /showLocalFull/.test(agoraScreen)) {
+  const layoutRoot = read('app/_layout.tsx');
+  if (
+    /resolveAgoraDmVideoFeedPlacements/.test(agoraScreen) &&
+    /AgoraDmLocalPreviewOverlay/.test(layoutRoot) &&
+    !/AgoraLocalPreviewSurface/.test(agoraScreen)
+  ) {
+    pass('DirectCallAgoraScreen — preview surface unique root', 'overlay AgoraDmLocalPreviewOverlay');
+  } else if (/AgoraLocalPreviewSurface/.test(agoraScreen) && /showLocalFull/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — preview plein écran in-screen', 'sous le dock (pas overlay root)');
   } else {
-    fail('DirectCallAgoraScreen — preview in-screen', 'manquant — risque contrôles masqués');
+    fail('DirectCallAgoraScreen — preview surface', 'manquant — risque PiP noir ou contrôles masqués');
   }
 
   const guard = read('src/call/agoraDmLocalPreviewOverlayGuard.ts');
-  if (/containerStyle === 'full'/.test(guard) && /return false/.test(guard)) {
-    pass('Overlay guard — plein écran hors root', 'OK');
+  if (
+    /localPreviewPinned/.test(guard) &&
+    /localPreviewEngineReady/.test(guard) &&
+    /mountSurface/.test(guard) &&
+    /containerStyle === 'hidden'/.test(guard)
+  ) {
+    pass('Overlay guard — surface stable root', 'plein écran + PiP autorisés');
   } else {
-    fail('Overlay guard — plein écran', 'root overlay peut recouvrir les contrôles');
+    fail('Overlay guard — surface stable', 'garde-fous preview root manquants');
   }
 
   if (/logCallControlsMounted/.test(agoraScreen)) {
@@ -194,6 +206,40 @@ function checkFrontendWiring() {
     pass('DirectCallAgoraScreen — hangup registry', 'ErrorBoundary peut raccrocher');
   } else {
     warn('DirectCallAgoraScreen — hangup registry', 'Retour sans raccrocher');
+  }
+
+  const navResume = read('src/call/navigateToActiveAgoraCallScreen.ts');
+  if (/router\.back/.test(navResume) && /resolveAgoraDmResumeCallNavigation/.test(navResume)) {
+    pass('Navigation — retour appel depuis chat', 'router.back si minimisé');
+  } else {
+    fail('Navigation — retour appel', 'tap PiP / bandeau vert sans resume');
+  }
+
+  const pipGestures = read('src/call/useAgoraDmPipGestures.ts');
+  if (/clampAgoraDmPipDrag/.test(pipGestures) && /onPanResponderTerminationRequest/.test(pipGestures)) {
+    pass('PiP gestures — drag clamp + pas de vol de touch', 'OK');
+  } else {
+    fail('PiP gestures', 'drag non fiable');
+  }
+
+  const canvasScheduler = read('src/call/agoraDmLocalPreviewCanvasScheduler.native.ts');
+  if (/scheduleAgoraDmLocalPreviewCanvasOnSurfaceLayout/.test(canvasScheduler)) {
+    pass('Canvas scheduler — sync après layout surface', 'anti PiP noir');
+  } else {
+    fail('Canvas scheduler', 'sync layout manquant');
+  }
+
+  const canvasWeb = read('src/call/agoraDmLocalPreviewCanvas.web.ts');
+  if (/refreshAgoraDmLocalPreviewCanvas/.test(canvasWeb) && !/react-native-agora/.test(canvasWeb)) {
+    pass('Canvas web stub — pas de react-native-agora', 'bundle web safe');
+  } else {
+    fail('Canvas web stub', 'risque import Agora sur web');
+  }
+
+  if (/handleHangup/.test(agoraScreen) && /force:\s*true/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — raccrocher force', 'caller + receiver');
+  } else {
+    fail('DirectCallAgoraScreen — raccrocher', 'receiver peut être bloqué');
   }
 
   const errorBoundary = read('src/components/call/CallScreenErrorBoundary.tsx');

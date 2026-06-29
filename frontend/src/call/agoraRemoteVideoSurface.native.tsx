@@ -6,6 +6,8 @@ import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
 import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
+export const AGORA_REMOTE_VIDEO_SURFACE_KEY = 'agora-dm-remote-surface';
+
 export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
   remoteUid,
   style,
@@ -16,9 +18,9 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
   useCallScreenSafeEffect(
     'agora_remote_renderer_log',
     () => {
-      logAfwCall('REMOTE_RENDERER_ATTACHED', { remoteUid });
+      logAfwCall('REMOTE_RENDERER_ATTACHED', { remoteUid, stable: true });
       return () => {
-        logAfwCall('REMOTE_RENDERER_DETACHED', { remoteUid });
+        logAfwCall('REMOTE_RENDERER_DETACHED', { remoteUid, stable: true });
       };
     },
     [remoteUid],
@@ -35,13 +37,17 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
         style?: StyleProp<ViewStyle>;
         canvas?: { uid?: number };
       }>;
+      RtcSurfaceView?: React.ComponentType<{
+        style?: StyleProp<ViewStyle>;
+        canvas?: { uid?: number };
+      }>;
     };
 
     if (Platform.OS === 'android' && typeof mod.RtcTextureView === 'function') {
       const { RtcTextureView } = mod;
       return (
         <RtcTextureView
-          key={`agora-dm-remote-${remoteUid}`}
+          key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
           style={style}
           canvas={{ uid: remoteUid }}
         />
@@ -56,7 +62,7 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
     const { RtcSurfaceView } = mod;
     return (
       <RtcSurfaceView
-        key={`agora-dm-remote-${remoteUid}`}
+        key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
         style={style}
         canvas={{ uid: remoteUid }}
       />

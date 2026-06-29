@@ -40,4 +40,19 @@ describe('agoraDmCallUiStore', () => {
     useAgoraDmCallUiStore.getState().clearSession();
     expect(useAgoraDmCallUiStore.getState().active).toBe(false);
   });
+
+  it('setMinimized force le PiP local en chat (pas plein écran)', () => {
+    useAgoraDmCallUiStore.getState().setLocalPreview({
+      mountSurface: true,
+      containerStyle: 'full',
+      showVideo: true,
+      showPipFlip: false,
+      showFullAvatarFallback: false,
+    });
+    useAgoraDmCallUiStore.getState().setMinimized(true);
+    const s = useAgoraDmCallUiStore.getState();
+    expect(s.minimized).toBe(true);
+    expect(s.localPreview.containerStyle).toBe('pip');
+    expect(s.localPreview.showPipFlip).toBe(true);
+  });
 });

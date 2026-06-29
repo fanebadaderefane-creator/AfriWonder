@@ -2,6 +2,13 @@ import { StyleSheet } from 'react-native';
 
 /** Styles partagés — une seule surface locale (overlay root + écran d’appel). */
 export const agoraDmLocalPreviewStyles = StyleSheet.create({
+  pipBase: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    zIndex: 5,
+  },
   pip: {
     position: 'absolute',
     bottom: 108,

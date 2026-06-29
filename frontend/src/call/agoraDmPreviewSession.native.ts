@@ -48,6 +48,15 @@ export function peekAgoraDmPreviewSession(callId: string): boolean {
   return activeSession?.callId === callId && activeSession.previewActive;
 }
 
+/** Moteur preview avant join — sync canvas overlay sans toucher join/signaling. */
+export function peekAgoraDmPreviewEngine(callId: string): IRtcEngine | null {
+  if (!callId) return null;
+  if (activeSession?.callId === callId && activeSession.previewActive) {
+    return activeSession.engine;
+  }
+  return null;
+}
+
 export function isAgoraDmPreviewEngineAlive(callId: string): boolean {
   return !!callId && engineAliveForCallId === callId;
 }

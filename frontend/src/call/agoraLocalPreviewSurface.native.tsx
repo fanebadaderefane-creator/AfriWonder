@@ -1,23 +1,16 @@
 /**
- * Surface Agora locale (uid 0) — une instance stable par appel.
- * Android PiP : dimensions explicites + zOrderMediaOverlay sur SurfaceView.
+ * Surface Agora locale (uid 0) — une instance stable par appel (jamais remontée).
  */
-import React, { memo } from 'react';
-import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { memo, useCallback } from 'react';
+import { Platform, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
 import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
 export const AGORA_LOCAL_PREVIEW_SURFACE_KEY = 'agora-dm-local-preview-surface';
 
-export const AGORA_DM_LOCAL_PIP_WIDTH = 110;
-export const AGORA_DM_LOCAL_PIP_HEIGHT = 156;
-
 const FALLBACK_PREVIEW_STYLE: ViewStyle = { flex: 1, backgroundColor: '#0a0a0a' };
 
-function renderNativePreviewSurface(
-  layoutMode: 'pip' | 'fill',
-  style: StyleProp<ViewStyle> | undefined,
-): React.ReactNode {
+function renderNativePreviewSurface(style: StyleProp<ViewStyle> | undefined): React.ReactNode {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('react-native-agora') as typeof import('react-native-agora') & {
@@ -34,41 +27,37 @@ function renderNativePreviewSurface(
       VideoMirrorModeType?: { VideoMirrorModeEnabled?: number };
     };
 
-    const { RtcSurfaceView } = mod;
-    if (!RtcSurfaceView) {
-      logAfwCall('LOCAL_RENDERER_FALLBACK', { reason: 'RtcSurfaceView_missing' });
-      return <View style={[style, FALLBACK_PREVIEW_STYLE]} />;
-    }
-
-    const pipSizedStyle: StyleProp<ViewStyle> =
-      layoutMode === 'pip'
-        ? { width: AGORA_DM_LOCAL_PIP_WIDTH, height: AGORA_DM_LOCAL_PIP_HEIGHT }
-        : style;
-
     const canvas = {
       uid: 0,
       renderMode: mod.RenderModeType?.RenderModeFit ?? 1,
       mirrorMode: mod.VideoMirrorModeType?.VideoMirrorModeEnabled ?? 1,
     };
 
-    /** Android : TextureView respecte le z-order React (SurfaceView recouvre le dock). */
+    const surfaceStyle: StyleProp<ViewStyle> = [FALLBACK_PREVIEW_STYLE, style];
+
     if (Platform.OS === 'android' && mod.RtcTextureView) {
       const { RtcTextureView } = mod;
       return (
         <RtcTextureView
-          key={`${AGORA_LOCAL_PREVIEW_SURFACE_KEY}-${layoutMode}`}
-          style={pipSizedStyle}
+          key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
+          style={surfaceStyle}
           canvas={canvas}
         />
       );
     }
 
+    const { RtcSurfaceView } = mod;
+    if (!RtcSurfaceView) {
+      logAfwCall('LOCAL_RENDERER_FALLBACK', { reason: 'RtcSurfaceView_missing' });
+      return <View style={surfaceStyle} />;
+    }
+
     return (
       <RtcSurfaceView
         key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
-        style={pipSizedStyle}
+        style={surfaceStyle}
         canvas={canvas}
-        zOrderMediaOverlay={layoutMode === 'pip'}
+        zOrderMediaOverlay
       />
     );
   } catch (e) {
@@ -79,33 +68,50 @@ function renderNativePreviewSurface(
 
 export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
   style,
-  layoutMode = 'fill',
+  onSurfaceLayout,
 }: {
   style?: StyleProp<ViewStyle>;
+  /** Conservé pour compat — n’affecte plus le montage surface. */
   layoutMode?: 'pip' | 'fill';
+  /** Sync canvas Agora après layout (Android TextureView). */
+  onSurfaceLayout?: (width: number, height: number) => void;
 }) {
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      logAfwCall('LOCAL_PREVIEW_SURFACE_LAYOUT', { width, height, stable: true });
+      onSurfaceLayout?.(width, height);
+    },
+    [onSurfaceLayout],
+  );
   useCallScreenSafeEffect(
     'agora_local_renderer_log',
     () => {
       logAfwCall('LOCAL_RENDERER_ATTACHED', {
         surface: 'RtcView',
         platform: Platform.OS,
-        layoutMode,
+        stable: true,
       });
       return () => {
         logAfwCall('LOCAL_RENDERER_DETACHED', {
           surface: 'RtcView',
           platform: Platform.OS,
-          layoutMode,
+          stable: true,
         });
       };
     },
-    [layoutMode],
+    [],
   );
 
   if (Platform.OS === 'web') {
-    return <View style={style} />;
+    return <View style={style} onLayout={handleLayout} />;
   }
 
-  return renderNativePreviewSurface(layoutMode, style);
+  const fillStyle: StyleProp<ViewStyle> = [{ flex: 1, width: '100%', height: '100%' }, style];
+
+  return (
+    <View style={fillStyle} onLayout={handleLayout} collapsable={false}>
+      {renderNativePreviewSurface({ flex: 1, width: '100%', height: '100%' })}
+    </View>
+  );
 });

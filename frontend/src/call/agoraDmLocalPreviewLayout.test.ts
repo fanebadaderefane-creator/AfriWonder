@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAgoraDmLocalPreviewLayout, agoraDmLocalPreviewLayoutFingerprint } from './agoraDmLocalPreviewLayout';
+import {
+  resolveAgoraDmLocalPreviewLayout,
+  resolveAgoraDmOverlayLocalPreviewLayout,
+  agoraDmLocalPreviewLayoutFingerprint,
+} from './agoraDmLocalPreviewLayout';
 
 const base = {
   isVideoCall: true,
@@ -87,6 +91,17 @@ describe('resolveAgoraDmLocalPreviewLayout', () => {
     expect(agoraDmLocalPreviewLayoutFingerprint(layout)).toBe(
       'true|full|true|false|false',
     );
+  });
+
+  it('overlay minimisé — plein écran local forcé en PiP', () => {
+    const full = resolveAgoraDmLocalPreviewLayout({
+      ...base,
+      remoteJoined: false,
+      remoteEverJoined: false,
+    });
+    const overlay = resolveAgoraDmOverlayLocalPreviewLayout(full, true);
+    expect(overlay.containerStyle).toBe('pip');
+    expect(overlay.showPipFlip).toBe(true);
   });
 });
 
