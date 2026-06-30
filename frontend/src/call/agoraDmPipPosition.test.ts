@@ -49,19 +49,27 @@ describe('agoraDmPipPosition', () => {
     expect(shouldAgoraDmPreviewStartPreview('resume_call')).toBe(true);
 
     expect(shouldAgoraDmPreviewStartPreview('overlay_layout_full_call')).toBe(true);
+  });
 
-    expect(shouldAgoraDmPreviewStartPreview('canvas_after_overlay_flip')).toBe(true);
-
+  it('ne relance pas startPreview après switch caméra (canvas_after retiré)', () => {
+    expect(shouldAgoraDmPreviewStartPreview('canvas_after_switch_camera')).toBe(false);
     expect(shouldAgoraDmPreviewStartPreview('join_ok')).toBe(false);
-
   });
 
   it('en canal — pas de startPreview (TextureView PiP)', () => {
-    expect(resolveAgoraDmCanvasStartPreview('surface_layout_106x152', true)).toBe(false);
-    expect(resolveAgoraDmCanvasStartPreview('remote_ever_joined', true)).toBe(false);
-    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_pip_call', true)).toBe(false);
-    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_full_call', false)).toBe(true);
-    expect(resolveAgoraDmCanvasStartPreview('minimized', false)).toBe(true);
+    expect(resolveAgoraDmCanvasStartPreview('surface_layout_106x152', true, 'ios')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('remote_ever_joined', true, 'ios')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_pip_call', true, 'ios')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_full_call', false, 'ios')).toBe(true);
+    expect(resolveAgoraDmCanvasStartPreview('minimized', false, 'ios')).toBe(true);
+  });
+
+  it('Android — startPreview JS uniquement après surface_layout hors canal', () => {
+    expect(resolveAgoraDmCanvasStartPreview('surface_layout_360x640', false, 'android')).toBe(true);
+    expect(resolveAgoraDmCanvasStartPreview('pin_local_full', false, 'android')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_full_call', false, 'android')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('remote_ever_joined', false, 'android')).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('surface_layout_106x152', true, 'android')).toBe(false);
   });
 
 });

@@ -5,13 +5,44 @@
 import type { IRtcEngine } from 'react-native-agora';
 import { Platform } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
-import { resolveAgoraDmCanvasStartPreview } from './agoraDmPipPosition';
+import {
+  resolveAgoraDmCanvasStartPreview,
+  shouldAgoraDmDirectEngineStartPreview,
+} from './agoraDmPipPosition';
 import {
   shouldAgoraDmSkipSetupLocalVideo,
   shouldAgoraSwitchCameraOnNonce,
 } from './agoraCallVideoBind';
 
 export { shouldAgoraSwitchCameraOnNonce, shouldAgoraDmSkipSetupLocalVideo };
+
+/** startPreview moteur — iOS seulement hors canal ; Android = surface_layout via syncAgoraLocalVideoCanvas. */
+export function maybeStartAgoraDmEnginePreview(
+  engine: IRtcEngine,
+  meta?: Record<string, unknown>,
+  inChannel = false,
+): void {
+  if (!shouldAgoraDmDirectEngineStartPreview(Platform.OS, inChannel)) {
+    logAfwCall('LOCAL_ENGINE_START_PREVIEW_SKIPPED', {
+      ...meta,
+      inChannel,
+      platform: Platform.OS,
+    });
+    return;
+  }
+  try {
+    const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
+    if (typeof startPreview === 'function') {
+      startPreview.call(engine);
+    }
+  } catch (e) {
+    logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
+      ...meta,
+      inChannel,
+      error: String((e as Error)?.message ?? e),
+    });
+  }
+}
 
 type AgoraEngineWithCamera = IRtcEngine & {
   setCameraCapturerConfiguration?: (config: { cameraDirection?: number }) => number;
@@ -93,12 +124,15 @@ export function syncAgoraLocalVideoCanvas(
   }
   if (options?.startPreview) {
     try {
-      const startPreview = (engine as { startPreview?: () => void }).startPreview;
+      const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
       if (typeof startPreview === 'function') {
         startPreview.call(engine);
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
+        ...meta,
+        error: String((e as Error)?.message ?? e),
+      });
     }
   }
   logAfwCall('LOCAL_CANVAS_SYNC', {
@@ -117,7 +151,7 @@ export function rebindAgoraLocalPreview(
   const reason = typeof meta?.reason === 'string' ? meta.reason : 'rebind';
   const inChannel = meta?.inChannel === true;
   syncAgoraLocalVideoCanvas(engine, meta, {
-    startPreview: resolveAgoraDmCanvasStartPreview(reason, inChannel),
+    startPreview: resolveAgoraDmCanvasStartPreview(reason, inChannel, Platform.OS),
   });
   logAfwCall('LOCAL_STREAM_REPLACED', meta);
   logAfwCall('LOCAL_RENDERER_ATTACHED', meta);

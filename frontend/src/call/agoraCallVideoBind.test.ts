@@ -14,24 +14,32 @@ describe('agoraCallVideoBind', () => {
     expect(shouldAgoraSwitchCameraOnNonce(1)).toBe(true);
   });
 
-  it('Android — setupLocalVideo en canal ; hors canal sur layout/flip', () => {
+  it('Android — jamais setupLocalVideo JS (RtcTextureView canvas)', () => {
     expect(shouldAgoraDmSkipSetupLocalVideo('android')).toBe(true);
-    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'join_ok', true)).toBe(false);
-    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'join_ok', false)).toBe(true);
-    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'surface_layout_110x156')).toBe(false);
-    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'overlay_layout_pip_call')).toBe(false);
-    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'switch_camera', true)).toBe(false);
-    expect(shouldAgoraDmSkipSetupLocalVideo('ios')).toBe(false);
+    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'join_ok', true)).toBe(true);
+    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'surface_layout_110x156')).toBe(true);
+    expect(shouldAgoraDmSkipSetupLocalVideo('android', 'overlay_layout_pip_call', true)).toBe(true);
+    expect(shouldAgoraDmSkipSetupLocalVideo('ios', 'join_ok', true)).toBe(false);
   });
 
-  it('syncAgoraLocalVideoCanvas — import local shouldAgoraDmSkipSetupLocalVideo (régression Hermes)', async () => {
+  it('maybeStartAgoraDmEnginePreview — Android skip direct', async () => {
+    const { maybeStartAgoraDmEnginePreview } = await import('./agoraCallVideoBind.native');
+    const engine = { startPreview: vi.fn() };
+    maybeStartAgoraDmEnginePreview(engine as never, { callId: 'c1' }, false);
+    expect(engine.startPreview).not.toHaveBeenCalled();
+  });
+
+  it('syncAgoraLocalVideoCanvas — Android surface_layout déclenche startPreview', async () => {
     const { syncAgoraLocalVideoCanvas } = await import('./agoraCallVideoBind.native');
+    const { resolveAgoraDmCanvasStartPreview } = await import('./agoraDmPipPosition');
     const engine = { setupLocalVideo: vi.fn(), startPreview: vi.fn() };
-    expect(() =>
-      syncAgoraLocalVideoCanvas(engine as never, {
-        reason: 'surface_layout_110x156',
-        callId: 'c1',
-      }),
-    ).not.toThrow();
+    const reason = 'surface_layout_110x156';
+    syncAgoraLocalVideoCanvas(
+      engine as never,
+      { reason, callId: 'c1' },
+      { startPreview: resolveAgoraDmCanvasStartPreview(reason, false, 'android') },
+    );
+    expect(engine.setupLocalVideo).not.toHaveBeenCalled();
+    expect(engine.startPreview).toHaveBeenCalled();
   });
 });

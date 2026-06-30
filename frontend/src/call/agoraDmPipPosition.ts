@@ -25,7 +25,6 @@ export function shouldAgoraDmPreviewStartPreview(reason: string): boolean {
     reason.includes('minimized') ||
     reason.includes('app_foreground') ||
     reason.includes('overlay_flip') ||
-    reason.includes('canvas_after_') ||
     reason.includes('overlay_layout') ||
     reason.includes('surface_layout') ||
     reason.includes('feeds_swapped') ||
@@ -38,10 +37,24 @@ export function shouldAgoraDmPreviewStartPreview(reason: string): boolean {
 
 /**
  * Après joinChannel, startPreview() sur TextureView Android = PiP noir (flux publié ≠ preview).
- * Avant join : startPreview autorisé pour sonnerie / overlay entrant.
+ * iOS : startPreview sur layout / foreground / PiP chat (liste shouldAgoraDmPreviewStartPreview).
+ * Android DM : **uniquement** après onLayout RtcTextureView (`surface_layout_WxH`) hors canal —
+ * évite RangeError stack overflow (juin 2026 terrain).
  */
-export function resolveAgoraDmCanvasStartPreview(reason: string, inChannel: boolean): boolean {
-  if (!shouldAgoraDmPreviewStartPreview(reason)) return false;
+export function resolveAgoraDmCanvasStartPreview(
+  reason: string,
+  inChannel: boolean,
+  platform = 'ios',
+): boolean {
   if (inChannel) return false;
-  return true;
+  if (platform === 'android') {
+    return reason.includes('surface_layout_');
+  }
+  return shouldAgoraDmPreviewStartPreview(reason);
+}
+
+/** Android DM — jamais engine.startPreview() direct (hors sync policy surface_layout). */
+export function shouldAgoraDmDirectEngineStartPreview(platform: string, inChannel = false): boolean {
+  if (platform === 'android') return false;
+  return !inChannel;
 }

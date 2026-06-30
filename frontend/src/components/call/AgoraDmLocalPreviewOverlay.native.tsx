@@ -64,7 +64,7 @@ export function AgoraDmLocalPreviewOverlay() {
   }, [requestFlipCamera]);
 
   const pipGestures = useAgoraDmPipGestures({
-    enabled: isPip && showVideo && !minimized,
+    enabled: isPip && showVideo,
     onTap: minimized ? onReturnToCall : undefined,
     onSwap: minimized ? undefined : onSwap,
     setPipDrag,
@@ -168,7 +168,7 @@ export function AgoraDmLocalPreviewOverlay() {
   const surfaceClipStyle = useMemo(
     () => [
       styles.surfaceClip,
-      styleKey === 'full' && Platform.OS === 'android' ? styles.surfaceClipFullAndroid : null,
+      styleKey === 'full' ? styles.surfaceClipFull : null,
     ],
     [styleKey],
   );
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
   },
   /** Plein écran sonnerie — fond transparent pour ne pas masquer CallScreen. */
-  surfaceClipFullAndroid: {
+  surfaceClipFull: {
     backgroundColor: 'transparent',
   },
 });

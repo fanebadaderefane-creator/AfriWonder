@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCallDurationCompact } from '../../call/callStatusLine';
 import { navigateToActiveAgoraCallScreen } from '../../call/navigateToActiveAgoraCallScreen';
+import { logAfwCall } from '../../call/callDiagnosticLog';
 import { useAgoraDmCallUiStore } from '../../call/agoraDmCallUiStore';
 
 /** Bandeau vert « appel en cours » (style WhatsApp) quand l’écran d’appel est réduit. */
 export function InCallFloatingBar() {
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const active = useAgoraDmCallUiStore((s) => s.active);
   const minimized = useAgoraDmCallUiStore((s) => s.minimized);
@@ -16,8 +19,10 @@ export function InCallFloatingBar() {
   const callState = useAgoraDmCallUiStore((s) => s.callState);
   const isVideoCall = useAgoraDmCallUiStore((s) => s.isVideoCall);
 
+  const onCallScreen = pathname?.includes('/messages/call') ?? false;
+
   useEffect(() => {
-    if (!active || !minimized) return;
+    if (!active || onCallScreen) return;
     const id = setInterval(() => {
       const cur = useAgoraDmCallUiStore.getState();
       if (cur.callState === 'connected') {
@@ -25,9 +30,9 @@ export function InCallFloatingBar() {
       }
     }, 1000);
     return () => clearInterval(id);
-  }, [active, minimized, callState]);
+  }, [active, callState, onCallScreen]);
 
-  if (!active || !minimized || callState === 'ended') return null;
+  if (!active || callState === 'ended' || onCallScreen) return null;
 
   const label =
     callState === 'connected'
@@ -37,6 +42,12 @@ export function InCallFloatingBar() {
         : 'Appel…';
 
   const returnToCall = () => {
+    logAfwCall('NAVIGATION', {
+      action: 'floating_bar_resume',
+      pathname,
+      minimized,
+      callState,
+    });
     navigateToActiveAgoraCallScreen();
   };
 

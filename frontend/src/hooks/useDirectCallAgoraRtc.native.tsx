@@ -18,6 +18,7 @@ import {
   logAgoraSwitchCamera,
   logCameraFacingSelected,
   logLocalStreamAttached,
+  maybeStartAgoraDmEnginePreview,
   shouldAgoraSwitchCameraOnNonce,
   syncAgoraLocalVideoCanvas,
 } from '../call/agoraCallVideoBind.native';
@@ -274,7 +275,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       syncAgoraLocalVideoCanvas(
         engine,
         { callId, reason, inChannel, ...extra },
-        { startPreview: resolveAgoraDmCanvasStartPreview(reason, inChannel) },
+        { startPreview: resolveAgoraDmCanvasStartPreview(reason, inChannel, Platform.OS) },
       );
     },
     [callId],
@@ -324,7 +325,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       engine.enableLocalVideo(true);
       ensureAgoraFrontCamera(engine, { callId, phase: 'upgrade_to_video' });
       cameraFacingRef.current = 'front';
-      engine.startPreview();
+      maybeStartAgoraDmEnginePreview(engine, { callId, phase: 'upgrade_to_video' }, true);
       logLocalStreamAttached({ callId, phase: 'upgrade_to_video' });
       try {
         engine.muteAllRemoteVideoStreams(false);
@@ -532,7 +533,7 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
             engine.enableLocalVideo(true);
             ensureAgoraFrontCamera(engine, { callId, phase: 'init' });
             cameraFacingRef.current = 'front';
-            engine.startPreview();
+            maybeStartAgoraDmEnginePreview(engine, { callId, phase: 'init' }, false);
             logLocalStreamAttached({ callId, phase: 'init' });
           } else {
             logAfwCall('LOCAL_STREAM_REUSED', { callId, phase: 'adopted_preview' });
@@ -866,7 +867,10 @@ export function useDirectCallAgoraRtc(opts: DirectCallAgoraRtcOptions): DirectCa
       }
       cameraFacingRef.current = cameraFacingRef.current === 'front' ? 'back' : 'front';
       logCameraFacingSelected(cameraFacingRef.current, { callId, nonce: cameraFlipNonce });
-      syncLocalCanvas(engine, 'switch_camera');
+      /** Android TextureView : switchCamera seul — re-bind canvas = stack overflow natif. */
+      if (Platform.OS !== 'android') {
+        syncLocalCanvas(engine, 'switch_camera');
+      }
     },
     [callId, cameraFlipNonce, joined, videoPublished],
   );

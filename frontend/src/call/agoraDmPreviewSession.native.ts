@@ -7,7 +7,6 @@ import apiClient from '../api/client';
 import {
   ensureAgoraFrontCamera,
   logLocalStreamAttached,
-  rebindAgoraLocalPreview,
 } from './agoraCallVideoBind.native';
 import {
   canConsumePreviewEngine,
@@ -98,9 +97,6 @@ async function createPreviewSession(callId: string): Promise<boolean> {
     engine.enableVideo();
     engine.enableLocalVideo(true);
     ensureAgoraFrontCamera(engine, { callId, phase: 'preview_session' });
-    engine.startPreview();
-    rebindAgoraLocalPreview(engine, { callId, reason: 'preview_session' });
-    logLocalStreamAttached({ callId, phase: 'preview_session' });
     activeSession = {
       callId,
       engine,
@@ -109,6 +105,8 @@ async function createPreviewSession(callId: string): Promise<boolean> {
       cameraFacing: 'front',
     };
     engineAliveForCallId = callId;
+    logLocalStreamAttached({ callId, phase: 'preview_session' });
+    // startPreview : uniquement via AgoraLocalPreviewSurface.onLayout → surface_layout_WxH.
     logAfwCall('agora_preview_session_started', { callId });
     return true;
   } catch (e) {
@@ -161,11 +159,15 @@ export function setAgoraDmPreviewVideoEnabled(callId: string, on: boolean): void
   try {
     if (on) {
       engine.enableLocalVideo(true);
-      engine.startPreview();
       engine.muteLocalVideoStream(false);
+      // Android : startPreview uniquement via surface_layout (RtcTextureView monté).
     } else {
       engine.muteLocalVideoStream(true);
-      engine.stopPreview();
+      try {
+        engine.stopPreview();
+      } catch {
+        /* ignore */
+      }
     }
     activeSession.previewActive = on;
   } catch {

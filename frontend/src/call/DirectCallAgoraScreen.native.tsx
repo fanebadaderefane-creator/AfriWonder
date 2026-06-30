@@ -60,7 +60,6 @@ import {
 } from './callNativeMedia';
 import { tryEnterPictureInPicture, prepareVideoCallSystemPip } from '../live/liveNativeExtras';
 import { syncAgoraDmCallUiStore, useAgoraDmCallUiStore, agoraDmEmptyLocalPreview } from './agoraDmCallUiStore';
-import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
 import { activateAgoraDmVideoPreview, releaseAgoraDmPreviewSession, isAgoraDmPreviewEngineAlive } from './agoraDmPreviewSession';
 import { openDmThreadFromCall } from './openDmThreadFromCall';
 import { enableCallKeepAwake, disableCallKeepAwake } from './agoraCallKeepAwake';
@@ -273,6 +272,7 @@ export function DirectCallAgoraScreen() {
   );
 
   const pinLocalPreviewFull = useCallback(() => {
+    useAgoraDmCallUiStore.getState().setLocalPreviewSurfaceLaidOut(false);
     useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(true);
     useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
     useAgoraDmCallUiStore.getState().setLocalPreview({
@@ -289,7 +289,7 @@ export function DirectCallAgoraScreen() {
       callState: callStateRef.current,
       callId: callIdRef.current,
     });
-    queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('pin_local_full'));
+    // surface_layout via AgoraDmLocalPreviewOverlay.onSurfaceLayout — pas de refresh JS ici.
     logAfwCall('PREVIEW', { action: 'pin_local_full', callId: callIdRef.current });
   }, []);
 
@@ -1031,13 +1031,22 @@ export function DirectCallAgoraScreen() {
     };
 
     const onEnd = (payload?: { callId?: string }, reason: 'completed' | 'declined' | 'missed' = 'completed') => {
-      if (payload?.callId && payload.callId !== callIdRef.current) return;
+      const incomingId = payload?.callId ? String(payload.callId) : '';
+      if (incomingId && incomingId !== callIdRef.current) {
+        logAfwCall('call_end_signal_ignored', {
+          callId: callIdRef.current,
+          incomingId,
+          reason,
+        });
+        return;
+      }
       if (finishingRef.current || callStateRef.current === 'ended') return;
       logAfwCall('call_end_signal', {
         callId: callIdRef.current,
         state: callStateRef.current,
         source: 'socket',
         reason,
+        incomingId: incomingId || null,
       });
       void finishCallRef.current(reason, { immediate: true, force: true, skipEmitEnd: true });
     };
@@ -1152,10 +1161,10 @@ export function DirectCallAgoraScreen() {
   const handleMinimize = useCallback(async () => {
     if (callState === 'ended') return;
     logCallNav('messages/[id]', { action: 'minimize_to_chat', callId: callIdRef.current });
+    useAgoraDmCallUiStore.getState().setMinimized(true);
     if (isVideoCall && joined) {
       await tryEnterPictureInPicture({ silent: true, title: name });
     }
-    useAgoraDmCallUiStore.getState().setMinimized(true);
     await openDmThreadFromCall({ otherUserId, peerName: name, peerAvatar: avatar });
   }, [avatar, callState, isVideoCall, joined, name, otherUserId]);
 
@@ -1272,7 +1281,9 @@ export function DirectCallAgoraScreen() {
     (callState === 'ringing' || callState === 'connecting') &&
     callState !== 'ended';
   const showVideoStage = showVideoStageBase || ringingVideoShell;
-  const showRingingAvatarInVideoStage = ringingVideoShell && !videoPreviewReady && !remoteJoined;
+  const localPreviewSurfaceLaidOut = useAgoraDmCallUiStore((s) => s.localPreviewSurfaceLaidOut);
+  const showRingingAvatarInVideoStage =
+    ringingVideoShell && !remoteJoined && !localPreviewSurfaceLaidOut;
   const showLocalFull = shouldShowLocalVideoFullscreen({
     isVideoCall,
     mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),

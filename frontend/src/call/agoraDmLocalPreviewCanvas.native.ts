@@ -2,6 +2,7 @@
  * Sync canvas aperçu local Agora — UI uniquement (natif).
  */
 import type { IRtcEngine } from 'react-native-agora';
+import { Platform } from 'react-native';
 import {
   logAgoraSwitchCamera,
   syncAgoraLocalVideoCanvas,
@@ -66,11 +67,11 @@ export function refreshAgoraDmLocalPreviewCanvas(reason: string): void {
   syncAgoraLocalVideoCanvas(
     engine,
     { callId, reason, source: 'active_channel', inChannel: isInAgoraDmChannel(callId) },
-    { startPreview: resolveAgoraDmCanvasStartPreview(reason, isInAgoraDmChannel(callId)) },
+    { startPreview: resolveAgoraDmCanvasStartPreview(reason, isInAgoraDmChannel(callId), Platform.OS) },
   );
 }
 
-/** Inverser la caméra depuis l’overlay (écran réduit) sans remonter le hook RTC. */
+/** Inverser la caméra depuis l’overlay — switchCamera seul (pas de re-bind canvas). */
 export function flipAgoraDmLocalCamera(reason: string): void {
   const { active, callId } = useAgoraDmCallUiStore.getState();
   if (
@@ -95,9 +96,4 @@ export function flipAgoraDmLocalCamera(reason: string): void {
   } catch {
     /* ignore — pas de double invoke (stack overflow natif) */
   }
-  syncAgoraLocalVideoCanvas(
-    engine,
-    { callId, reason: `canvas_after_${reason}`, inChannel: isInAgoraDmChannel(callId) },
-    { startPreview: resolveAgoraDmCanvasStartPreview(`canvas_after_${reason}`, isInAgoraDmChannel(callId)) },
-  );
 }

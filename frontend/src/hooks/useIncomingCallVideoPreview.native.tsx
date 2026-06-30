@@ -4,7 +4,6 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
-import { AgoraLocalPreviewSurface } from '../call/agoraLocalPreviewSurface.native';
 import {
   activateAgoraDmVideoPreview,
   isAgoraDmPreviewHandoffPending,
@@ -53,10 +52,11 @@ export function useIncomingCallVideoPreview(opts: { callId: string; enabled: boo
 
   const PreviewView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => {
+      /** Une seule RtcTextureView — overlay root après acceptation (évite double bind / noir). */
       if (!ready || !previewOn || Platform.OS === 'web') {
-        return <View style={[style, { backgroundColor: '#0a0a0a' }]} />;
+        return <View style={[style, { backgroundColor: '#101822' }]} />;
       }
-      return <AgoraLocalPreviewSurface layoutMode="fill" style={style} />;
+      return <View style={[style, { backgroundColor: '#101822' }]} />;
     },
     [previewOn, ready],
   );

@@ -36,6 +36,8 @@ export type AgoraDmCallUiSnapshot = {
   localPreviewPinned: boolean;
   /** Moteur Agora preview démarré — RtcView autorisé (anti crash 1re frame). */
   localPreviewEngineReady: boolean;
+  /** TextureView / RtcView a une taille valide — évite flash noir plein écran sonnerie. */
+  localPreviewSurfaceLaidOut: boolean;
 };
 
 type AgoraDmCallUiState = AgoraDmCallUiSnapshot & {
@@ -46,6 +48,7 @@ type AgoraDmCallUiState = AgoraDmCallUiSnapshot & {
   setLocalPreview: (localPreview: AgoraDmLocalPreviewLayout) => void;
   setLocalPreviewPinned: (localPreviewPinned: boolean) => void;
   setLocalPreviewEngineReady: (localPreviewEngineReady: boolean) => void;
+  setLocalPreviewSurfaceLaidOut: (localPreviewSurfaceLaidOut: boolean) => void;
   registerLocalPreviewRefresh: (handler: ((reason: string) => void) | null) => void;
   requestLocalPreviewRefresh: (reason: string) => void;
   requestFlipCamera: () => void;
@@ -73,6 +76,7 @@ const INITIAL: AgoraDmCallUiSnapshot = {
   pipDragY: null,
   localPreviewPinned: false,
   localPreviewEngineReady: false,
+  localPreviewSurfaceLaidOut: false,
 };
 
 export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
@@ -98,6 +102,8 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
   setLocalPreview: (localPreview) => set({ localPreview }),
   setLocalPreviewPinned: (localPreviewPinned) => set({ localPreviewPinned }),
   setLocalPreviewEngineReady: (localPreviewEngineReady) => set({ localPreviewEngineReady }),
+  setLocalPreviewSurfaceLaidOut: (localPreviewSurfaceLaidOut) =>
+    set({ localPreviewSurfaceLaidOut }),
   registerLocalPreviewRefresh: (handler) => set({ localPreviewRefreshHandler: handler }),
   requestLocalPreviewRefresh: (reason) => {
     const handler = get().localPreviewRefreshHandler;
@@ -129,6 +135,7 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
       localPreviewRefreshHandler: null,
       localPreviewPinned: false,
       localPreviewEngineReady: false,
+      localPreviewSurfaceLaidOut: false,
     });
   },
 }));
