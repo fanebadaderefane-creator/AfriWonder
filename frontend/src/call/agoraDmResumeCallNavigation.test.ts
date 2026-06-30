@@ -9,6 +9,12 @@ describe('resolveAgoraDmResumeCallNavigation', () => {
     ).toBe('router_back');
   });
 
+  it('pile navigation — router.back dès que possible (évite double CallScreen)', () => {
+    expect(
+      resolveAgoraDmResumeCallNavigation({ wasMinimized: false, canGoBack: true }),
+    ).toBe('router_back');
+  });
+
   it('sans historique — push call', () => {
     expect(
       resolveAgoraDmResumeCallNavigation({ wasMinimized: true, canGoBack: false }),

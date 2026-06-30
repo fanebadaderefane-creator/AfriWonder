@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
 import { resolveAgoraDmResumeCallNavigation } from './agoraDmResumeCallNavigation';
 import { logCallNav } from './callUiLifecycleLog';
+import { logAfwCall } from './callDiagnosticLog';
 import { useAgoraDmCallUiStore } from './agoraDmCallUiStore';
 
 function buildCallRouteParams(s: ReturnType<typeof useAgoraDmCallUiStore.getState>) {
@@ -37,6 +38,12 @@ export function navigateToActiveAgoraCallScreen(): void {
     callId: s.callId,
     wasMinimized,
     navAction,
+  });
+  logAfwCall('NAVIGATION', {
+    action: 'resume_active_call',
+    callId: s.callId,
+    navAction,
+    wasMinimized,
   });
   if (navAction === 'router_back') {
     router.back();

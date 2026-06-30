@@ -10,6 +10,6 @@ export function shouldMountAgoraDmLocalPreviewOverlay(input: {
   if (input.callState === 'ended' || !input.isVideoCall) return false;
   if (!input.localPreviewPinned || !input.localPreviewEngineReady) return false;
   if (!input.mountSurface) return false;
-  /* hidden = caméra off — garder la surface montée (opacity 0.01), ne pas démonter. */
+  /** containerStyle === 'hidden' : caméra off — surface montée (opacity), pas de démontage. */
   return true;
 }

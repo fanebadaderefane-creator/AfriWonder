@@ -35,3 +35,13 @@ export function shouldAgoraDmPreviewStartPreview(reason: string): boolean {
     reason.includes('remote_ever_joined')
   );
 }
+
+/**
+ * Après joinChannel, startPreview() sur TextureView Android = PiP noir (flux publié ≠ preview).
+ * Avant join : startPreview autorisé pour sonnerie / overlay entrant.
+ */
+export function resolveAgoraDmCanvasStartPreview(reason: string, inChannel: boolean): boolean {
+  if (!shouldAgoraDmPreviewStartPreview(reason)) return false;
+  if (inChannel) return false;
+  return true;
+}

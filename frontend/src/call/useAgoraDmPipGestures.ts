@@ -30,7 +30,21 @@ export function defaultAgoraDmPipStyle(input: {
   };
 }
 
-/** Gestes PiP — glisser (clamp fenêtre) + tap court (retour appel ou inversion flux). */
+/** Seuil tap court vs drag PiP (WhatsApp). */
+export const AGORA_DM_PIP_TAP_MAX_MS = 280;
+export const AGORA_DM_PIP_TAP_MAX_MOVE_PX = 12;
+
+export function shouldAgoraDmPipSwapOnRelease(input: {
+  elapsedMs: number;
+  dx: number;
+  dy: number;
+}): boolean {
+  return (
+    input.elapsedMs < AGORA_DM_PIP_TAP_MAX_MS &&
+    Math.abs(input.dx) + Math.abs(input.dy) < AGORA_DM_PIP_TAP_MAX_MOVE_PX
+  );
+}
+
 export function useAgoraDmPipGestures(input: {
   enabled: boolean;
   onTap?: () => void;
@@ -67,7 +81,10 @@ export function useAgoraDmPipGestures(input: {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => input.enabled,
+        onStartShouldSetPanResponderCapture: () => input.enabled,
         onMoveShouldSetPanResponder: (_, g) =>
+          input.enabled && (Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4),
+        onMoveShouldSetPanResponderCapture: (_, g) =>
           input.enabled && (Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4),
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
@@ -90,13 +107,13 @@ export function useAgoraDmPipGestures(input: {
         },
         onPanResponderRelease: (_, g) => {
           const elapsed = Date.now() - tapStart.current;
-          const moved = Math.abs(g.dx) + Math.abs(g.dy);
-          if (elapsed < 280 && moved < 12) {
-            if (onTapRef.current) {
-              onTapRef.current();
-            } else if (onSwapRef.current) {
-              onSwapRef.current();
-            }
+          if (!shouldAgoraDmPipSwapOnRelease({ elapsedMs: elapsed, dx: g.dx, dy: g.dy })) {
+            return;
+          }
+          if (onTapRef.current) {
+            onTapRef.current();
+          } else if (onSwapRef.current) {
+            onSwapRef.current();
           }
         },
       }),

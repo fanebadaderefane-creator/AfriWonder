@@ -53,6 +53,11 @@ async function fetchCallNetworkSnapshot(): Promise<NetworkSnapshot | null> {
 }
 
 function pushCallerCallScreen(params: OpenNativeCallScreenParams, callType: 'audio' | 'video'): void {
+  logAfwCall('NAVIGATION', {
+    action: 'push_caller_call',
+    peerUserId: params.peerUserId,
+    callType,
+  });
   router.push({
     pathname: '/messages/call',
     params: {
@@ -123,6 +128,11 @@ export function navigateToReceiverCallScreen(input: ReceiverCallScreenInput): vo
     /** Appel vidéo entrant : ne pas rétrograder en audio seul (sinon pas de `autoSubscribeVideo` Agora). */
     const callType = input.type;
     const pushReceiverScreen = () => {
+      logAfwCall('NAVIGATION', {
+        action: 'push_receiver_call',
+        callId: input.callId,
+        callType,
+      });
       router.push({
         pathname: '/messages/call',
         params: buildReceiverCallRouteParams({ ...input, type: callType }),

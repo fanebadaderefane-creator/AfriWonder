@@ -119,8 +119,10 @@ export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
   ];
 
   return (
-    <View style={fillStyle} onLayout={handleLayout} collapsable={false}>
-      {renderNativePreviewSurface({ flex: 1, width: '100%', height: '100%' })}
+    <View style={fillStyle} onLayout={handleLayout} collapsable={false} pointerEvents="box-none">
+      <View style={{ flex: 1, width: '100%', height: '100%' }} pointerEvents="none" collapsable={false}>
+        {renderNativePreviewSurface({ flex: 1, width: '100%', height: '100%' })}
+      </View>
     </View>
   );
 });

@@ -1,13 +1,17 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+
+/** Android RtcTextureView : overflow:hidden sur le parent = PiP noir (coins arrondis via bordure). */
+const pipOverflowClip = Platform.OS === 'android' ? undefined : ('hidden' as const);
 
 /** Styles partagés — une seule surface locale (overlay root + écran d’appel). */
 export const agoraDmLocalPreviewStyles = StyleSheet.create({
   pipBase: {
     borderRadius: 12,
-    overflow: 'hidden',
+    ...(pipOverflowClip ? { overflow: pipOverflowClip } : null),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
     zIndex: 5,
+    ...(Platform.OS === 'android' ? { elevation: 24 } : null),
   },
   pip: {
     position: 'absolute',
@@ -16,7 +20,7 @@ export const agoraDmLocalPreviewStyles = StyleSheet.create({
     width: 110,
     height: 156,
     borderRadius: 12,
-    overflow: 'hidden',
+    ...(pipOverflowClip ? { overflow: pipOverflowClip } : null),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
     zIndex: 5,

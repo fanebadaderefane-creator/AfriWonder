@@ -1,12 +1,19 @@
 /**
  * Empilement overlay caméra locale Agora DM.
- * Plein écran sonnerie : sous le dock (pointerEvents none).
+ * Plein écran sonnerie : zone vidéo entre top bar et dock (pas absoluteFill sur root).
  * PiP connecté : au-dessus de la vidéo distante (Stack), sous le bandeau flottant minimisé.
  */
+import type { ViewStyle } from 'react-native';
+
 export const AGORA_DM_OVERLAY_Z_CALL_VIDEO = 2;
 /** PiP local sur l’écran d’appel — doit peindre par-dessus RemoteView (TextureView). */
 export const AGORA_DM_OVERLAY_Z_CALL_PIP = 15;
 export const AGORA_DM_OVERLAY_Z_PIP_FLOAT = 9996;
+
+/** Hauteur top bar + statut sur l’écran d’appel (hors safe area). */
+export const AGORA_DM_CALL_TOP_CHROME_DP = 56;
+/** Dock contrôles + marge bas (hors safe area). */
+export const AGORA_DM_CALL_DOCK_DP = 108;
 
 export type AgoraDmOverlayLayer = {
   hostZIndex: number;
@@ -39,4 +46,25 @@ export function resolveAgoraDmOverlayLayer(input: {
     hostElevation: AGORA_DM_OVERLAY_Z_CALL_VIDEO,
     surfacePointerEvents: input.containerStyle === 'full' ? 'none' : 'auto',
   };
+}
+
+/**
+ * Hôte overlay root (_layout) — en `full` sur l’écran d’appel, ne pas recouvrir top bar / dock.
+ * Sinon l’utilisateur voit un écran noir total (sibling au-dessus du Stack).
+ */
+export function resolveAgoraDmOverlayHostLayout(input: {
+  containerStyle: 'pip' | 'full' | 'hidden';
+  minimized: boolean;
+  safeTop: number;
+  safeBottom: number;
+}): ViewStyle {
+  const base: ViewStyle = { position: 'absolute', left: 0, right: 0 };
+  if (input.containerStyle === 'full' && !input.minimized) {
+    return {
+      ...base,
+      top: input.safeTop + AGORA_DM_CALL_TOP_CHROME_DP,
+      bottom: input.safeBottom + AGORA_DM_CALL_DOCK_DP,
+    };
+  }
+  return { ...base, top: 0, bottom: 0 };
 }

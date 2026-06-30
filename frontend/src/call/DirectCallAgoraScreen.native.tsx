@@ -146,7 +146,7 @@ export function DirectCallAgoraScreen() {
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [cameraFlipNonce, setCameraFlipNonce] = useState(0);
+  const flipCameraTick = useAgoraDmCallUiStore((s) => s.flipCameraTick);
   const [mediaEnabled, setMediaEnabled] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
@@ -215,8 +215,10 @@ export function DirectCallAgoraScreen() {
         }
       }
       logAfwCall('agora_screen_mount', { callId: currentCallId, role, platform: Platform.OS });
+      logAfwCall('CALLSCREEN_MOUNT', { callId: currentCallId, role, platform: Platform.OS });
       logCallNav('messages/call', { action: 'mount', callId: currentCallId, role, engine: 'agora' });
       return () => {
+        logAfwCall('CALLSCREEN_UNMOUNT', { callId: callIdRef.current, role, platform: Platform.OS });
         logCallNav('messages/call', { action: 'unmount', callId: callIdRef.current, role, engine: 'agora' });
       };
     },
@@ -288,6 +290,7 @@ export function DirectCallAgoraScreen() {
       callId: callIdRef.current,
     });
     queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('pin_local_full'));
+    logAfwCall('PREVIEW', { action: 'pin_local_full', callId: callIdRef.current });
   }, []);
 
   const resetLocalPreviewUi = useCallback(() => {
@@ -316,6 +319,7 @@ export function DirectCallAgoraScreen() {
     setVideoPreviewReady(true);
     pinLocalPreviewFull();
     logLocalStreamCreated({ callId: callIdRef.current, role, engine: 'agora', phase: 'preview' });
+    logAfwCall('PREVIEW', { action: 'activate_ok', callId: callIdRef.current, role });
     logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
     return true;
   }, [pinLocalPreviewFull, resetLocalPreviewUi, role]);
@@ -423,7 +427,7 @@ export function DirectCallAgoraScreen() {
     role,
     audioOnly: !startedAsVideo,
     muted,
-    cameraFlipNonce,
+    cameraFlipNonce: flipCameraTick,
     speakerOn,
     callAbortedRef,
     onRemoteJoined: handleRemoteJoined,
@@ -607,7 +611,12 @@ export function DirectCallAgoraScreen() {
   const finishCall = useCallback(
     async (
       reason: 'completed' | 'failed' | 'missed' | 'declined' = 'completed',
-      options?: { skipNavigation?: boolean; force?: boolean; immediate?: boolean },
+      options?: {
+        skipNavigation?: boolean;
+        force?: boolean;
+        immediate?: boolean;
+        skipEmitEnd?: boolean;
+      },
     ) => {
       if (finishingRef.current || callStateRef.current === 'ended') return;
       logCallUiState({
@@ -660,13 +669,15 @@ export function DirectCallAgoraScreen() {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      void socketService.ensureConnectedEmit('call:end', {
-        callId: callIdRef.current,
-        fromUserId: myUserId,
-        toUserId: otherUserId,
-        reason,
-        durationSec: durationRef.current,
-      });
+      if (!options?.skipEmitEnd) {
+        void socketService.ensureConnectedEmit('call:end', {
+          callId: callIdRef.current,
+          fromUserId: myUserId,
+          toUserId: otherUserId,
+          reason,
+          durationSec: durationRef.current,
+        });
+      }
       if (!options?.skipNavigation && !options?.immediate) {
         await new Promise((resolve) => setTimeout(resolve, CALL_END_STATUS_DISPLAY_MS));
       }
@@ -816,17 +827,6 @@ export function DirectCallAgoraScreen() {
   const flipCamera = useCallback(() => {
     useAgoraDmCallUiStore.getState().requestFlipCamera();
   }, []);
-
-  const flipCameraTick = useAgoraDmCallUiStore((s) => s.flipCameraTick);
-  useCallScreenSafeEffect(
-    'agora_flip_camera_tick',
-    () => {
-      if (flipCameraTick > 0) {
-        setCameraFlipNonce((n) => n + 1);
-      }
-    },
-    [flipCameraTick],
-  );
 
   useCallScreenSafeEffect(
     'agora_stop_ringing',
@@ -1034,7 +1034,7 @@ export function DirectCallAgoraScreen() {
         source: 'socket',
         reason,
       });
-      void finishCallRef.current(reason, { immediate: true });
+      void finishCallRef.current(reason, { immediate: true, force: true, skipEmitEnd: true });
     };
 
     const onInviteAck = (payload: { callId?: string; receiverReachable?: boolean }) => {
@@ -1253,14 +1253,21 @@ export function DirectCallAgoraScreen() {
     }
   }, [emitCallRelay, screenShareLoading, toggleScreenShare]);
 
-  const showVideoStage = shouldShowAgoraVideoStage({
+  const showVideoStageBase = shouldShowAgoraVideoStage({
     joined,
-    previewActive,
+    previewActive: videoPreviewReady,
     isVideoCall,
     mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),
     localScreenSharing,
     peerScreenSharing,
   });
+  /** Sonnerie vidéo : garder le shell vidéo (top bar + dock) sans flash audio→noir. */
+  const ringingVideoShell =
+    startedAsVideo &&
+    (callState === 'ringing' || callState === 'connecting') &&
+    callState !== 'ended';
+  const showVideoStage = showVideoStageBase || ringingVideoShell;
+  const showRingingAvatarInVideoStage = ringingVideoShell && !videoPreviewReady && !remoteJoined;
   const showLocalFull = shouldShowLocalVideoFullscreen({
     isVideoCall,
     mediaEnabled: mediaEnabled || isAgoraDmPreviewEngineAlive(callId),
@@ -1365,7 +1372,7 @@ export function DirectCallAgoraScreen() {
   const defaultPipX = windowSize.width - 110 - 16;
   const defaultPipY = windowSize.height - pipBottomOffset - 156;
   const remotePipGestures = useAgoraDmPipGestures({
-    enabled: showRemotePip && remoteJoined,
+    enabled: showRemotePip && (remoteJoined || remoteEverJoined),
     onSwap: toggleVideoFeedsSwap,
     setPipDrag,
     dragX: pipDragX,
@@ -1494,6 +1501,8 @@ export function DirectCallAgoraScreen() {
                       ]
                     : styles.videoFill
               }
+              accessibilityRole={showRemotePip ? 'button' : undefined}
+              accessibilityLabel={showRemotePip ? 'Inverser les vidéos' : undefined}
               {...(showRemotePip ? remotePipGestures.panHandlers : {})}
             >
               <RemoteView style={agoraDmLocalPreviewStyles.fill} />
@@ -1516,7 +1525,7 @@ export function DirectCallAgoraScreen() {
               <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
             </TouchableOpacity>
           ) : null}
-          {!remoteJoined && showLocalFull ? (
+          {!remoteJoined && showLocalFull && !showRingingAvatarInVideoStage ? (
             <>
               <View style={[styles.videoFill, styles.localPreviewHost]} />
               {showSideRail ? (
@@ -1561,6 +1570,17 @@ export function DirectCallAgoraScreen() {
                 </View>
               ) : null}
             </>
+          ) : showRingingAvatarInVideoStage ? (
+            <View style={styles.videoFill}>
+              <Animated.View
+                style={[
+                  styles.ringingAvatarWrap,
+                  callState === 'ringing' ? { transform: [{ scale: pulseAnim }] } : null,
+                ]}
+              >
+                <Image source={{ uri: peerAvatarUri }} style={styles.ringingAvatar} />
+              </Animated.View>
+            </View>
           ) : !remoteJoined && callState !== 'ended' ? (
             <View style={styles.videoWaiting}>
               <Text style={styles.videoWaitingText}>Connexion vidéo…</Text>
@@ -1783,6 +1803,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A3942',
   },
   videoStage: { flex: 1, position: 'relative', backgroundColor: '#101822', zIndex: 1 },
+  ringingAvatarWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  ringingAvatar: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#2A3942',
+  },
   tapToShowOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 90,

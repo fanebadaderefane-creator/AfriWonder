@@ -55,4 +55,15 @@ describe('agoraDmCallUiStore', () => {
     expect(s.localPreview.containerStyle).toBe('pip');
     expect(s.localPreview.showPipFlip).toBe(true);
   });
+
+  it('toggleVideoFeedsSwap conserve la position PiP', () => {
+    useAgoraDmCallUiStore.getState().setPipDrag(42, 88);
+    useAgoraDmCallUiStore.getState().toggleVideoFeedsSwap();
+    const s = useAgoraDmCallUiStore.getState();
+    expect(s.videoFeedsSwapped).toBe(true);
+    expect(s.pipDragX).toBe(42);
+    expect(s.pipDragY).toBe(88);
+    useAgoraDmCallUiStore.getState().toggleVideoFeedsSwap();
+    expect(useAgoraDmCallUiStore.getState().videoFeedsSwapped).toBe(false);
+  });
 });

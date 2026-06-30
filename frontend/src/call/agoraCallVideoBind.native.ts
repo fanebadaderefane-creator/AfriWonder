@@ -3,9 +3,11 @@
  * N’altère pas joinChannel / token / signalisation socket.
  */
 import type { IRtcEngine } from 'react-native-agora';
+import { Platform } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
+import { resolveAgoraDmCanvasStartPreview } from './agoraDmPipPosition';
 
-export { shouldAgoraSwitchCameraOnNonce } from './agoraCallVideoBind';
+export { shouldAgoraSwitchCameraOnNonce, shouldAgoraDmSkipSetupLocalVideo } from './agoraCallVideoBind';
 
 type AgoraEngineWithCamera = IRtcEngine & {
   setCameraCapturerConfiguration?: (config: { cameraDirection?: number }) => number;
@@ -70,11 +72,16 @@ function localPreviewCanvasConfig(): {
 export function syncAgoraLocalVideoCanvas(
   engine: IRtcEngine,
   meta?: Record<string, unknown>,
-  options?: { startPreview?: boolean },
+  options?: { startPreview?: boolean; skipSetupLocalVideo?: boolean },
 ): void {
+  const reason = typeof meta?.reason === 'string' ? meta.reason : undefined;
+  const inChannel = meta?.inChannel === true;
+  const skipSetupLocalVideo =
+    options?.skipSetupLocalVideo ??
+    shouldAgoraDmSkipSetupLocalVideo(Platform.OS, reason, inChannel);
   try {
     const eng = engine as AgoraEngineWithCamera;
-    if (typeof eng.setupLocalVideo === 'function') {
+    if (!skipSetupLocalVideo && typeof eng.setupLocalVideo === 'function') {
       eng.setupLocalVideo(localPreviewCanvasConfig());
     }
   } catch {
@@ -90,23 +97,24 @@ export function syncAgoraLocalVideoCanvas(
       /* ignore */
     }
   }
-  logAfwCall('LOCAL_CANVAS_SYNC', { ...meta, startPreview: !!options?.startPreview });
+  logAfwCall('LOCAL_CANVAS_SYNC', {
+    ...meta,
+    startPreview: !!options?.startPreview,
+    skipSetupLocalVideo,
+    inChannel,
+  });
 }
 
-/** Re-bind canvas uid 0 + startPreview — après join, layout PiP ou switchCamera. */
+/** Re-bind canvas uid 0 — startPreview seulement hors canal (preview sonnerie). */
 export function rebindAgoraLocalPreview(
   engine: IRtcEngine,
   meta?: Record<string, unknown>,
 ): void {
-  syncAgoraLocalVideoCanvas(engine, meta);
-  try {
-    const startPreview = (engine as { startPreview?: () => void }).startPreview;
-    if (typeof startPreview === 'function') {
-      startPreview.call(engine);
-    }
-  } catch {
-    /* ignore */
-  }
+  const reason = typeof meta?.reason === 'string' ? meta.reason : 'rebind';
+  const inChannel = meta?.inChannel === true;
+  syncAgoraLocalVideoCanvas(engine, meta, {
+    startPreview: resolveAgoraDmCanvasStartPreview(reason, inChannel),
+  });
   logAfwCall('LOCAL_STREAM_REPLACED', meta);
   logAfwCall('LOCAL_RENDERER_ATTACHED', meta);
 }

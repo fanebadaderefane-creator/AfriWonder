@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 
 
-import { clampAgoraDmPipDrag, shouldAgoraDmPreviewStartPreview } from './agoraDmPipPosition';
+import {
+  clampAgoraDmPipDrag,
+  resolveAgoraDmCanvasStartPreview,
+  shouldAgoraDmPreviewStartPreview,
+} from './agoraDmPipPosition';
 
 
 
@@ -50,6 +54,14 @@ describe('agoraDmPipPosition', () => {
 
     expect(shouldAgoraDmPreviewStartPreview('join_ok')).toBe(false);
 
+  });
+
+  it('en canal — pas de startPreview (TextureView PiP)', () => {
+    expect(resolveAgoraDmCanvasStartPreview('surface_layout_106x152', true)).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('remote_ever_joined', true)).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_pip_call', true)).toBe(false);
+    expect(resolveAgoraDmCanvasStartPreview('overlay_layout_full_call', false)).toBe(true);
+    expect(resolveAgoraDmCanvasStartPreview('minimized', false)).toBe(true);
   });
 
 });

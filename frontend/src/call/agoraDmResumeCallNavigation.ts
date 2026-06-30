@@ -5,6 +5,7 @@ export function resolveAgoraDmResumeCallNavigation(input: {
   wasMinimized: boolean;
   canGoBack: boolean;
 }): AgoraDmResumeCallNavAction {
-  if (input.wasMinimized && input.canGoBack) return 'router_back';
+  /** CallScreen reste dans la pile après minimize — éviter router.push (double écran / noir). */
+  if (input.canGoBack) return 'router_back';
   return 'router_push';
 }

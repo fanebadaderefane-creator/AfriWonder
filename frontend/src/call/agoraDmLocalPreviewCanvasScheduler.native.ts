@@ -5,6 +5,7 @@
  */
 
 import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
+import { logAfwCall } from './callDiagnosticLog';
 
 import {
 
@@ -59,6 +60,8 @@ export function scheduleAgoraDmLocalPreviewCanvasOnSurfaceLayout(width: number, 
   surfaceLayoutTimer = setTimeout(() => {
 
     surfaceLayoutTimer = null;
+
+    logAfwCall('PIP_LAYOUT', { action: 'surface_layout', key });
 
     refreshAgoraDmLocalPreviewCanvas(`surface_layout_${key}`);
 

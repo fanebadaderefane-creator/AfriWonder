@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AgoraDmLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
+import { logAfwCall } from './callDiagnosticLog';
 import { resetAgoraDmLocalPreviewCanvasScheduler } from './agoraDmLocalPreviewCanvasScheduler';
 import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
 import { resolveAgoraDmOverlayLocalPreviewLayout } from './agoraDmLocalPreviewLayout';
@@ -108,7 +109,15 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
   },
   requestFlipCamera: () => set((s) => ({ flipCameraTick: s.flipCameraTick + 1 })),
   toggleVideoFeedsSwap: () => {
-    set((s) => ({ videoFeedsSwapped: !s.videoFeedsSwapped, pipDragX: null, pipDragY: null }));
+    set((s) => {
+      const next = !s.videoFeedsSwapped;
+      logAfwCall('VIDEO_FEEDS_SWAP', {
+        feedsSwapped: next,
+        pipDragX: s.pipDragX,
+        pipDragY: s.pipDragY,
+      });
+      return { videoFeedsSwapped: next };
+    });
     queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('feeds_swapped'));
   },
   setPipDrag: (pipDragX, pipDragY) => set({ pipDragX, pipDragY }),

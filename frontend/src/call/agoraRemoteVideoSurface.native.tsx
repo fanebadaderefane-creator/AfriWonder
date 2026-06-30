@@ -50,12 +50,14 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
     if (Platform.OS === 'android' && typeof mod.RtcTextureView === 'function') {
       const { RtcTextureView } = mod;
       return (
-        <View style={[style, AGORA_RTC_SURFACE_HOST_BG]} collapsable={false}>
-          <RtcTextureView
-            key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
-            style={agoraRtcTextureViewSafeStyle(style)}
-            canvas={{ uid: remoteUid }}
-          />
+        <View style={[style, AGORA_RTC_SURFACE_HOST_BG]} collapsable={false} pointerEvents="box-none">
+          <View style={{ flex: 1, width: '100%', height: '100%' }} pointerEvents="none" collapsable={false}>
+            <RtcTextureView
+              key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
+              style={agoraRtcTextureViewSafeStyle(style)}
+              canvas={{ uid: remoteUid }}
+            />
+          </View>
         </View>
       );
     }
