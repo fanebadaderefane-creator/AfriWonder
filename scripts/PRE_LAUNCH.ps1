@@ -96,7 +96,19 @@ function Invoke-PreLaunchEasSecrets {
 
     $backend = if ($env:EXPO_PUBLIC_BACKEND_URL) { $env:EXPO_PUBLIC_BACKEND_URL } else { "https://afriwonder-api.onrender.com" }
     $socket  = if ($env:EXPO_PUBLIC_SOCKET_URL)  { $env:EXPO_PUBLIC_SOCKET_URL }  else { "wss://afriwonder-api.onrender.com" }
-    $project = if ($env:EXPO_PUBLIC_EAS_PROJECT_ID) { $env:EXPO_PUBLIC_EAS_PROJECT_ID } else { "54406371-5aa5-4bf1-8f80-b64b9f1e72fc" }
+    $appJsonPath = Join-Path $Root "frontend\app.json"
+    $appProjectId = $null
+    if (Test-Path $appJsonPath) {
+        try {
+            $appJson = Get-Content $appJsonPath -Raw | ConvertFrom-Json
+            $appProjectId = $appJson.expo.extra.eas.projectId
+        } catch { }
+    }
+    $project = if ($env:EXPO_PUBLIC_EAS_PROJECT_ID) { $env:EXPO_PUBLIC_EAS_PROJECT_ID } elseif ($appProjectId) { $appProjectId } else { "" }
+    if (-not $project) {
+        Warn "EXPO_PUBLIC_EAS_PROJECT_ID manquant — lancez: cd frontend && eas init --force && npm run sync:eas-project-env"
+        return
+    }
     $sentry  = if ($env:EXPO_PUBLIC_SENTRY_DSN)  { $env:EXPO_PUBLIC_SENTRY_DSN }  else { "" }
     $publicOrigin = if ($env:EXPO_PUBLIC_PUBLIC_WEB_ORIGIN) { $env:EXPO_PUBLIC_PUBLIC_WEB_ORIGIN } else { "https://afri-wonder.vercel.app" }
     $fbId = if ($env:EXPO_PUBLIC_FACEBOOK_APP_ID) { $env:EXPO_PUBLIC_FACEBOOK_APP_ID } else { "" }

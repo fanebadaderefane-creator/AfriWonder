@@ -8,10 +8,10 @@ Tester les appels audio/vidéo + incoming calls en background sur 2 vrais télé
 ## 📋 Pré-requis
 
 ### 1. Organisation Expo (obligatoire depuis juin 2026)
-- **Organisation** : `abdoulayefane-afriwonder-production` (ABDOULAYEFANE AFRIWONDER PRODUCTION)
+- **Organisation** : `videovocalafriwonder`
 - **Projet** : `afriwonder-production` (AfriWonder-Production)
-- **Project ID** : `54406371-5aa5-4bf1-8f80-b64b9f1e72fc`
-- **Ne plus utiliser** `global-production` ni `fanebadaderefane` — quotas builds gratuits épuisés.
+- **Project ID** : dans `app.json` après `eas init --force` + `npm run sync:eas-project-env`
+- **Ne plus utiliser** `abdoulayefane-afriwonder-production`, `global-production`, `fanebadaderefane` — quotas épuisés.
 
 ### 1b. Signature Android prod (AAB Play Store)
 
@@ -30,7 +30,8 @@ npm run verify:android-signing
 ### 2. Outils locaux à installer (sur votre PC)
 ```bash
 npm install -g eas-cli
-eas login    # compte membre de abdoulayefane-afriwonder-production
+eas login    # compte membre de videovocalafriwonder
+cd frontend && eas init --non-interactive --force && npm run sync:eas-project-env
 cd frontend && npm run verify:eas-org
 ```
 

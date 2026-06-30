@@ -24,14 +24,15 @@ npm run verify
 
 ## EAS Build (recommandé)
 
-**Organisation** : `abdoulayefane-afriwonder-production` — **Projet** : `@abdoulayefane-afriwonder-production/afriwonder-production`  
-**Project ID** : `54406371-5aa5-4bf1-8f80-b64b9f1e72fc` (dans `app.json` → `extra.eas.projectId`)
+**Organisation** : `videovocalafriwonder` — **Projet** : `@videovocalafriwonder/afriwonder-production`  
+**Project ID** : dans `app.json` → `extra.eas.projectId` (créé par `eas init`)
 
 1. Installer EAS CLI : `npm i -g eas-cli`
-2. `cd frontend && eas login` (accès org **abdoulayefane-afriwonder-production**)
-3. Vérifier : `npm run verify:eas-org`
-4. Définir les secrets dans le projet EAS pour `EXPO_PUBLIC_BACKEND_URL`, etc.
-5. Builds typiques :
+2. `cd frontend && eas login` (accès org **videovocalafriwonder**)
+3. Lier le projet : `eas init --non-interactive --force` puis `npm run sync:eas-project-env`
+4. Vérifier : `npm run verify:eas-org`
+5. Définir les secrets dans le projet EAS pour `EXPO_PUBLIC_BACKEND_URL`, etc.
+6. Builds typiques :
    - `npm run eas:android:callDiagnostic` — APK tests appels
    - `npm run eas:android:production` — AAB Play Store
 
