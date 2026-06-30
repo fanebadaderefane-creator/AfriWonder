@@ -177,6 +177,27 @@ function checkFrontendWiring() {
     fail('Overlay guard — surface stable', 'garde-fous preview root manquants');
   }
 
+  const videoBindNative = read('src/call/agoraCallVideoBind.native.ts');
+  if (
+    /import[\s\S]*shouldAgoraDmSkipSetupLocalVideo[\s\S]*from '\.\/agoraCallVideoBind'/.test(
+      videoBindNative,
+    ) &&
+    /shouldAgoraDmSkipSetupLocalVideo\(Platform\.OS/.test(videoBindNative)
+  ) {
+    pass('agoraCallVideoBind.native — import Hermes', 'shouldAgoraDmSkipSetupLocalVideo en closure locale');
+  } else {
+    fail(
+      'agoraCallVideoBind.native — import Hermes',
+      're-export seul → ReferenceError Hermes dans syncAgoraLocalVideoCanvas',
+    );
+  }
+
+  if (/video_preview_bootstrap_degraded/.test(agoraScreen) && /topBarSafeInset/.test(agoraScreen)) {
+    pass('DirectCallAgoraScreen — preview dégradée + safe area', 'pas de raccrochage sur échec preview sonnerie');
+  } else {
+    fail('DirectCallAgoraScreen — preview bootstrap', 'finishCall sur preview fail ou header sous status bar');
+  }
+
   if (/logCallControlsMounted/.test(agoraScreen)) {
     pass('DirectCallAgoraScreen — logs CALL_CONTROLS', 'diagnostic UI');
   } else {
@@ -589,7 +610,7 @@ function runBackendAgoraTests() {
 function runFrontendAgoraTests() {
   try {
     execSync(
-      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/callNativeSubscription.test.ts src/call/agoraEngineInvoke.test.ts src/call/openNativeCallScreen.test.ts src/call/agoraDmPeerAcceptDedup.test.ts src/call/agoraConnectionJoin.test.ts src/call/agoraEngineChannelPrep.test.ts src/call/callVideoControlsOverlay.test.ts src/call/callMediaAliveRegistry.test.ts src/call/callScreenSafeEffect.test.ts src/call/agoraDmActiveChannel.test.ts src/call/agoraDmLifecycleAudit.test.ts src/call/callErrorRecoveryGate.test.ts src/call/agoraDmJoinLifecycle.test.ts src/call/agoraDmChannelReady.test.ts',
+      'npm run test -- src/call/dmCallMediaEngine.test.ts src/call/agoraDmCallSession.test.ts src/call/agoraDmVideoUi.test.ts src/call/agoraDmLocalPreviewLayout.test.ts src/call/callNativeSubscription.test.ts src/call/agoraEngineInvoke.test.ts src/call/openNativeCallScreen.test.ts src/call/agoraDmPeerAcceptDedup.test.ts src/call/agoraConnectionJoin.test.ts src/call/agoraEngineChannelPrep.test.ts src/call/callVideoControlsOverlay.test.ts src/call/callMediaAliveRegistry.test.ts src/call/callScreenSafeEffect.test.ts src/call/agoraDmActiveChannel.test.ts src/call/agoraDmLifecycleAudit.test.ts src/call/callErrorRecoveryGate.test.ts src/call/agoraDmJoinLifecycle.test.ts src/call/agoraDmChannelReady.test.ts src/call/agoraCallVideoBind.test.ts',
       { cwd: ROOT, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
     );
     pass('Tests frontend Agora DM', 'dmCallMediaEngine + session + UI');

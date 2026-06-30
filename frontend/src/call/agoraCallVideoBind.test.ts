@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { shouldAgoraDmSkipSetupLocalVideo, shouldAgoraSwitchCameraOnNonce } from './agoraCallVideoBind';
+
+vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
+vi.mock('react-native-agora', () => ({
+  RenderModeType: { RenderModeFit: 1 },
+  VideoMirrorModeType: { VideoMirrorModeEnabled: 1 },
+}));
 
 describe('agoraCallVideoBind', () => {
   it('ne bascule la caméra que sur action utilisateur (nonce > 0)', () => {
@@ -16,5 +22,16 @@ describe('agoraCallVideoBind', () => {
     expect(shouldAgoraDmSkipSetupLocalVideo('android', 'overlay_layout_pip_call')).toBe(false);
     expect(shouldAgoraDmSkipSetupLocalVideo('android', 'switch_camera', true)).toBe(false);
     expect(shouldAgoraDmSkipSetupLocalVideo('ios')).toBe(false);
+  });
+
+  it('syncAgoraLocalVideoCanvas — import local shouldAgoraDmSkipSetupLocalVideo (régression Hermes)', async () => {
+    const { syncAgoraLocalVideoCanvas } = await import('./agoraCallVideoBind.native');
+    const engine = { setupLocalVideo: vi.fn(), startPreview: vi.fn() };
+    expect(() =>
+      syncAgoraLocalVideoCanvas(engine as never, {
+        reason: 'surface_layout_110x156',
+        callId: 'c1',
+      }),
+    ).not.toThrow();
   });
 });

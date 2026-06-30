@@ -357,9 +357,11 @@ export function DirectCallAgoraScreen() {
     if (startedAsVideo && !mediaEnabledRef.current) {
       const ok = await activateVideoPreview();
       if (!ok) {
-        setErrorMsg('Caméra indisponible.');
-        await finishCallRef.current('failed', { force: true });
-        return;
+        logAfwCall('video_preview_begin_media_degraded', {
+          callId: callIdRef.current,
+          role,
+        });
+        // Continuer la connexion audio ; la preview peut se réactiver via overlay.
       }
     } else if (!mediaEnabledRef.current) {
       await startAgoraMediaTracks();
@@ -915,9 +917,12 @@ export function DirectCallAgoraScreen() {
           const previewOk = await activateVideoPreviewRef.current();
           if (!screenAliveRef.current) return;
           if (!previewOk) {
-            setErrorMsg('Microphone ou caméra non autorisé.');
-            await finishCallRef.current('failed', { force: true });
-            return;
+            logAfwCall('video_preview_bootstrap_degraded', {
+              callId: callIdRef.current,
+              role,
+              callState: callStateRef.current,
+            });
+            // Sonnerie : ne pas raccrocher — invite + retry preview (permission / layout).
           }
         } else {
           await startAgoraMediaTracksRef.current();
@@ -1416,12 +1421,14 @@ export function DirectCallAgoraScreen() {
   }
 
   const topBarOverlay = showVideoStage && (showRemoteFull || showLocalFull);
+  /** Sonnerie vidéo : topBar in-flow sans inset → texte sous la barre système (chevauchement). */
+  const topBarSafeInset = showVideoStage ? insets.top + 4 : 0;
 
   const topBarNode = (
     <View
       style={[
         topBarOverlay ? styles.topBarOverlay : styles.topBar,
-        topBarOverlay ? { paddingTop: insets.top + 4 } : null,
+        topBarSafeInset > 0 ? { paddingTop: topBarSafeInset } : null,
         showVideoStage ? chromeFadeStyle : null,
       ]}
       pointerEvents={showVideoStage ? chromePointerEvents : 'box-none'}
@@ -1790,10 +1797,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topTitleWrap: { flex: 1, alignItems: 'center', paddingTop: 2 },
+  topTitleWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 40, paddingTop: 2 },
   topActions: { flexDirection: 'row', alignItems: 'center' },
-  topName: { color: '#FFF', fontSize: 20, fontWeight: '600', maxWidth: '100%' },
-  topStatus: { color: 'rgba(255,255,255,0.72)', fontSize: 15, marginTop: 4 },
+  topName: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+    maxWidth: '100%',
+    textAlign: 'center',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+  },
+  topStatus: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 14,
+    marginTop: 2,
+    textAlign: 'center',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+  },
   audioStage: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   avatarWrap: { alignItems: 'center', justifyContent: 'center' },
   avatar: {

@@ -6,8 +6,12 @@ import type { IRtcEngine } from 'react-native-agora';
 import { Platform } from 'react-native';
 import { logAfwCall } from './callDiagnosticLog';
 import { resolveAgoraDmCanvasStartPreview } from './agoraDmPipPosition';
+import {
+  shouldAgoraDmSkipSetupLocalVideo,
+  shouldAgoraSwitchCameraOnNonce,
+} from './agoraCallVideoBind';
 
-export { shouldAgoraSwitchCameraOnNonce, shouldAgoraDmSkipSetupLocalVideo } from './agoraCallVideoBind';
+export { shouldAgoraSwitchCameraOnNonce, shouldAgoraDmSkipSetupLocalVideo };
 
 type AgoraEngineWithCamera = IRtcEngine & {
   setCameraCapturerConfiguration?: (config: { cameraDirection?: number }) => number;
