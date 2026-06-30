@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAgoraDmVideoFeedPlacements } from './agoraDmVideoLayout';
+import {
+  AGORA_DM_PIP_TOUCH_Z_INDEX,
+  AGORA_DM_TAP_REVEAL_Z_INDEX,
+  resolveAgoraDmVideoFeedPlacements,
+} from './agoraDmVideoLayout';
 
 describe('resolveAgoraDmVideoFeedPlacements', () => {
   it('sonnerie — local plein écran', () => {
@@ -45,5 +49,9 @@ describe('resolveAgoraDmVideoFeedPlacements', () => {
         feedsSwapped: false,
       }),
     ).toEqual({ local: 'pip', remote: 'fullscreen' });
+  });
+
+  it('PiP touch chrome au-dessus du tap-to-reveal (BUG 11)', () => {
+    expect(AGORA_DM_PIP_TOUCH_Z_INDEX).toBeGreaterThan(AGORA_DM_TAP_REVEAL_Z_INDEX);
   });
 });

@@ -48,6 +48,7 @@ export function AgoraDmLocalPreviewOverlay() {
   const defaultPipY = windowSize.height - bottomOffset - 156;
 
   const onSwap = useCallback(() => {
+    logAfwCall('VIDEO_FEEDS_SWAP', { action: 'pip_tap', source: 'local_overlay' });
     toggleVideoFeedsSwap();
   }, [toggleVideoFeedsSwap]);
 
@@ -80,12 +81,13 @@ export function AgoraDmLocalPreviewOverlay() {
       if (!showVideo || !layout.mountSurface) return;
       const reason = `overlay_layout_${styleKey}_${minimized ? 'min' : 'call'}`;
       logAfwCall('OVERLAY', {
-        action: 'canvas_sync',
+        action: Platform.OS === 'android' ? 'canvas_sync_deferred' : 'canvas_sync',
         styleKey,
         minimized,
         showVideo,
         mountSurface: layout.mountSurface,
         reason,
+        platform: Platform.OS,
       });
       if (isPip) {
         logAfwCall('PIP_LAYOUT', {
@@ -96,7 +98,10 @@ export function AgoraDmLocalPreviewOverlay() {
           minimized,
         });
       }
-      refreshAgoraDmLocalPreviewCanvas(reason);
+      // Android : sync uniquement via onLayout → surface_layout (évite stack overflow natif).
+      if (Platform.OS !== 'android') {
+        refreshAgoraDmLocalPreviewCanvas(reason);
+      }
     },
     [bottomOffset, isPip, layout.mountSurface, minimized, pipDragX, pipDragY, showVideo, styleKey],
   );
@@ -204,11 +209,6 @@ export function AgoraDmLocalPreviewOverlay() {
         style={containerStyle}
         pointerEvents={isPip && showVideo ? 'auto' : overlayLayer.surfacePointerEvents === 'none' ? 'none' : 'auto'}
         collapsable={false}
-        accessibilityRole={isPip && showVideo && !minimized ? 'button' : undefined}
-        accessibilityLabel={
-          isPip && showVideo && !minimized ? 'Inverser les vidéos' : undefined
-        }
-        {...(isPip && showVideo ? pipGestures.panHandlers : {})}
       >
         <View style={surfaceClipStyle} pointerEvents="none" collapsable={false}>
           <AgoraLocalPreviewSurface
@@ -216,6 +216,14 @@ export function AgoraDmLocalPreviewOverlay() {
             onSurfaceLayout={onSurfaceLayout}
           />
         </View>
+        {isPip && showVideo ? (
+          <View
+            style={styles.pipTouchLayer}
+            {...pipGestures.panHandlers}
+            accessibilityRole={minimized ? 'button' : 'button'}
+            accessibilityLabel={minimized ? 'Retour à l’appel' : 'Inverser les vidéos'}
+          />
+        ) : null}
         {layout.showPipFlip && showVideo ? (
           <TouchableOpacity
             style={agoraDmLocalPreviewStyles.pipFlipBtn}
@@ -240,6 +248,11 @@ const styles = StyleSheet.create({
   },
   /** Plein écran sonnerie — fond transparent pour ne pas masquer CallScreen. */
   surfaceClipFull: {
+    backgroundColor: 'transparent',
+  },
+  pipTouchLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
     backgroundColor: 'transparent',
   },
 });

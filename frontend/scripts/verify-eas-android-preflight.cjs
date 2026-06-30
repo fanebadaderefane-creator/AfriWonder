@@ -6,6 +6,7 @@
  * - d533d63c : org.jitsi:webrtc:124.+ via JitPack (timeout)
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -133,6 +134,56 @@ function checkKeystore() {
   pass(`Keystore Android local (${path.basename(result.jksPath)})`);
 }
 
+function jdkHomeCandidates() {
+  const home = os.homedir();
+  const list = [
+    process.env.AFW_JAVA_HOME,
+    process.env.JAVA_HOME,
+    path.join(home, 'scoop', 'apps', 'temurin17-jdk', 'current'),
+    path.join(home, 'scoop', 'apps', 'temurin21-jdk', 'current'),
+    'C:\\Program Files\\Android\\Android Studio\\jbr',
+    'C:\\Program Files\\Java\\jdk-17',
+    'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.13.11-hotspot',
+  ].filter(Boolean);
+  return [...new Set(list)];
+}
+
+function resolveGradleJavaHome() {
+  for (const candidate of jdkHomeCandidates()) {
+    const javaBin =
+      process.platform === 'win32'
+        ? path.join(candidate, 'bin', 'java.exe')
+        : path.join(candidate, 'bin', 'java');
+    if (!fs.existsSync(javaBin)) continue;
+    const ver = spawnSync(javaBin, ['-version'], { encoding: 'utf8' });
+    const blob = `${ver.stderr || ''}\n${ver.stdout || ''}`;
+    const m = blob.match(/version "(\d+)/);
+    const major = m ? Number(m[1]) : 0;
+    if (major === 17 || major === 21) {
+      return { home: candidate, major };
+    }
+  }
+  return null;
+}
+
+function printGradleJavaHelp(out) {
+  if (/languageVersion=17/i.test(out) || /Cannot find a Java installation/i.test(out)) {
+    console.error(
+      '\n[eas-preflight] JDK 17 requis pour le dry-run Gradle local (EAS cloud a son propre JDK).',
+    );
+    console.error('  scoop install temurin17-jdk');
+    console.error('  $env:JAVA_HOME = "$env:USERPROFILE\\scoop\\apps\\temurin17-jdk\\current"');
+    console.error('  Ou lancez avec AFW_EAS_SKIP_GRADLE_PREFLIGHT=1 (build cloud uniquement).');
+  }
+  if (/PKIX path building failed/i.test(out) || /certificate_unknown/i.test(out)) {
+    console.error(
+      '\n[eas-preflight] Erreur certificat SSL (Gradle / foojay) — proxy ou antivirus MITM.',
+    );
+    console.error('  Installez JDK 17 en local (scoop) pour éviter le téléchargement auto.');
+    console.error('  Ou AFW_EAS_SKIP_GRADLE_PREFLIGHT=1 pour soumettre quand même à EAS.');
+  }
+}
+
 function checkGradleReleaseNativeLibsDryRun() {
   const gradlew = process.platform === 'win32' ? 'gradlew.bat' : 'gradlew';
   const androidDir = path.join(appRoot, 'android');
@@ -140,7 +191,21 @@ function checkGradleReleaseNativeLibsDryRun() {
     fail('gradlew absent', androidDir);
     return;
   }
+  const jdk = resolveGradleJavaHome();
+  if (jdk) {
+    console.log(`[eas-preflight] Gradle JVM : JDK ${jdk.major} (${jdk.home})`);
+  } else {
+    console.log('[eas-preflight] Aucun JDK 17/21 détecté — Gradle tentera foojay (peut échouer SSL).');
+  }
   console.log('[eas-preflight] Gradle :app:mergeReleaseNativeLibs --dry-run (tâche EAS en échec)…');
+  const gradleEnv = {
+    ...process.env,
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false',
+  };
+  if (jdk?.home) {
+    gradleEnv.JAVA_HOME = jdk.home;
+    gradleEnv.ORG_GRADLE_JAVA_HOME = jdk.home;
+  }
   const result = spawnSync(
     process.platform === 'win32' ? 'cmd.exe' : gradlew,
     process.platform === 'win32'
@@ -149,7 +214,7 @@ function checkGradleReleaseNativeLibsDryRun() {
     {
       cwd: androidDir,
       encoding: 'utf8',
-      env: { ...process.env, GRADLE_OPTS: '-Dorg.gradle.daemon=false' },
+      env: gradleEnv,
       shell: false,
       maxBuffer: 20 * 1024 * 1024,
     },
@@ -169,6 +234,7 @@ function checkGradleReleaseNativeLibsDryRun() {
     } else {
       fail('Gradle mergeReleaseNativeLibs --dry-run', `exit ${result.status}`);
     }
+    printGradleJavaHelp(out);
     const tail = out.split('\n').slice(-12).join('\n');
     if (tail.trim()) console.error(tail);
     return;
@@ -181,7 +247,11 @@ function checkGradleReleaseNativeLibsDryRun() {
 }
 
 const args = new Set(process.argv.slice(2));
-const withGradle = args.has('--gradle') || args.has('--full');
+const skipGradle =
+  args.has('--skip-gradle') ||
+  process.env.AFW_EAS_SKIP_GRADLE_PREFLIGHT === '1' ||
+  process.env.AFW_EAS_SKIP_GRADLE_PREFLIGHT === 'true';
+const withGradle = (args.has('--gradle') || args.has('--full')) && !skipGradle;
 
 checkNotifeeGradleRouting();
 checkJitsiGradleRouting();
@@ -189,7 +259,11 @@ checkNotifeeArtifacts();
 checkAndroidUploadable();
 checkKeystore();
 
-if (withGradle) {
+if (skipGradle) {
+  console.log(
+    '[eas-preflight] Gradle dry-run ignoré (AFW_EAS_SKIP_GRADLE_PREFLIGHT / --skip-gradle) — build EAS cloud OK.',
+  );
+} else if (withGradle) {
   checkGradleReleaseNativeLibsDryRun();
 } else {
   console.log('[eas-preflight] Astuce: --gradle pour tester mergeReleaseNativeLibs (≈2–3 min).');

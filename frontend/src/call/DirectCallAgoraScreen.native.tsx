@@ -49,7 +49,11 @@ import {
   shouldShowLocalVideoFullscreen,
   shouldShowVideoSideRail,
 } from './agoraDmVideoUi';
-import { resolveAgoraDmVideoFeedPlacements } from './agoraDmVideoLayout';
+import {
+  AGORA_DM_TAP_REVEAL_ELEVATION,
+  AGORA_DM_TAP_REVEAL_Z_INDEX,
+  resolveAgoraDmVideoFeedPlacements,
+} from './agoraDmVideoLayout';
 import { agoraDmLocalPreviewStyles } from './agoraDmLocalPreviewStyles';
 import { defaultAgoraDmPipStyle, useAgoraDmPipGestures } from './useAgoraDmPipGestures';
 import { alertVideoNoteResult, recordAndSendCallVideoNote } from './callVideoNote';
@@ -257,6 +261,8 @@ export function DirectCallAgoraScreen() {
   );
 
   const videoPreviewStartedRef = useRef(false);
+  const videoPreviewActivateInFlightRef = useRef<Promise<boolean> | null>(null);
+  const localPreviewPinnedRef = useRef(false);
   const [videoPreviewReady, setVideoPreviewReady] = useState(false);
   const screenAliveRef = useRef(true);
 
@@ -272,6 +278,11 @@ export function DirectCallAgoraScreen() {
   );
 
   const pinLocalPreviewFull = useCallback(() => {
+    if (localPreviewPinnedRef.current) {
+      logAfwCall('PREVIEW', { action: 'pin_local_full_skipped', callId: callIdRef.current });
+      return;
+    }
+    localPreviewPinnedRef.current = true;
     useAgoraDmCallUiStore.getState().setLocalPreviewSurfaceLaidOut(false);
     useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(true);
     useAgoraDmCallUiStore.getState().setLocalPreviewPinned(true);
@@ -294,6 +305,7 @@ export function DirectCallAgoraScreen() {
   }, []);
 
   const resetLocalPreviewUi = useCallback(() => {
+    localPreviewPinnedRef.current = false;
     useAgoraDmCallUiStore.getState().setLocalPreviewEngineReady(false);
     useAgoraDmCallUiStore.getState().setLocalPreviewPinned(false);
     useAgoraDmCallUiStore.getState().setLocalPreview(agoraDmEmptyLocalPreview);
@@ -302,26 +314,44 @@ export function DirectCallAgoraScreen() {
   /** Un seul moteur Agora preview — bootstrap + hook consomment ensuite via consume(). */
   const activateVideoPreview = useCallback(async (): Promise<boolean> => {
     if (videoPreviewStartedRef.current && mediaEnabledRef.current) return true;
-    const ok = await activateAgoraDmVideoPreview(callIdRef.current);
-    if (!screenAliveRef.current) return false;
-    if (!ok) {
-      resetLocalPreviewUi();
-      logAfwCall('video_preview_activate_failed', { callId: callIdRef.current, role });
-      return false;
+    if (videoPreviewActivateInFlightRef.current) {
+      return videoPreviewActivateInFlightRef.current;
     }
-    videoPreviewStartedRef.current = true;
-    await safeInvokeAsyncRef(stopOutgoingRingRef, { callId: callIdRef.current, reason: 'preview_activate' });
-    if (typeof stopEveryCallRingAlert === 'function') {
-      await stopEveryCallRingAlert();
+    const run = (async (): Promise<boolean> => {
+      if (videoPreviewStartedRef.current) return true;
+      videoPreviewStartedRef.current = true;
+      const ok = await activateAgoraDmVideoPreview(callIdRef.current);
+      if (!screenAliveRef.current) {
+        videoPreviewStartedRef.current = false;
+        return false;
+      }
+      if (!ok) {
+        videoPreviewStartedRef.current = false;
+        resetLocalPreviewUi();
+        logAfwCall('video_preview_activate_failed', { callId: callIdRef.current, role });
+        return false;
+      }
+      await safeInvokeAsyncRef(stopOutgoingRingRef, { callId: callIdRef.current, reason: 'preview_activate' });
+      if (typeof stopEveryCallRingAlert === 'function') {
+        await stopEveryCallRingAlert();
+      }
+      mediaEnabledRef.current = true;
+      setMediaEnabled(true);
+      setVideoPreviewReady(true);
+      pinLocalPreviewFull();
+      logLocalStreamCreated({ callId: callIdRef.current, role, engine: 'agora', phase: 'preview' });
+      logAfwCall('PREVIEW', { action: 'activate_ok', callId: callIdRef.current, role });
+      logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
+      return true;
+    })();
+    videoPreviewActivateInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (videoPreviewActivateInFlightRef.current === run) {
+        videoPreviewActivateInFlightRef.current = null;
+      }
     }
-    mediaEnabledRef.current = true;
-    setMediaEnabled(true);
-    setVideoPreviewReady(true);
-    pinLocalPreviewFull();
-    logLocalStreamCreated({ callId: callIdRef.current, role, engine: 'agora', phase: 'preview' });
-    logAfwCall('PREVIEW', { action: 'activate_ok', callId: callIdRef.current, role });
-    logAfwCall('caller_early_preview_ready', { callId: callIdRef.current, role });
-    return true;
   }, [pinLocalPreviewFull, resetLocalPreviewUi, role]);
 
   /** Appel vidéo — caméra front + aperçu dès l’ouverture (parité WhatsApp). */
@@ -1387,8 +1417,9 @@ export function DirectCallAgoraScreen() {
   const windowSize = Dimensions.get('window');
   const defaultPipX = windowSize.width - 110 - 16;
   const defaultPipY = windowSize.height - pipBottomOffset - 156;
+  const remoteVideoVisible = remoteJoined || remoteEverJoined;
   const remotePipGestures = useAgoraDmPipGestures({
-    enabled: showRemotePip && (remoteJoined || remoteEverJoined),
+    enabled: showRemotePip && remoteVideoVisible,
     onSwap: toggleVideoFeedsSwap,
     setPipDrag,
     dragX: pipDragX,
@@ -1503,28 +1534,45 @@ export function DirectCallAgoraScreen() {
 
       {showVideoStage ? (
         <View style={styles.videoStage}>
-          {remoteJoined ? (
-            <View
-              style={
-                showRemoteFull
-                  ? styles.videoFill
-                  : showRemotePip
-                    ? [
-                        agoraDmLocalPreviewStyles.pipBase,
-                        defaultAgoraDmPipStyle({
-                          bottomOffset: pipBottomOffset,
-                          dragX: pipDragX,
-                          dragY: pipDragY,
-                        }),
-                      ]
-                    : styles.videoFill
-              }
-              accessibilityRole={showRemotePip ? 'button' : undefined}
-              accessibilityLabel={showRemotePip ? 'Inverser les vidéos' : undefined}
-              {...(showRemotePip ? remotePipGestures.panHandlers : {})}
-            >
-              <RemoteView style={agoraDmLocalPreviewStyles.fill} />
-            </View>
+          {remoteVideoVisible ? (
+            <>
+              {showRemoteFull ? (
+                <View style={styles.videoFill}>
+                  <RemoteView style={agoraDmLocalPreviewStyles.fill} />
+                </View>
+              ) : null}
+              {tapOverlayActive ? (
+                <Pressable
+                  style={styles.tapToShowOverlay}
+                  onPress={showControls}
+                  accessibilityLabel="Afficher les contrôles d'appel"
+                  accessibilityRole="button"
+                />
+              ) : null}
+              {showRemotePip ? (
+                <View
+                  style={[
+                    agoraDmLocalPreviewStyles.pipBase,
+                    defaultAgoraDmPipStyle({
+                      bottomOffset: pipBottomOffset,
+                      dragX: pipDragX,
+                      dragY: pipDragY,
+                    }),
+                  ]}
+                  collapsable={false}
+                  accessibilityRole="button"
+                  accessibilityLabel="Inverser les vidéos"
+                >
+                  <RemoteView style={agoraDmLocalPreviewStyles.fill} />
+                  <View
+                    style={styles.pipTouchLayer}
+                    {...remotePipGestures.panHandlers}
+                    accessibilityRole="button"
+                    accessibilityLabel="Inverser les vidéos"
+                  />
+                </View>
+              ) : null}
+            </>
           ) : null}
           {showRemoteFull ? (
             <TouchableOpacity
@@ -1615,14 +1663,6 @@ export function DirectCallAgoraScreen() {
                 {localScreenSharing ? 'Vous partagez votre écran' : `${name} partage son écran`}
               </Text>
             </View>
-          ) : null}
-          {tapOverlayActive ? (
-            <Pressable
-              style={styles.tapToShowOverlay}
-              onPress={showControls}
-              accessibilityLabel="Afficher les contrôles d'appel"
-              accessibilityRole="button"
-            />
           ) : null}
         </View>
       ) : (
@@ -1843,8 +1883,13 @@ const styles = StyleSheet.create({
   },
   tapToShowOverlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 90,
-    elevation: 90,
+    zIndex: AGORA_DM_TAP_REVEAL_Z_INDEX,
+    ...(Platform.OS === 'android' ? { elevation: AGORA_DM_TAP_REVEAL_ELEVATION } : null),
+  },
+  pipTouchLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    backgroundColor: 'transparent',
   },
   localPreviewFallback: { width: '100%', height: '100%', resizeMode: 'cover' },
   videoSideRail: {

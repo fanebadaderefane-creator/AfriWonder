@@ -22,24 +22,38 @@ describe('agoraCallVideoBind', () => {
     expect(shouldAgoraDmSkipSetupLocalVideo('ios', 'join_ok', true)).toBe(false);
   });
 
-  it('maybeStartAgoraDmEnginePreview — Android skip direct', async () => {
-    const { maybeStartAgoraDmEnginePreview } = await import('./agoraCallVideoBind.native');
+  it('maybeStartAgoraDmEnginePreview — Android startPreview une fois', async () => {
+    const { maybeStartAgoraDmEnginePreview, resetAgoraDmAndroidStartPreviewGate } = await import(
+      './agoraCallVideoBind.native'
+    );
+    resetAgoraDmAndroidStartPreviewGate();
     const engine = { startPreview: vi.fn() };
     maybeStartAgoraDmEnginePreview(engine as never, { callId: 'c1' }, false);
+    expect(engine.startPreview).toHaveBeenCalledTimes(1);
+    maybeStartAgoraDmEnginePreview(engine as never, { callId: 'c1' }, false);
+    expect(engine.startPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it('syncAgoraLocalVideoCanvas — Android no-op total (TextureView seul)', async () => {
+    const { syncAgoraLocalVideoCanvas } = await import('./agoraCallVideoBind.native');
+    const engine = { setupLocalVideo: vi.fn(), startPreview: vi.fn() };
+    syncAgoraLocalVideoCanvas(
+      engine as never,
+      { reason: 'surface_layout_110x156', callId: 'c1' },
+      { startPreview: true },
+    );
+    expect(engine.setupLocalVideo).not.toHaveBeenCalled();
     expect(engine.startPreview).not.toHaveBeenCalled();
   });
 
-  it('syncAgoraLocalVideoCanvas — Android surface_layout déclenche startPreview', async () => {
-    const { syncAgoraLocalVideoCanvas } = await import('./agoraCallVideoBind.native');
-    const { resolveAgoraDmCanvasStartPreview } = await import('./agoraDmPipPosition');
-    const engine = { setupLocalVideo: vi.fn(), startPreview: vi.fn() };
-    const reason = 'surface_layout_110x156';
-    syncAgoraLocalVideoCanvas(
-      engine as never,
-      { reason, callId: 'c1' },
-      { startPreview: resolveAgoraDmCanvasStartPreview(reason, false, 'android') },
+  it('startAgoraDmAndroidPreviewOnce — idempotent', async () => {
+    const { startAgoraDmAndroidPreviewOnce, resetAgoraDmAndroidStartPreviewGate } = await import(
+      './agoraCallVideoBind.native'
     );
-    expect(engine.setupLocalVideo).not.toHaveBeenCalled();
-    expect(engine.startPreview).toHaveBeenCalled();
+    resetAgoraDmAndroidStartPreviewGate();
+    const engine = { startPreview: vi.fn() };
+    expect(startAgoraDmAndroidPreviewOnce(engine as never, { callId: 'c1' })).toBe(true);
+    expect(startAgoraDmAndroidPreviewOnce(engine as never, { callId: 'c1' })).toBe(false);
+    expect(engine.startPreview).toHaveBeenCalledTimes(1);
   });
 });

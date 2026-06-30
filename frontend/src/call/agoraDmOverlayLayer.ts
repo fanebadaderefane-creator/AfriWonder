@@ -4,10 +4,11 @@
  * PiP connecté : au-dessus de la vidéo distante (Stack), sous le bandeau flottant minimisé.
  */
 import type { ViewStyle } from 'react-native';
+import { AGORA_DM_PIP_TOUCH_ELEVATION, AGORA_DM_PIP_TOUCH_Z_INDEX } from './agoraDmVideoLayout';
 
 export const AGORA_DM_OVERLAY_Z_CALL_VIDEO = 2;
-/** PiP local sur l’écran d’appel — doit peindre par-dessus RemoteView (TextureView). */
-export const AGORA_DM_OVERLAY_Z_CALL_PIP = 15;
+/** PiP local sur l’écran d’appel — au-dessus tap-to-reveal (BUG 11). */
+export const AGORA_DM_OVERLAY_Z_CALL_PIP = AGORA_DM_PIP_TOUCH_Z_INDEX;
 export const AGORA_DM_OVERLAY_Z_PIP_FLOAT = 9996;
 
 /** Hauteur top bar + statut sur l’écran d’appel (hors safe area). */
@@ -37,7 +38,7 @@ export function resolveAgoraDmOverlayLayer(input: {
   if (input.containerStyle === 'pip') {
     return {
       hostZIndex: AGORA_DM_OVERLAY_Z_CALL_PIP,
-      hostElevation: AGORA_DM_OVERLAY_Z_CALL_PIP,
+      hostElevation: AGORA_DM_PIP_TOUCH_ELEVATION,
       surfacePointerEvents: 'auto',
     };
   }

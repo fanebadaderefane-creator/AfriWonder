@@ -29,3 +29,11 @@ export function resolveAgoraDmVideoFeedPlacements(input: {
 /** Dimensions PiP — identiques overlay local et remote pip. */
 export const AGORA_DM_VIDEO_PIP_WIDTH = 110;
 export const AGORA_DM_VIDEO_PIP_HEIGHT = 156;
+
+/** Tap-to-reveal chrome (dock masqué) — sous le PiP pour laisser passer le swap WhatsApp. */
+export const AGORA_DM_TAP_REVEAL_Z_INDEX = 50;
+export const AGORA_DM_TAP_REVEAL_ELEVATION = 50;
+
+/** PiP draggable + tap inversion — au-dessus du tap-to-reveal (Android elevation). */
+export const AGORA_DM_PIP_TOUCH_Z_INDEX = 100;
+export const AGORA_DM_PIP_TOUCH_ELEVATION = 100;

@@ -45,6 +45,7 @@
     "standards:mobile": "npm run verify",
     "eas:android:preview": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile preview",
     "eas:android:callDiagnostic": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile callDiagnostic --non-interactive",
+    "eas:android:callDiagnostic:skipGradle": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile callDiagnostic --non-interactive --skip-gradle-preflight",
     "sync:android-keystore": "node ./scripts/sync-android-keystore-from-eas.cjs",
     "eas:android:callDiagnostic:full": "node ./scripts/sync-android-keystore-from-eas.cjs && node ./scripts/eas-build-from-app-root.cjs --platform android --profile callDiagnostic --non-interactive",
     "eas:android:production": "node ./scripts/install-play-upload-from-local.cjs && node ./scripts/eas-build-from-app-root.cjs --platform android --profile production",

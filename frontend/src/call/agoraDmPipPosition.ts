@@ -38,8 +38,8 @@ export function shouldAgoraDmPreviewStartPreview(reason: string): boolean {
 /**
  * Après joinChannel, startPreview() sur TextureView Android = PiP noir (flux publié ≠ preview).
  * iOS : startPreview sur layout / foreground / PiP chat (liste shouldAgoraDmPreviewStartPreview).
- * Android DM : **uniquement** après onLayout RtcTextureView (`surface_layout_WxH`) hors canal —
- * évite RangeError stack overflow (juin 2026 terrain).
+ * Android DM : startPreview **avant** montage RtcTextureView (preview_session / init join) —
+ * jamais depuis refresh JS après surface montée (stack overflow juin 2026 terrain).
  */
 export function resolveAgoraDmCanvasStartPreview(
   reason: string,
@@ -47,14 +47,21 @@ export function resolveAgoraDmCanvasStartPreview(
   platform = 'ios',
 ): boolean {
   if (inChannel) return false;
-  if (platform === 'android') {
-    return reason.includes('surface_layout_');
-  }
+  if (platform === 'android') return false;
   return shouldAgoraDmPreviewStartPreview(reason);
 }
 
-/** Android DM — jamais engine.startPreview() direct (hors sync policy surface_layout). */
+/** Android DM — startPreview direct autorisé hors canal (preview_session avant RtcTextureView). */
 export function shouldAgoraDmDirectEngineStartPreview(platform: string, inChannel = false): boolean {
-  if (platform === 'android') return false;
+  if (platform === 'android') return !inChannel;
   return !inChannel;
+}
+
+/**
+ * Android TextureView — aucun refresh canvas JS (RtcTextureView canvas uid 0 seul).
+ * iOS : refresh autorisé (setupLocalVideo + startPreview policy iOS).
+ */
+export function shouldRefreshAgoraDmLocalPreviewCanvas(reason: string, platform: string): boolean {
+  if (platform === 'android') return false;
+  return true;
 }

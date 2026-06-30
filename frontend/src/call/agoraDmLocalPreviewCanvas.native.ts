@@ -13,7 +13,11 @@ import {
 } from './agoraDmActiveChannel';
 import { useAgoraDmCallUiStore } from './agoraDmCallUiStore';
 import { shouldSyncAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvasPolicy';
-import { resolveAgoraDmCanvasStartPreview } from './agoraDmPipPosition';
+import {
+  resolveAgoraDmCanvasStartPreview,
+  shouldRefreshAgoraDmLocalPreviewCanvas,
+} from './agoraDmPipPosition';
+import { logAfwCall } from './callDiagnosticLog';
 import { invokeAgoraEngine } from './agoraEngineInvoke';
 
 function previewEngineAliveForCall(callId: string): boolean {
@@ -47,6 +51,10 @@ function isInAgoraDmChannel(callId: string): boolean {
 
 /** Re-bind canvas uid 0 — handler hook si monté, sinon moteur canal actif. */
 export function refreshAgoraDmLocalPreviewCanvas(reason: string): void {
+  if (!shouldRefreshAgoraDmLocalPreviewCanvas(reason, Platform.OS)) {
+    logAfwCall('LOCAL_CANVAS_SYNC_SKIPPED', { reason, platform: Platform.OS });
+    return;
+  }
   const { active, callId, localPreviewRefreshHandler } = useAgoraDmCallUiStore.getState();
   if (
     !shouldSyncAgoraDmLocalPreviewCanvas({

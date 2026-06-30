@@ -3,10 +3,12 @@
  * Handoff overlay entrant → DirectCallAgoraScreen sans stopPreview/release (parité WhatsApp).
  */
 import type { IRtcEngine } from 'react-native-agora';
+import { Platform } from 'react-native';
 import apiClient from '../api/client';
 import {
   ensureAgoraFrontCamera,
   logLocalStreamAttached,
+  startAgoraDmAndroidPreviewOnce,
 } from './agoraCallVideoBind.native';
 import {
   canConsumePreviewEngine,
@@ -97,6 +99,9 @@ async function createPreviewSession(callId: string): Promise<boolean> {
     engine.enableVideo();
     engine.enableLocalVideo(true);
     ensureAgoraFrontCamera(engine, { callId, phase: 'preview_session' });
+    if (Platform.OS === 'android') {
+      startAgoraDmAndroidPreviewOnce(engine, { callId, phase: 'preview_session_pre_surface' });
+    }
     activeSession = {
       callId,
       engine,
@@ -106,8 +111,7 @@ async function createPreviewSession(callId: string): Promise<boolean> {
     };
     engineAliveForCallId = callId;
     logLocalStreamAttached({ callId, phase: 'preview_session' });
-    // startPreview : uniquement via AgoraLocalPreviewSurface.onLayout → surface_layout_WxH.
-    logAfwCall('agora_preview_session_started', { callId });
+    logAfwCall('agora_preview_session_started', { callId, platform: Platform.OS });
     return true;
   } catch (e) {
     logAfwCall('agora_preview_session_failed', { callId, error: String(e) });

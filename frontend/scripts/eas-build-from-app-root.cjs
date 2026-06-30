@@ -13,7 +13,7 @@ const appRoot = path.resolve(__dirname, '..');
 process.env.EAS_NO_VCS = '1';
 process.env.EAS_PROJECT_ROOT = appRoot;
 
-const passthrough = process.argv.slice(2);
+const passthrough = process.argv.slice(2).filter((a) => a !== '--skip-gradle-preflight');
 const easArgs = ['build', ...passthrough];
 
 function readArgValue(args, flag) {
@@ -51,6 +51,13 @@ function runNodeScript(scriptName, extraArgs = []) {
 
 if (platform === 'android') {
   const preflightArgs = ['--gradle'];
+  if (
+    process.env.AFW_EAS_SKIP_GRADLE_PREFLIGHT === '1' ||
+    process.env.AFW_EAS_SKIP_GRADLE_PREFLIGHT === 'true' ||
+    passthrough.includes('--skip-gradle-preflight')
+  ) {
+    preflightArgs.push('--skip-gradle');
+  }
   console.log('[eas] Preflight Android (Notifee/Gradle/keystore)…');
   const preflight = runNodeScript('verify-eas-android-preflight.cjs', preflightArgs);
   if (preflight.status !== 0) {

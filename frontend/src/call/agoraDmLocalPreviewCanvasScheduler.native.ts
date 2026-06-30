@@ -1,6 +1,8 @@
 /**
  * Sync canvas locale — debounce + déduplication layout (natif).
  */
+import { Platform } from 'react-native';
+import { resetAgoraDmAndroidStartPreviewGate } from './agoraCallVideoBind.native';
 import { refreshAgoraDmLocalPreviewCanvas } from './agoraDmLocalPreviewCanvas';
 import { logAfwCall } from './callDiagnosticLog';
 import { useAgoraDmCallUiStore } from './agoraDmCallUiStore';
@@ -20,6 +22,7 @@ export function resetAgoraDmLocalPreviewCanvasScheduler(): void {
     clearTimeout(surfaceLayoutTimer);
     surfaceLayoutTimer = null;
   }
+  resetAgoraDmAndroidStartPreviewGate();
 }
 
 /** Après onLayout — attend taille valide puis sync (évite canvas sur PiP vide). */
@@ -31,8 +34,10 @@ export function scheduleAgoraDmLocalPreviewCanvasOnSurfaceLayout(width: number, 
   if (surfaceLayoutTimer) clearTimeout(surfaceLayoutTimer);
   surfaceLayoutTimer = setTimeout(() => {
     surfaceLayoutTimer = null;
-    logAfwCall('PIP_LAYOUT', { action: 'surface_layout', key });
+    logAfwCall('PIP_LAYOUT', { action: 'surface_layout', key, platform: Platform.OS });
     useAgoraDmCallUiStore.getState().setLocalPreviewSurfaceLaidOut(true);
-    refreshAgoraDmLocalPreviewCanvas(`surface_layout_${key}`);
+    if (Platform.OS !== 'android') {
+      refreshAgoraDmLocalPreviewCanvas(`surface_layout_${key}`);
+    }
   }, SURFACE_LAYOUT_DEBOUNCE_MS);
 }

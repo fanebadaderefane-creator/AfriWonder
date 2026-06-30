@@ -1,7 +1,17 @@
 import { Platform, StyleSheet } from 'react-native';
+import {
+  AGORA_DM_PIP_TOUCH_ELEVATION,
+  AGORA_DM_PIP_TOUCH_Z_INDEX,
+} from './agoraDmVideoLayout';
 
 /** Android RtcTextureView : overflow:hidden sur le parent = PiP noir (coins arrondis via bordure). */
 const pipOverflowClip = Platform.OS === 'android' ? undefined : ('hidden' as const);
+
+/** PiP cliquable / draggable — z-index au-dessus du tap-to-reveal overlay (BUG 11 WhatsApp). */
+export const agoraDmPipTouchChromeStyle = {
+  zIndex: AGORA_DM_PIP_TOUCH_Z_INDEX,
+  ...(Platform.OS === 'android' ? { elevation: AGORA_DM_PIP_TOUCH_ELEVATION } : null),
+} as const;
 
 /** Styles partagés — une seule surface locale (overlay root + écran d’appel). */
 export const agoraDmLocalPreviewStyles = StyleSheet.create({
@@ -10,8 +20,7 @@ export const agoraDmLocalPreviewStyles = StyleSheet.create({
     ...(pipOverflowClip ? { overflow: pipOverflowClip } : null),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
-    zIndex: 5,
-    ...(Platform.OS === 'android' ? { elevation: 24 } : null),
+    ...agoraDmPipTouchChromeStyle,
   },
   pip: {
     position: 'absolute',
@@ -23,7 +32,7 @@ export const agoraDmLocalPreviewStyles = StyleSheet.create({
     ...(pipOverflowClip ? { overflow: pipOverflowClip } : null),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
-    zIndex: 5,
+    ...agoraDmPipTouchChromeStyle,
   },
   full: {
     ...StyleSheet.absoluteFillObject,

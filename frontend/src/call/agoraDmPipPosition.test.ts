@@ -6,6 +6,7 @@ import {
   clampAgoraDmPipDrag,
   resolveAgoraDmCanvasStartPreview,
   shouldAgoraDmPreviewStartPreview,
+  shouldRefreshAgoraDmLocalPreviewCanvas,
 } from './agoraDmPipPosition';
 
 
@@ -64,12 +65,18 @@ describe('agoraDmPipPosition', () => {
     expect(resolveAgoraDmCanvasStartPreview('minimized', false, 'ios')).toBe(true);
   });
 
-  it('Android — startPreview JS uniquement après surface_layout hors canal', () => {
-    expect(resolveAgoraDmCanvasStartPreview('surface_layout_360x640', false, 'android')).toBe(true);
+  it('Android — startPreview JS uniquement avant RtcTextureView (pas refresh canvas)', () => {
+    expect(resolveAgoraDmCanvasStartPreview('surface_layout_360x640', false, 'android')).toBe(false);
     expect(resolveAgoraDmCanvasStartPreview('pin_local_full', false, 'android')).toBe(false);
     expect(resolveAgoraDmCanvasStartPreview('overlay_layout_full_call', false, 'android')).toBe(false);
-    expect(resolveAgoraDmCanvasStartPreview('remote_ever_joined', false, 'android')).toBe(false);
     expect(resolveAgoraDmCanvasStartPreview('surface_layout_106x152', true, 'android')).toBe(false);
+  });
+
+  it('Android — aucun refresh canvas JS', () => {
+    expect(shouldRefreshAgoraDmLocalPreviewCanvas('surface_layout_360x640', 'android')).toBe(false);
+    expect(shouldRefreshAgoraDmLocalPreviewCanvas('overlay_layout_full_call', 'android')).toBe(false);
+    expect(shouldRefreshAgoraDmLocalPreviewCanvas('minimized', 'android')).toBe(false);
+    expect(shouldRefreshAgoraDmLocalPreviewCanvas('overlay_layout_full_call', 'ios')).toBe(true);
   });
 
 });

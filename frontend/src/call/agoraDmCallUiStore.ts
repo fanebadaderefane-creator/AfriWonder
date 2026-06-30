@@ -121,10 +121,11 @@ export const useAgoraDmCallUiStore = create<AgoraDmCallUiState>((set, get) => ({
         feedsSwapped: next,
         pipDragX: s.pipDragX,
         pipDragY: s.pipDragY,
+        action: 'toggle',
       });
       return { videoFeedsSwapped: next };
     });
-    queueMicrotask(() => refreshAgoraDmLocalPreviewCanvas('feeds_swapped'));
+    // UI seule — pas de refresh canvas Agora (évite écran noir / stack overflow).
   },
   setPipDrag: (pipDragX, pipDragY) => set({ pipDragX, pipDragY }),
   resetPipDrag: () => set({ pipDragX: null, pipDragY: null }),

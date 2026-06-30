@@ -16,7 +16,14 @@ import {
 
 export { shouldAgoraSwitchCameraOnNonce, shouldAgoraDmSkipSetupLocalVideo };
 
-/** startPreview moteur — iOS seulement hors canal ; Android = surface_layout via syncAgoraLocalVideoCanvas. */
+/** Une seule startPreview() JS par session Android (RtcTextureView canvas uid 0). */
+let androidDmStartPreviewDone = false;
+
+export function resetAgoraDmAndroidStartPreviewGate(): void {
+  androidDmStartPreviewDone = false;
+}
+
+/** startPreview moteur — Android avant RtcTextureView ; iOS hors canal via policy. */
 export function maybeStartAgoraDmEnginePreview(
   engine: IRtcEngine,
   meta?: Record<string, unknown>,
@@ -30,6 +37,10 @@ export function maybeStartAgoraDmEnginePreview(
     });
     return;
   }
+  if (Platform.OS === 'android') {
+    startAgoraDmAndroidPreviewOnce(engine, meta);
+    return;
+  }
   try {
     const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
     if (typeof startPreview === 'function') {
@@ -39,8 +50,40 @@ export function maybeStartAgoraDmEnginePreview(
     logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
       ...meta,
       inChannel,
+      platform: Platform.OS,
       error: String((e as Error)?.message ?? e),
     });
+  }
+}
+
+/** Android — une seule startPreview() avant montage RtcTextureView (pas après onLayout). */
+export function startAgoraDmAndroidPreviewOnce(
+  engine: IRtcEngine,
+  meta?: Record<string, unknown>,
+): boolean {
+  if (Platform.OS !== 'android') return false;
+  if (androidDmStartPreviewDone) {
+    logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
+      ...meta,
+      reason: 'android_already_started',
+      platform: Platform.OS,
+    });
+    return false;
+  }
+  try {
+    const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
+    if (typeof startPreview !== 'function') return false;
+    startPreview.call(engine);
+    androidDmStartPreviewDone = true;
+    logAfwCall('agora_android_preview_started', { ...meta, platform: Platform.OS });
+    return true;
+  } catch (e) {
+    logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
+      ...meta,
+      platform: Platform.OS,
+      error: String((e as Error)?.message ?? e),
+    });
+    return false;
   }
 }
 
@@ -103,7 +146,7 @@ function localPreviewCanvasConfig(): {
   };
 }
 
-/** UI seule — rattache le canvas uid 0 ; startPreview optionnel (chat / premier plan). */
+/** UI seule — rattache le canvas uid 0 ; startPreview optionnel (iOS / hors Android TextureView). */
 export function syncAgoraLocalVideoCanvas(
   engine: IRtcEngine,
   meta?: Record<string, unknown>,
@@ -111,6 +154,14 @@ export function syncAgoraLocalVideoCanvas(
 ): void {
   const reason = typeof meta?.reason === 'string' ? meta.reason : undefined;
   const inChannel = meta?.inChannel === true;
+  if (Platform.OS === 'android') {
+    logAfwCall('LOCAL_CANVAS_SYNC_SKIPPED', {
+      ...meta,
+      reason: reason ?? 'android_texture_view_only',
+      inChannel,
+    });
+    return;
+  }
   const skipSetupLocalVideo =
     options?.skipSetupLocalVideo ??
     shouldAgoraDmSkipSetupLocalVideo(Platform.OS, reason, inChannel);
@@ -122,22 +173,34 @@ export function syncAgoraLocalVideoCanvas(
   } catch {
     /* setupLocalVideo optionnel selon version SDK */
   }
+  let startPreviewInvoked = false;
   if (options?.startPreview) {
-    try {
-      const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
-      if (typeof startPreview === 'function') {
-        startPreview.call(engine);
-      }
-    } catch (e) {
+    if (Platform.OS === 'android' && androidDmStartPreviewDone) {
       logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
         ...meta,
-        error: String((e as Error)?.message ?? e),
+        reason: 'android_already_started',
       });
+    } else {
+      try {
+        const startPreview = (engine as { startPreview?: () => void | number }).startPreview;
+        if (typeof startPreview === 'function') {
+          startPreview.call(engine);
+          startPreviewInvoked = true;
+          if (Platform.OS === 'android') {
+            androidDmStartPreviewDone = true;
+          }
+        }
+      } catch (e) {
+        logAfwCall('LOCAL_CANVAS_START_PREVIEW_SKIPPED', {
+          ...meta,
+          error: String((e as Error)?.message ?? e),
+        });
+      }
     }
   }
   logAfwCall('LOCAL_CANVAS_SYNC', {
     ...meta,
-    startPreview: !!options?.startPreview,
+    startPreview: startPreviewInvoked,
     skipSetupLocalVideo,
     inChannel,
   });
