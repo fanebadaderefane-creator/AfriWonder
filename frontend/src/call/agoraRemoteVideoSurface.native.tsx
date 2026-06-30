@@ -3,6 +3,10 @@
  */
 import React, { memo } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  AGORA_RTC_SURFACE_HOST_BG,
+  agoraRtcTextureViewSafeStyle,
+} from './agoraRtcTextureViewStyle.native';
 import { logAfwCall } from './callDiagnosticLog';
 import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
@@ -46,11 +50,13 @@ export const AgoraRemoteVideoSurface = memo(function AgoraRemoteVideoSurface({
     if (Platform.OS === 'android' && typeof mod.RtcTextureView === 'function') {
       const { RtcTextureView } = mod;
       return (
-        <RtcTextureView
-          key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
-          style={style}
-          canvas={{ uid: remoteUid }}
-        />
+        <View style={[style, AGORA_RTC_SURFACE_HOST_BG]} collapsable={false}>
+          <RtcTextureView
+            key={`${AGORA_REMOTE_VIDEO_SURFACE_KEY}-${remoteUid}`}
+            style={agoraRtcTextureViewSafeStyle(style)}
+            canvas={{ uid: remoteUid }}
+          />
+        </View>
       );
     }
 

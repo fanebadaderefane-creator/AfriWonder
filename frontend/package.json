@@ -33,6 +33,8 @@
     "verify:call-media": "node ./scripts/verify-call-media-readiness.cjs",
     "verify:mobile-call": "node ./scripts/verify-mobile-call-native.cjs",
     "verify:eas-org": "node ./scripts/verify-eas-org.cjs",
+    "sync:eas-project-env": "node ./scripts/sync-eas-project-env.cjs",
+    "eas:init:videovocal": "eas init --non-interactive --force && npm run sync:eas-project-env && npm run verify:eas-org",
     "verify:android-signing": "node ./scripts/check-android-keystore.cjs --production",
     "install:play-upload-keystore": "node ./scripts/install-play-upload-from-local.cjs",
     "test:android-signing": "node --test ./scripts/androidSigningPolicy.test.cjs",

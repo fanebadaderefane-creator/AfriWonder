@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Vérifie que les builds EAS ciblent ABDOULAYEFANE AFRIWONDER PRODUCTION / AfriWonder-Production
- * (pas global-production ni fanebadaderefane dont les quotas gratuits sont épuisés).
+ * Vérifie que les builds EAS ciblent videovocalafriwonder (quota builds gratuits).
  *
  * Usage: cd frontend && node scripts/verify-eas-org.cjs
  */
@@ -10,24 +9,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { ACTIVE_EAS_ORG, BLOCKED_OWNERS, BLOCKED_PROJECT_IDS } = require('./easOrgPolicy.cjs');
 
 const FRONTEND_ROOT = path.resolve(__dirname, '..');
-
-const EXPECTED = {
-  owner: 'abdoulayefane-afriwonder-production',
-  slug: 'afriwonder-production',
-  projectId: '54406371-5aa5-4bf1-8f80-b64b9f1e72fc',
-  expoAccount: 'abdoulayefane-afriwonder-production',
-};
-
-/** Anciens projets Expo — quota épuisé, ne plus utiliser pour eas build. */
-const BLOCKED_PROJECT_IDS = [
-  '5d875c26-f610-4105-a241-1dc03c4edcc8',
-  'f4715a6b-9779-4ec1-841a-9dd7cb73e2b3',
-  'fca8d6ba-0ea4-4918-8e31-3264d31de669',
-];
-
-const BLOCKED_OWNERS = ['fanebadaderefane', 'fbf-global', 'fbf_global', 'global-production'];
+const EXPECTED = ACTIVE_EAS_ORG;
 
 const failures = [];
 const passes = [];
@@ -59,6 +44,9 @@ function scanBlockedIds() {
       if (new RegExp(`"owner"\\s*:\\s*"${blockedOwner}"`).test(text)) {
         fail(`${rel} — owner interdit: ${blockedOwner}`);
       }
+      if (new RegExp(`EXPO_PUBLIC_EXPO_ACCOUNT"\\s*:\\s*"${blockedOwner}"`).test(text)) {
+        fail(`${rel} — EXPO_PUBLIC_EXPO_ACCOUNT interdit: ${blockedOwner}`);
+      }
     }
   }
 }
@@ -72,11 +60,17 @@ function checkAppJson() {
   else fail(`app.json slug = "${app.slug || ''}" (attendu: ${EXPECTED.slug})`);
 
   const pid = app.extra?.eas?.projectId;
-  if (pid === EXPECTED.projectId) pass(`app.json projectId = ${EXPECTED.projectId}`);
-  else fail(`app.json projectId = "${pid || ''}" (attendu: ${EXPECTED.projectId})`);
+  if (!pid) {
+    fail('app.json projectId manquant — lancez: eas init --non-interactive --force');
+  } else if (BLOCKED_PROJECT_IDS.includes(pid)) {
+    fail(`app.json projectId = ${pid} (ancien org — eas init --force)`);
+  } else {
+    pass(`app.json projectId = ${pid}`);
+  }
+  return pid;
 }
 
-function checkEasJson() {
+function checkEasJson(expectedProjectId) {
   const eas = readJson('eas.json');
   const profiles = Object.keys(eas.build || {});
   if (!profiles.length) {
@@ -94,17 +88,20 @@ function checkEasJson() {
       );
     }
     const envPid = env.EXPO_PUBLIC_EAS_PROJECT_ID;
-    if (envPid === EXPECTED.projectId) {
+    if (!expectedProjectId) continue;
+    if (envPid === expectedProjectId) {
       pass(`eas.json [${profile}] EXPO_PUBLIC_EAS_PROJECT_ID OK`);
     } else if (!envPid) {
-      fail(`eas.json [${profile}] EXPO_PUBLIC_EAS_PROJECT_ID manquant`);
-    } else if (envPid !== EXPECTED.projectId) {
+      fail(`eas.json [${profile}] EXPO_PUBLIC_EAS_PROJECT_ID manquant — node scripts/sync-eas-project-env.cjs`);
+    } else if (BLOCKED_PROJECT_IDS.includes(envPid)) {
+      fail(`eas.json [${profile}] ancien projectId — node scripts/sync-eas-project-env.cjs`);
+    } else if (envPid !== expectedProjectId) {
       fail(`eas.json [${profile}] EXPO_PUBLIC_EAS_PROJECT_ID incorrect: ${envPid}`);
     }
   }
 }
 
-function checkEasCliLinked() {
+function checkEasCliLinked(expectedProjectId) {
   if (!spawnSync('eas', ['--version'], { shell: true, stdio: 'pipe' }).stdout) {
     console.warn('  ⚠️  eas-cli absent — skip eas project:info (npm i -g eas-cli)');
     return;
@@ -142,26 +139,29 @@ function checkEasCliLinked() {
   } else if (fullName) {
     fail(`EAS CLI project: ${fullName} (attendu @${EXPECTED.owner}/${EXPECTED.slug})`);
   }
-  if (id === EXPECTED.projectId) pass(`EAS CLI project ID = ${EXPECTED.projectId}`);
-  else if (id) fail(`EAS CLI project ID = ${id} (attendu ${EXPECTED.projectId})`);
+  if (expectedProjectId && id === expectedProjectId) pass(`EAS CLI project ID = ${expectedProjectId}`);
+  else if (expectedProjectId && id) fail(`EAS CLI project ID = ${id} (attendu ${expectedProjectId})`);
 }
 
-console.log('\n📦 Vérification org EAS — ABDOULAYEFANE AFRIWONDER PRODUCTION / AfriWonder-Production\n');
+console.log(`\n📦 Vérification org EAS — ${EXPECTED.label} / ${EXPECTED.slug}\n`);
 console.log('━━ Fichiers locaux ━━');
-checkAppJson();
-checkEasJson();
+const projectId = checkAppJson();
+checkEasJson(projectId);
 scanBlockedIds();
 
 console.log('\n━━ Liaison EAS CLI (optionnel) ━━');
-checkEasCliLinked();
+checkEasCliLinked(projectId);
 
 console.log('\n══════════════════════════════════════════');
 console.log(`  OK: ${passes.length}  |  Échecs: ${failures.length}`);
 if (failures.length) {
-  console.log('\n  Les builds `eas build` iraient vers le mauvais projet ou échoueraient (quota FBF).');
-  console.log('  Corrigez app.json / eas.json puis : eas init --id 54406371-5aa5-4bf1-8f80-b64b9f1e72fc');
+  console.log('\n  Corrigez puis :');
+  console.log('    cd frontend && eas login');
+  console.log('    eas init --non-interactive --force');
+  console.log('    node scripts/sync-eas-project-env.cjs');
+  console.log('    npm run verify:eas-org');
   process.exit(1);
 }
-console.log('\n  Prêt pour : npm run eas:android:callDiagnostic');
-console.log('              npm run eas:android:production  (AAB Play Store)');
+console.log('\n  Keystore Play (FA:AC:66…) : inchangée — npm run install:play-upload-keystore');
+console.log('  Prêt pour : npm run eas:android:production');
 console.log('══════════════════════════════════════════\n');

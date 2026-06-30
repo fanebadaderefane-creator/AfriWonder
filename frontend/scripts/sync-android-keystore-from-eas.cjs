@@ -15,7 +15,8 @@ const packageName = 'com.afriwonder.app';
 const PROJECT_CANDIDATES = [
   { account: 'global-production', projectName: 'afriwonder-production', label: 'global-production (keystore prod historique)' },
   { account: 'fanebadaderefane', projectName: 'afriwonder-production', label: 'fanebadaderefane (legacy)' },
-  { account: 'abdoulayefane-afriwonder-production', projectName: 'afriwonder-production', label: 'abdoulayefane-afriwonder-production (nouvelle org)' },
+  { account: 'videovocalafriwonder', projectName: 'afriwonder-production', label: 'videovocalafriwonder (org active)' },
+  { account: 'abdoulayefane-afriwonder-production', projectName: 'afriwonder-production', label: 'abdoulayefane (quota épuisé)' },
 ];
 
 function resolveEasCliRoot() {

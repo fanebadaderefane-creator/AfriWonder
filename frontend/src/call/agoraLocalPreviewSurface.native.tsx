@@ -3,12 +3,16 @@
  */
 import React, { memo, useCallback } from 'react';
 import { Platform, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  AGORA_RTC_SURFACE_HOST_BG,
+  agoraRtcTextureViewSafeStyle,
+} from './agoraRtcTextureViewStyle.native';
 import { logAfwCall } from './callDiagnosticLog';
 import { useCallScreenSafeEffect } from './useCallScreenSafeEffect';
 
 export const AGORA_LOCAL_PREVIEW_SURFACE_KEY = 'agora-dm-local-preview-surface';
 
-const FALLBACK_PREVIEW_STYLE: ViewStyle = { flex: 1, backgroundColor: '#0a0a0a' };
+const FALLBACK_PREVIEW_STYLE: ViewStyle = { flex: 1, ...AGORA_RTC_SURFACE_HOST_BG };
 
 function renderNativePreviewSurface(style: StyleProp<ViewStyle> | undefined): React.ReactNode {
   try {
@@ -34,13 +38,14 @@ function renderNativePreviewSurface(style: StyleProp<ViewStyle> | undefined): Re
     };
 
     const surfaceStyle: StyleProp<ViewStyle> = [FALLBACK_PREVIEW_STYLE, style];
+    const textureStyle = agoraRtcTextureViewSafeStyle(style);
 
     if (Platform.OS === 'android' && mod.RtcTextureView) {
       const { RtcTextureView } = mod;
       return (
         <RtcTextureView
           key={AGORA_LOCAL_PREVIEW_SURFACE_KEY}
-          style={surfaceStyle}
+          style={textureStyle}
           canvas={canvas}
         />
       );
@@ -107,7 +112,11 @@ export const AgoraLocalPreviewSurface = memo(function AgoraLocalPreviewSurface({
     return <View style={style} onLayout={handleLayout} />;
   }
 
-  const fillStyle: StyleProp<ViewStyle> = [{ flex: 1, width: '100%', height: '100%' }, style];
+  const fillStyle: StyleProp<ViewStyle> = [
+    { flex: 1, width: '100%', height: '100%' },
+    AGORA_RTC_SURFACE_HOST_BG,
+    style,
+  ];
 
   return (
     <View style={fillStyle} onLayout={handleLayout} collapsable={false}>

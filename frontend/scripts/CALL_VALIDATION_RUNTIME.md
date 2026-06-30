@@ -2,7 +2,7 @@
 
 ## 1. Générer l'APK diagnostic (EAS)
 
-Depuis la machine avec accès à l’organisation Expo **`abdoulayefane-afriwonder-production`** :
+Depuis la machine avec accès à l’organisation Expo **`videovocalafriwonder`** :
 
 ```powershell
 cd frontend

@@ -97,15 +97,22 @@ function checkStaticManifest() {
     else fail('manifest', `EAS ${profile}: EXPO_PUBLIC_BACKEND_URL HTTPS manquant`);
   }
 
+  const { ACTIVE_EAS_ORG, BLOCKED_PROJECT_IDS } = require('./easOrgPolicy.cjs');
+
   const owner = appJson.expo?.owner;
   const pid = appJson.expo?.extra?.eas?.projectId;
   const slug = appJson.expo?.slug;
-  if (owner === 'abdoulayefane-afriwonder-production') pass('manifest', 'EAS owner = abdoulayefane-afriwonder-production');
-  else fail('manifest', `EAS owner = "${owner || ''}" (attendu abdoulayefane-afriwonder-production — pas global-production/fanebadaderefane)`);
-  if (slug === 'afriwonder-production') pass('manifest', 'EAS slug = afriwonder-production');
+  if (owner === ACTIVE_EAS_ORG.owner) pass('manifest', `EAS owner = ${ACTIVE_EAS_ORG.owner}`);
+  else fail('manifest', `EAS owner = "${owner || ''}" (attendu ${ACTIVE_EAS_ORG.owner})`);
+  if (slug === ACTIVE_EAS_ORG.slug) pass('manifest', `EAS slug = ${ACTIVE_EAS_ORG.slug}`);
   else fail('manifest', `EAS slug = "${slug || ''}"`);
-  if (pid === '54406371-5aa5-4bf1-8f80-b64b9f1e72fc') pass('manifest', 'EAS projectId AfriWonder-Production');
-  else fail('manifest', `EAS projectId = "${pid || ''}" (quota épuisé si ancien ID global-production)`);
+  if (!pid) {
+    fail('manifest', 'EAS projectId manquant — eas init --non-interactive --force puis sync-eas-project-env');
+  } else if (BLOCKED_PROJECT_IDS.includes(pid)) {
+    fail('manifest', `EAS projectId = "${pid}" (ancien org — eas init --force)`);
+  } else {
+    pass('manifest', `EAS projectId = ${pid}`);
+  }
 }
 
 function checkStaticModulesAndFiles() {

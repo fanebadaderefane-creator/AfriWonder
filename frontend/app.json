@@ -151,7 +151,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "54406371-5aa5-4bf1-8f80-b64b9f1e72fc"
+        "projectId": "9deeeaf9-38a0-479a-832b-568345ea4dfc"
       }
     },
     "experiments": {
@@ -160,6 +160,6 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "owner": "abdoulayefane-afriwonder-production"
+    "owner": "videovocalafriwonder"
   }
 }

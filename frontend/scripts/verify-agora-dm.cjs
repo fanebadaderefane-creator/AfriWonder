@@ -229,6 +229,17 @@ function checkFrontendWiring() {
     fail('Canvas scheduler', 'sync layout manquant');
   }
 
+  const localSurface = read('src/call/agoraLocalPreviewSurface.native.tsx');
+  if (
+    /agoraRtcTextureViewSafeStyle/.test(localSurface) &&
+    /AGORA_RTC_SURFACE_HOST_BG/.test(localSurface) &&
+    !/RtcTextureView[\s\S]{0,200}backgroundColor/.test(localSurface)
+  ) {
+    pass('RtcTextureView — pas de backgroundColor', 'évite crash Fabric Android');
+  } else {
+    fail('RtcTextureView style', 'backgroundColor sur TextureView = crash natif');
+  }
+
   const canvasWeb = read('src/call/agoraDmLocalPreviewCanvas.web.ts');
   if (/refreshAgoraDmLocalPreviewCanvas/.test(canvasWeb) && !/react-native-agora/.test(canvasWeb)) {
     pass('Canvas web stub — pas de react-native-agora', 'bundle web safe');
